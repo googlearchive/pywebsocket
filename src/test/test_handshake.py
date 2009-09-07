@@ -31,7 +31,7 @@ _GOOD_REQUEST = (
         'GET /demo HTTP/1.1\r\n'
         'Upgrade: WebSocket\r\n'
         'Connection: Upgrade\r\n'
-        'Host: example.com:81\r\n'
+        'Host: example.com\r\n'
         'Origin: http://example.com\r\n'
         'WebSocket-Protocol: sample\r\n'
         '\r\n')
@@ -42,24 +42,6 @@ _GOOD_RESPONSE_DEFAULT_PORT = (
         'Connection: Upgrade\r\n'
         'WebSocket-Origin: http://example.com\r\n'
         'WebSocket-Location: ws://example.com/demo\r\n'
-        'WebSocket-Protocol: sample\r\n'
-        '\r\n')
-
-_GOOD_REQUEST_PORT_80 = (
-        'GET /demo HTTP/1.1\r\n'
-        'Upgrade: WebSocket\r\n'
-        'Connection: Upgrade\r\n'
-        'Host: example.com\r\n'
-        'Origin: http://example.com\r\n'
-        'WebSocket-Protocol: sample\r\n'
-        '\r\n')
-
-_GOOD_RESPONSE_PORT_80 = (
-        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
-        'Upgrade: WebSocket\r\n'
-        'Connection: Upgrade\r\n'
-        'WebSocket-Origin: http://example.com\r\n'
-        'WebSocket-Location: ws://example.com:80/demo\r\n'
         'WebSocket-Protocol: sample\r\n'
         '\r\n')
 
@@ -85,7 +67,7 @@ _GOOD_REQUEST_NO_PROTOCOL = (
         'GET /demo HTTP/1.1\r\n'
         'Upgrade: WebSocket\r\n'
         'Connection: Upgrade\r\n'
-        'Host: example.com:81\r\n'
+        'Host: example.com\r\n'
         'Origin: http://example.com\r\n'
         '\r\n')
 
@@ -101,7 +83,7 @@ _GOOD_REQUEST_WITH_OPTIONAL_HEADERS = (
         'GET /demo HTTP/1.1\r\n'
         'Upgrade: WebSocket\r\n'
         'Connection: Upgrade\r\n'
-        'Host: example.com:81\r\n'
+        'Host: example.com\r\n'
         'Origin: http://example.com\r\n'
         'WebSocket-Protocol: sample\r\n'
         'NoSpaces:ShouldBeOk\r\n'
@@ -112,58 +94,58 @@ _GOOD_REQUEST_WITH_OPTIONAL_HEADERS = (
 
 _BAD_REQUESTS = [
         (  # Missing Upgrade
-         "GET /demo HTTP/1.1\r\n"
-         "Connection: Upgrade\r\n"
-         "Host: example.com:81\r\n"
-         "Origin: http://example.com\r\n"
-         "WebSocket-Protocol: sample\r\n"
-         "\r\n",
-         81),
+         'GET /demo HTTP/1.1\r\n'
+         'Connection: Upgrade\r\n'
+         'Host: example.com\r\n'
+         'Origin: http://example.com\r\n'
+         'WebSocket-Protocol: sample\r\n'
+         '\r\n',
+         80),
         (  # Wrong Upgrade
-         "GET /demo HTTP/1.1\r\n"
-         "Upgrade: not_websocket\r\n"
-         "Connection: Upgrade\r\n"
-         "Host: example.com:81\r\n"
-         "Origin: http://example.com\r\n"
-         "WebSocket-Protocol: sample\r\n"
-         "\r\n",
-         81),
+         'GET /demo HTTP/1.1\r\n'
+         'Upgrade: not_websocket\r\n'
+         'Connection: Upgrade\r\n'
+         'Host: example.com\r\n'
+         'Origin: http://example.com\r\n'
+         'WebSocket-Protocol: sample\r\n'
+         '\r\n',
+         80),
         (  # Empty WebSocket-Protocol
-         "GET /demo HTTP/1.1\r\n"
-         "Upgrade: WebSocket\r\n"
-         "Connection: Upgrade\r\n"
-         "Host: example.com:81\r\n"
-         "Origin: http://example.com\r\n"
-         "WebSocket-Protocol: \r\n"
-         "\r\n",
-         81),
+         'GET /demo HTTP/1.1\r\n'
+         'Upgrade: WebSocket\r\n'
+         'Connection: Upgrade\r\n'
+         'Host: example.com\r\n'
+         'Origin: http://example.com\r\n'
+         'WebSocket-Protocol: \r\n'
+         '\r\n',
+         80),
         (  # Wrong port number format
-         "GET /demo HTTP/1.1\r\n"
-         "Upgrade: WebSocket\r\n"
-         "Connection: Upgrade\r\n"
-         "Host: example.com:0x51\r\n"
-         "Origin: http://example.com\r\n"
-         "WebSocket-Protocol: sample\r\n"
-         "\r\n",
-         0x51),
+         'GET /demo HTTP/1.1\r\n'
+         'Upgrade: WebSocket\r\n'
+         'Connection: Upgrade\r\n'
+         'Host: example.com:0x50\r\n'
+         'Origin: http://example.com\r\n'
+         'WebSocket-Protocol: sample\r\n'
+         '\r\n',
+         0x50),
         (  # Header/connection port mismatch
-         "GET /demo HTTP/1.1\r\n"
-         "Upgrade: WebSocket\r\n"
-         "Connection: Upgrade\r\n"
-         "Host: example.com\r\n"
-         "Origin: http://example.com\r\n"
-         "WebSocket-Protocol: sample\r\n"
-         "\r\n",
-         81),
+         'GET /demo HTTP/1.1\r\n'
+         'Upgrade: WebSocket\r\n'
+         'Connection: Upgrade\r\n'
+         'Host: example.com\r\n'
+         'Origin: http://example.com\r\n'
+         'WebSocket-Protocol: sample\r\n'
+         '\r\n',
+         8080),
         (  # Illegal protocol
-         "GET /demo HTTP/1.1\r\n"
-         "Upgrade: WebSocket\r\n"
-         "Connection: Upgrade\r\n"
-         "Host: example.com:81\r\n"
-         "Origin: http://example.com\r\n"
-         "WebSocket-Protocol: illegal protocol\r\n"
-         "\r\n",
-         81),
+         'GET /demo HTTP/1.1\r\n'
+         'Upgrade: WebSocket\r\n'
+         'Connection: Upgrade\r\n'
+         'Host: example.com\r\n'
+         'Origin: http://example.com\r\n'
+         'WebSocket-Protocol: illegal protocol\r\n'
+         '\r\n',
+         80),
         ]
 
 
@@ -181,22 +163,12 @@ class HandshakerTest(unittest.TestCase):
 
     def test_good_request_default_port(self):
         conn = mock.MockConn(_GOOD_REQUEST)
-        conn.local_addr = ('0.0.0.0', 81)
-        conn_context = conncontext.ConnContext(conn)
-        handshaker = handshake.Handshaker(conn_context,
-                                          mock.MockDispatcher())
-        handshaker.shake_hands()
-        self.assertEqual(_GOOD_RESPONSE_DEFAULT_PORT, conn.written_data())
-        self.assertEqual('sample', conn_context.protocol)
-
-    def test_good_request_port_80(self):
-        conn = mock.MockConn(_GOOD_REQUEST_PORT_80)
         conn.local_addr = ('0.0.0.0', 80)
         conn_context = conncontext.ConnContext(conn)
         handshaker = handshake.Handshaker(conn_context,
                                           mock.MockDispatcher())
         handshaker.shake_hands()
-        self.assertEqual(_GOOD_RESPONSE_PORT_80, conn.written_data())
+        self.assertEqual(_GOOD_RESPONSE_DEFAULT_PORT, conn.written_data())
         self.assertEqual('sample', conn_context.protocol)
 
     def test_good_request_nondefault_port(self):
@@ -211,7 +183,7 @@ class HandshakerTest(unittest.TestCase):
 
     def test_good_request_default_no_protocol(self):
         conn = mock.MockConn(_GOOD_REQUEST_NO_PROTOCOL)
-        conn.local_addr = ('0.0.0.0', 81)
+        conn.local_addr = ('0.0.0.0', 80)
         conn_context = conncontext.ConnContext(conn)
         handshaker = handshake.Handshaker(conn_context,
                                           mock.MockDispatcher())
@@ -219,17 +191,9 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual(_GOOD_RESPONSE_NO_PROTOCOL, conn.written_data())
         self.assertEqual(None, conn_context.protocol)
 
-    def test_port_mismatch(self):
-        conn = mock.MockConn(_GOOD_REQUEST_PORT_80)
-        conn.local_addr = ('0.0.0.0', 81)
-        conn_context = conncontext.ConnContext(conn)
-        handshaker = handshake.Handshaker(conn_context,
-                                          mock.MockDispatcher())
-        self.assertRaises(handshake.HandshakeError, handshaker.shake_hands)
-
     def test_good_request_optional_headers(self):
         conn = mock.MockConn(_GOOD_REQUEST_WITH_OPTIONAL_HEADERS)
-        conn.local_addr = ('0.0.0.0', 81)
+        conn.local_addr = ('0.0.0.0', 80)
         conn_context = conncontext.ConnContext(conn)
         handshaker = handshake.Handshaker(conn_context,
                                           mock.MockDispatcher())

@@ -19,8 +19,7 @@
 import re
 
 
-_DEFAULT_WEB_SOCKET_PORT = 81
-_DEFAULT_WEB_SOCKET_PORT_IN_CLIENT_HEADER = 80
+_DEFAULT_WEB_SOCKET_PORT = 80
 
 _METHOD_LINE = re.compile(r'^GET ([^ ]+) HTTP/1.1\r\n$')
 
@@ -43,7 +42,7 @@ def _validate_protocol(protocol):
     """Validate WebSocket-Protocol string."""
 
     if not protocol:
-        raise HandshakeError('Invalid: Empty WebSocket-Protocol')
+        raise HandshakeError('Invalid WebSocket-Protocol: empty')
     for c in protocol:
         if not 0x21 <= ord(c) <= 0x7e:
             raise HandshakeError('Illegal character in protocol: %r' % c)
@@ -101,7 +100,7 @@ class Handshaker(object):
     def _parse_host_header(self):
         fields = self._conn_context.headers['Host'].split(':', 1)
         if len(fields) == 1:
-            return fields[0], _DEFAULT_WEB_SOCKET_PORT_IN_CLIENT_HEADER
+            return fields[0], _DEFAULT_WEB_SOCKET_PORT
         try:
             return fields[0], int(fields[1])
         except ValueError, e:

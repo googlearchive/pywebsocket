@@ -45,6 +45,15 @@ _GOOD_RESPONSE_DEFAULT_PORT = (
         'WebSocket-Protocol: sample\r\n'
         '\r\n')
 
+_GOOD_RESPONSE_SECURE = (
+        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
+        'Upgrade: WebSocket\r\n'
+        'Connection: Upgrade\r\n'
+        'WebSocket-Origin: http://example.com\r\n'
+        'WebSocket-Location: wss://example.com/demo\r\n'
+        'WebSocket-Protocol: sample\r\n'
+        '\r\n')
+
 _GOOD_REQUEST_NONDEFAULT_PORT = (
         'GET /demo HTTP/1.1\r\n'
         'Upgrade: WebSocket\r\n'
@@ -60,6 +69,15 @@ _GOOD_RESPONSE_NONDEFAULT_PORT = (
         'Connection: Upgrade\r\n'
         'WebSocket-Origin: http://example.com\r\n'
         'WebSocket-Location: ws://example.com:8081/demo\r\n'
+        'WebSocket-Protocol: sample\r\n'
+        '\r\n')
+
+_GOOD_RESPONSE_SECURE_NONDEF = (
+        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
+        'Upgrade: WebSocket\r\n'
+        'Connection: Upgrade\r\n'
+        'WebSocket-Origin: http://example.com\r\n'
+        'WebSocket-Location: wss://example.com:8081/demo\r\n'
         'WebSocket-Protocol: sample\r\n'
         '\r\n')
 
@@ -171,6 +189,16 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual(_GOOD_RESPONSE_DEFAULT_PORT, conn.written_data())
         self.assertEqual('sample', conn_context.protocol)
 
+    def test_good_request_secure_default_port(self):
+        conn = mock.MockConn(_GOOD_REQUEST)
+        conn.local_addr = ('0.0.0.0', 443)
+        conn_context = conncontext.ConnContext(conn, secure=True)
+        handshaker = handshake.Handshaker(conn_context,
+                                          mock.MockDispatcher())
+        handshaker.shake_hands()
+        self.assertEqual(_GOOD_RESPONSE_SECURE, conn.written_data())
+        self.assertEqual('sample', conn_context.protocol)
+
     def test_good_request_nondefault_port(self):
         conn = mock.MockConn(_GOOD_REQUEST_NONDEFAULT_PORT)
         conn.local_addr = ('0.0.0.0', 8081)
@@ -179,6 +207,16 @@ class HandshakerTest(unittest.TestCase):
                                           mock.MockDispatcher())
         handshaker.shake_hands()
         self.assertEqual(_GOOD_RESPONSE_NONDEFAULT_PORT, conn.written_data())
+        self.assertEqual('sample', conn_context.protocol)
+
+    def test_good_request_secure_non_default_port(self):
+        conn = mock.MockConn(_GOOD_REQUEST_NONDEFAULT_PORT)
+        conn.local_addr = ('0.0.0.0', 8081)
+        conn_context = conncontext.ConnContext(conn, secure=True)
+        handshaker = handshake.Handshaker(conn_context,
+                                          mock.MockDispatcher())
+        handshaker.shake_hands()
+        self.assertEqual(_GOOD_RESPONSE_SECURE_NONDEF, conn.written_data())
         self.assertEqual('sample', conn_context.protocol)
 
     def test_good_request_default_no_protocol(self):

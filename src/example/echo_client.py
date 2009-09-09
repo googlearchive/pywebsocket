@@ -31,8 +31,26 @@ import socket
 import sys
 
 
-_DEFAULT_PORT=81
-_IMPLICIT_PORT=80
+_DEFAULT_PORT = 80
+_DEFAULT_SECURE_PORT = 443
+_UNDEFINED_PORT = -1
+
+
+class _TLSSocket(object):
+    """Wrapper for a TLS connection."""
+
+    def __init__(self, raw_socket):
+        self._ssl = socket.ssl(raw_socket)
+
+    def send(self, bytes):
+        return self._ssl.write(bytes)
+
+    def recv(self, size=-1):
+        return self._ssl.read(size)
+
+    def close(self):
+        # Nothing to do.
+        pass
 
 
 class EchoClient(object):
@@ -51,6 +69,8 @@ class EchoClient(object):
         try:
             self._socket.connect((self._options.server_host,
                                   self._options.server_port))
+            if self._options.use_tls:
+                self._socket = _TLSSocket(self._socket)
             self._handshake()
             for line in self._options.message.split(','):
                 frame = '\x00' + line.encode('utf-8') + '\xff'
@@ -97,7 +117,10 @@ class EchoClient(object):
 
     def _format_host_header(self):
         host = 'Host: ' + self._options.server_host
-        if self._options.server_port != _IMPLICIT_PORT:
+        if ((not self._options.use_tls and
+             self._options.server_port != _DEFAULT_PORT) or
+            (self._options.use_tls and
+             self._options.server_port != _DEFAULT_SECURE_PORT)):
             host += ':' + str(self._options.server_port)
         host += '\r\n'
         return host
@@ -110,7 +133,7 @@ def main():
     parser.add_option('-s', '--server_host', dest='server_host', type='string',
                       default='localhost', help='server host')
     parser.add_option('-p', '--server_port', dest='server_port', type='int',
-                      default=_DEFAULT_PORT, help='server port')
+                      default=_UNDEFINED_PORT, help='server port')
     parser.add_option('-o', '--origin', dest='origin', type='string',
                       default='http://localhost/', help='origin')
     parser.add_option('-r', '--resource', dest='resource', type='string',
@@ -120,7 +143,14 @@ def main():
                       help='comma-separated messages to send')
     parser.add_option('-q', '--quiet', dest='verbose', action='store_false',
                       default=True, help='suppress messages')
+    parser.add_option('-t', '--tls', dest='use_tls', action='store_true',
+                      default=False, help='use TLS (wss://)')
     (options, _) = parser.parse_args()
+    if options.server_port == _UNDEFINED_PORT:
+        if options.use_tls:
+            options.server_port = _DEFAULT_SECURE_PORT
+        else:
+            options.server_port = _DEFAULT_PORT
 
     EchoClient(options).run()
 

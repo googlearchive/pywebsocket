@@ -34,4 +34,30 @@ def get_stack_trace():
     return out.getvalue()
 
 
+def parse_port_list(port_list):
+    """Parse comma-delimited list of port numbers.
+
+    Args:
+        port_list: Comma-delimited list of port numbers (str).
+    Returns:
+        (ports, warnings) where ports is a sequence of port numbers (int) and
+        warnings is a sequence of warnings (str).
+
+    Parse comma-delimited list of port numbers and return (ports, warnings)
+    tuple. Whitespace and empty strings are ignored.
+    """
+
+    ports = []
+    warnings = []
+    for port in port_list.split(','):
+        port = port.strip()
+        if not port:
+            continue
+        try:
+            ports.append(int(port))
+        except ValueError, e:
+            warnings.append(str(e))
+    return ports, warnings
+
+
 # vi:sts=4 sw=4 et

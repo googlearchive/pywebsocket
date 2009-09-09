@@ -34,6 +34,23 @@ class UtilTest(unittest.TestCase):
             self.failUnless(trace.startswith('Traceback'))
             self.failUnless(trace.find('ZeroDivisionError') != -1)
 
+    def test_parse_port_list(self):
+        ports, warnings = util.parse_port_list('10')
+        self.assertEqual(1, len(ports))
+        self.assertEqual(10, ports[0])
+        self.assertEqual(0, len(warnings))
+
+        ports, warnings = util.parse_port_list('100, 200 , 300, ,,')
+        self.assertEqual(3, len(ports))
+        for expected, actual in zip([100, 200, 300], ports):
+            self.assertEqual(expected, actual)
+        self.assertEqual(0, len(warnings))
+
+        ports, warnings = util.parse_port_list('0x100,200')
+        self.assertEqual(1, len(ports))
+        self.assertEqual(200, ports[0])
+        self.assertEqual(1, len(warnings))
+
 
 if __name__ == '__main__':
     unittest.main()

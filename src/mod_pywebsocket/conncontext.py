@@ -25,7 +25,7 @@ class ConnContext(object):
     """
 
     def __init__(self, conn, resource=None, protocol=None, origin=None,
-                 location=None, headers=None):
+                 secure=False, location=None, headers=None):
         """Construct an instance.
 
         Args:
@@ -34,6 +34,7 @@ class ConnContext(object):
             protocol: Web Socket protocol specified in the handshake. None
                       if not specified.
             origin: Web Socket origin.
+            secure: Whether the connection is secure (wss).
             location: Web Socket location.
             headers: Dictionary of headers sent from the client.
         """
@@ -42,6 +43,7 @@ class ConnContext(object):
         self.resource = resource
         self.protocol = protocol
         self.origin = origin
+        self.secure = secure
         self.location = location
         if headers:
             self.headers = headers

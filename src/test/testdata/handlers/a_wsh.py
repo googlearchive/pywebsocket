@@ -13,15 +13,15 @@
 # limitations under the License.
 
 
-def web_socket_shake_hands(conn_context):
-    if conn_context.origin == 'http://example.com':
+def web_socket_shake_hands(request):
+    if request.ws_origin == 'http://example.com':
         return
-    raise ValueError('Unacceptable origin: %r' % conn_context.origin)
+    raise ValueError('Unacceptable origin: %r' % request.ws_origin)
 
 
-def web_socket_transfer_data(conn_context):
-    conn_context.conn.write('a_wsh.py is called for %s, %s' %
-                            (conn_context.resource, conn_context.protocol))
+def web_socket_transfer_data(request):
+    request.connection.write('a_wsh.py is called for %s, %s' %
+                             (request.ws_resource, request.ws_protocol))
 
 
 # vi:sts=4 sw=4 et

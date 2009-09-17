@@ -124,6 +124,57 @@ class MockBlockingConn(_MockConnBase):
             self._queue.put(byte)
 
 
+class MockTable(dict):
+    """Mock table.
+
+    This mimicks mod_python mp_table. Note that only the methods used by
+    tests are overridden.
+    """
+
+    def __init__(self, copy_from={}):
+        if isinstance(copy_from, dict):
+            copy_from = copy_from.items()
+        for key, value in copy_from:
+            self.__setitem__(key, value)
+
+    def __getitem__(self, key):
+        return super(MockTable, self).__getitem__(key.lower())
+
+    def __setitem__(self, key, value):
+        super(MockTable, self).__setitem__(key.lower(), value)
+
+    def get(self, key, def_value=None):
+        return super(MockTable, self).get(key.lower(), def_value)
+
+
+class MockRequest(object):
+    """Mock request.
+
+    This mimics mod_python request.
+    """
+
+    def __init__(self, uri=None, headers_in={}, connection=None,
+                 is_https=False):
+        """Construct an instance.
+
+        Arguments:
+            uri: URI of the request.
+            headers_in: Request headers.
+            connection: Connection used for the request.
+            is_https: Whether this request is over SSL.
+
+        See the document of mod_python mp_conn for details.
+        """
+        self.uri = uri
+        self.connection = connection
+        self.headers_in = MockTable(headers_in)
+        self.is_https_ = is_https
+
+    def is_https(self):
+        """Return whether this request is over SSL."""
+        return self.is_https_
+
+
 class MockDispatcher(object):
     """Mock for dispatch.Dispatcher."""
 

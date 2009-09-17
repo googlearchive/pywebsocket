@@ -139,18 +139,24 @@ def main():
     parser.add_option('-r', '--resource', dest='resource', type='string',
                       default='/echo', help='resource path')
     parser.add_option('-m', '--message', dest='message', type='string',
-                      default=u'Hello,\u65e5\u672c',  # "Japan" in Japanese
                       help='comma-separated messages to send')
     parser.add_option('-q', '--quiet', dest='verbose', action='store_false',
                       default=True, help='suppress messages')
     parser.add_option('-t', '--tls', dest='use_tls', action='store_true',
                       default=False, help='use TLS (wss://)')
     (options, _) = parser.parse_args()
+
+    # Default port number depends on whether TLS is used.
     if options.server_port == _UNDEFINED_PORT:
         if options.use_tls:
             options.server_port = _DEFAULT_SECURE_PORT
         else:
             options.server_port = _DEFAULT_PORT
+
+    # optparse doesn't seem to handle non-ascii default values.
+    # Set default message here.
+    if not options.message:
+        options.message = u'Hello,\u65e5\u672c'   # "Japan" in Japanese
 
     EchoClient(options).run()
 

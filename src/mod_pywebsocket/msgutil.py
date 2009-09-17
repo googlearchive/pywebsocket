@@ -14,6 +14,11 @@
 
 
 """Message related utilities.
+
+Note: request.connection.write/read are used in this module, even though
+mod_python document says that they should be used only in connection handlers.
+Unfortunately, we have no other options. For example, request.write/read are
+not suitable because they don't allow direct raw bytes writing/reading.
 """
 
 
@@ -23,49 +28,48 @@ import traceback
 import threading
 
 
-def send_message(conn, message):
+def send_message(request, message):
     """Send message.
 
     Args:
-        conn: mod_python.apache.mp_conn object.
+        request: mod_python request.
         message: unicode string to send.
     """
 
-    conn.write('\x00' + message.encode('utf-8') + '\xff')
+    request.connection.write('\x00' + message.encode('utf-8') + '\xff')
 
 
-def receive_message(conn):
+def receive_message(request):
     """Receive a Web Socket frame and return its payload as unicode string.
 
     Args:
-        conn: mod_python.apache.mp_conn object.
+        request: mod_python request.
     """
 
     while True:
         # Read 1 byte.
         # mp_conn.read will block if no bytes are available.
-        # TODO: check if timeout is properly handled by either mod_python or
-        # Apache HTTP Server.
-        frame_type_str = conn.read(1)
+        # Timeout is controlled by TimeOut directive of Apache.
+        frame_type_str = request.connection.read(1)
         frame_type = ord(frame_type_str[0])
         if (frame_type & 0x80) == 0x80:
             # The payload length is specified in the frame.
             # Read and discard.
-            length = _payload_length(conn)
-            _receive_bytes(conn, length)
+            length = _payload_length(request)
+            _receive_bytes(request, length)
         else:
             # The payload is delimited with \xff.
-            bytes = _read_until(conn, '\xff')
+            bytes = _read_until(request, '\xff')
             message = bytes.decode('utf-8')
             if frame_type == 0x00:
                 return message
             # Discard data of other types.
 
 
-def _payload_length(conn):
+def _payload_length(request):
     length = 0
     while True:
-        b_str = conn.read(1)
+        b_str = request.connection.read(1)
         b = ord(b_str[0])
         length = length * 128 + (b & 0x7f)
         if (b & 0x80) == 0:
@@ -73,19 +77,19 @@ def _payload_length(conn):
     return length
 
 
-def _receive_bytes(conn, length):
+def _receive_bytes(request, length):
     bytes = ''
     while length > 0:
-        new_bytes = conn.read(length)
+        new_bytes = request.connection.read(length)
         bytes += new_bytes
         length -= len(new_bytes)
     return bytes
 
 
-def _read_until(conn, delim_char):
+def _read_until(request, delim_char):
     bytes = ''
     while True:
-        ch = conn.read(1)
+        ch = request.connection.read(1)
         if ch == delim_char:
             break
         bytes += ch
@@ -98,16 +102,16 @@ class MessageReceiver(threading.Thread):
     This class provides both synchronous and asynchronous ways to receive
     messages.
     """
-    def __init__(self, conn, onmessage=None):
+    def __init__(self, request, onmessage=None):
         """Construct an instance.
 
         Args:
-            conn: mod_python.apache.mp_conn object.
+            request: mod_python request.
             onmessage: a function to be called when a message is received.
                        Can be None.
         """
         threading.Thread.__init__(self)
-        self._conn = conn
+        self._request = request
         self._queue = Queue.Queue()
         self._onmessage = onmessage
         self.setDaemon(True)
@@ -115,7 +119,7 @@ class MessageReceiver(threading.Thread):
 
     def run(self):
         while True:
-            message = receive_message(self._conn)
+            message = receive_message(self._request)
             if self._onmessage:
                 self._onmessage(message)
             else:
@@ -149,14 +153,14 @@ class MessageSender(threading.Thread):
     This class provides both synchronous and asynchronous ways to send
     messages.
     """
-    def __init__(self, conn):
+    def __init__(self, request):
         """Construct an instance.
 
         Args:
-            conn: mod_python.apache.mp_conn object.
+            request: mod_python request.
         """
         threading.Thread.__init__(self)
-        self._conn = conn
+        self._request = request
         self._queue = Queue.Queue()
         self.setDaemon(True)
         self.start()
@@ -164,12 +168,12 @@ class MessageSender(threading.Thread):
     def run(self):
         while True:
             message = self._queue.get()
-            send_message(self._conn, message)
+            send_message(self._request, message)
 
     def send(self, message):
         """Send a message, blocking."""
 
-        send_message(self._conn, message)
+        send_message(self._request, message)
 
     def send_nowait(self, message):
         """Send a message, non-blocking."""

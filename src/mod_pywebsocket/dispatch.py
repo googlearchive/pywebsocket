@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-"""Dispatch Web Socket connection request.
+"""Dispatch Web Socket request.
 """
 
 
@@ -30,7 +30,7 @@ _TRANSFER_DATA_HANDLER_NAME = 'web_socket_transfer_data'
 
 
 class DispatchError(Exception):
-    """Exception in dispatching Web Socket connection request."""
+    """Exception in dispatching Web Socket request."""
 
     pass
 
@@ -82,7 +82,7 @@ def _extract_handler(dic, name):
 
 
 class Dispatcher(object):
-    """Dispatches Web Socket connection requests.
+    """Dispatches Web Socket requests.
 
     This class maintains a map from resource name to handlers.
     """
@@ -104,45 +104,45 @@ class Dispatcher(object):
 
         return self._source_warnings
 
-    def shake_hands(self, conn_context):
+    def shake_hands(self, request):
         """Hook into Web Socket handshake.
 
-        Select a handler based on conn_context.resource and call its
+        Select a handler based on request.uri and call its
         web_socket_shake_hands function.
 
         Args:
-            conn_context: Connection context.
+            request: mod_python request.
         """
 
-        shake_hands_, _ = self._handler(conn_context)
+        shake_hands_, _ = self._handler(request)
         try:
-            shake_hands_(conn_context)
+            shake_hands_(request)
         except Exception:
             raise DispatchError('shake_hands() raised exception: ' +
                                 util.get_stack_trace())
 
-    def transfer_data(self, conn_context):
+    def transfer_data(self, request):
         """Let a handler transfer_data with a Web Socket client.
 
-        Select a handler based on conn_context.resource and call its
+        Select a handler based on request.ws_resource and call its
         web_socket_transfer_data function.
 
         Args:
-            conn_context: Connection context.
+            request: mod_python request.
         """
 
-        _, transfer_data_ = self._handler(conn_context)
+        _, transfer_data_ = self._handler(request)
         try:
-            transfer_data_(conn_context)
+            transfer_data_(request)
         except Exception:
             raise DispatchError('transfer_data() raised exception: ' +
                                 util.get_stack_trace())
 
-    def _handler(self, conn_context):
+    def _handler(self, request):
         try:
-            return self._handlers[conn_context.resource]
+            return self._handlers[request.ws_resource]
         except KeyError:
-            raise DispatchError('No handler for: %r' % conn_context.resource)
+            raise DispatchError('No handler for: %r' % request.ws_resource)
 
     def _source_files_in_dir(self, root_dir):
         """Source all the handler source files in the directory."""

@@ -16,13 +16,13 @@
 from mod_pywebsocket import msgutil
 
 
-def web_socket_shake_hands(conn_context):
+def web_socket_shake_hands(request):
     pass  # always accept
 
 
-def web_socket_transfer_data(conn_context):
-    receiver = msgutil.MessageReceiver(conn_context.conn)
-    sender = msgutil.MessageSender(conn_context.conn)
+def web_socket_transfer_data(request):
+    receiver = msgutil.MessageReceiver(request)
+    sender = msgutil.MessageSender(request)
     while True:
         line = receiver.receive()
         sender.send(line)

@@ -23,13 +23,13 @@ import os
 import unittest
 
 import config  # This must be imported before mod_pywebsocket.
-from mod_pywebsocket import conncontext
 from mod_pywebsocket import dispatch
 
 import mock
 
 
-_TEST_HANDLERS_DIR = os.path.join(os.path.split(__file__)[0], 'testdata', 'handlers')
+_TEST_HANDLERS_DIR = os.path.join(
+        os.path.split(__file__)[0], 'testdata', 'handlers')
 
 class DispatcherTest(unittest.TestCase):
     def test_converter(self):
@@ -72,8 +72,8 @@ class DispatcherTest(unittest.TestCase):
         self.assertRaises(dispatch.DispatchError, dispatch._source, 'def')
         self.assertRaises(dispatch.DispatchError, dispatch._source, '1/0')
         self.failUnless(dispatch._source(
-                'def web_socket_shake_hands(conn):pass\n'
-                'def web_socket_transfer_data(conn):pass\n'))
+                'def web_socket_shake_hands(request):pass\n'
+                'def web_socket_transfer_data(request):pass\n'))
 
     def test_source_warnings(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR)
@@ -95,46 +95,58 @@ class DispatcherTest(unittest.TestCase):
 
     def test_shake_hand(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR)
-        conn = mock.MockConn('')
+        request = mock.MockRequest()
+        request.ws_resource = '/a'
+        request.ws_origin = 'http://example.com'
+        dispatcher.shake_hands(request)  # Must not raise exception.
 
-        conn_context =  conncontext.ConnContext(conn,
-                                                resource='/a',
-                                                origin='http://example.com')
-        dispatcher.shake_hands(conn_context)  # Must not raise exception.
-
-        conn_context =  conncontext.ConnContext(conn,
-                                                resource='/a',
-                                                origin='http://bad.example.com')
+        request.ws_origin = 'http://bad.example.com'
         self.assertRaises(dispatch.DispatchError,
-                          dispatcher.shake_hands, conn_context)
+                          dispatcher.shake_hands, request)
 
     def test_transfer_data(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR)
-        conn = mock.MockConn('')
-        dispatcher.transfer_data(
-                conncontext.ConnContext(conn, resource='/a', protocol='p1'))
-        self.assertEqual('a_wsh.py is called for /a, p1', conn.written_data())
+        request = mock.MockRequest(connection=mock.MockConn(''))
+        request.ws_resource = '/a'
+        request.ws_protocol = 'p1'
 
-        conn = mock.MockConn('')
-        dispatcher.transfer_data(
-                conncontext.ConnContext(conn, resource='/sub/e'))
+        dispatcher.transfer_data(request)
+        self.assertEqual('a_wsh.py is called for /a, p1',
+                         request.connection.written_data())
+
+        request = mock.MockRequest(connection=mock.MockConn(''))
+        request.ws_resource = '/sub/e'
+        request.ws_protocol = None
+        dispatcher.transfer_data(request)
         self.assertEqual('sub/e_wsh.py is called for /sub/e, None',
-                         conn.written_data())
+                         request.connection.written_data())
 
     def test_transfer_data_no_handler(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR)
         for resource in ['/b', '/sub/c', '/sub/d', '/does/not/exist']:
-            conn = mock.MockConn('')
-            self.assertRaises(dispatch.DispatchError, dispatcher.transfer_data,
-                              conncontext.ConnContext(
-                                      conn, resource=resource, protocol='p2'))
+            request = mock.MockRequest(connection=mock.MockConn(''))
+            request.ws_resource = resource
+            request.ws_protocol = 'p2'
+            try:
+                dispatcher.transfer_data(request)
+                self.fail()
+            except dispatch.DispatchError, e:
+                self.failUnless(str(e).find('No handler') != -1)
+            except Exception:
+                self.fail()
 
     def test_transfer_data_handler_exception(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR)
-        conn = mock.MockConn('')
-        self.assertRaises(dispatch.DispatchError, dispatcher.transfer_data,
-                          conncontext.ConnContext(
-                                  conn, resource='/sub/f', protocol='p3'))
+        request = mock.MockRequest(connection=mock.MockConn(''))
+        request.ws_resource = '/sub/f'
+        request.ws_protocol = 'p3'
+        try:
+            dispatcher.transfer_data(request)
+            self.fail()
+        except dispatch.DispatchError, e:
+            self.failUnless(str(e).find('Intentional') != -1)
+        except Exception:
+            self.fail()
 
 
 if __name__ == '__main__':

@@ -17,13 +17,13 @@
 """
 
 
-def no_web_socket_shake_hands(conn_context):
+def no_web_socket_shake_hands(request):
     pass
 
 
-def web_socket_transfer_data(conn_context):
-    conn_context.conn.write('sub/g_wsh.py is called for %s, %s' %
-                            (conn_context.resource, conn_context.protocol))
+def web_socket_transfer_data(request):
+    request.connection.write('sub/g_wsh.py is called for %s, %s' %
+                             (request.ws_resource, request.ws_protocol))
 
 
 # vi:sts=4 sw=4 et

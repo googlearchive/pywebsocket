@@ -13,16 +13,15 @@
 # limitations under the License.
 
 
-"""PythonConnectionHandler for mod_pywebsocket.
+"""PythonHeaderParserHandler for mod_pywebsocket.
 
 Apache HTTP Server and mod_python must be configured such that this
-function is called to handle Web Socket connection.
+function is called to handle Web Socket request.
 """
 
 
 from mod_python import apache
 
-import conncontext
 import dispatch
 import handshake
 import util
@@ -30,9 +29,6 @@ import util
 
 # PythonOption to specify the handler root directory.
 _PYOPT_HANDLER_ROOT = 'mod_pywebsocket.handler_root'
-
-# PythonOption to specify comma-delimited list of secure ports.
-_PYOPT_SECURE_PORTS = 'mod_pywebsocket.secure_ports'
 
 
 def _create_dispatcher():
@@ -47,50 +43,35 @@ def _create_dispatcher():
     return dispatcher
 
 
-def _create_secure_ports():
-    try:
-        secure_ports = set()
-    except NameError:
-        # Probably Python2.3. Use sets module instead.
-        import sets
-        secure_ports = sets.Set()
-    port_list = apache.main_server.get_options().get(
-            _PYOPT_SECURE_PORTS, '443')
-    ports, warnings = util.parse_port_list(port_list)
-    for port in ports:
-        secure_ports.add(port)
-    for warning in warnings:
-        apache.log_error('mod_pywebsocket: %s' % warning, apache.APLOG_WARNING)
-    return secure_ports
-
-
 # Initialize
 _dispatcher = _create_dispatcher()
-_secure_ports = _create_secure_ports()
 
 
-def connectionhandler(conn):
-    """Handle connection.
+def headerparserhandler(request):
+    """Handle request.
 
     Args:
-        conn: mod_python.apache.mp_conn
+        request: mod_python request.
 
-    This function is named connectionhandler because it is the default name for
-    a PythonConnectionHandler.
+    This function is named headerparserhandler because it is the default name
+    for a PythonHeaderParserHandler.
     """
-    try:
-        conn_context = conncontext.ConnContext(
-                conn, secure=(conn.local_addr[1] in _secure_ports))
 
-        handshaker = handshake.Handshaker(conn_context, _dispatcher)
+    try:
+        handshaker = handshake.Handshaker(request, _dispatcher)
         handshaker.shake_hands()
-        conn.log_error('mod_pywebsocket: resource:%r' % conn_context.resource,
-                       apache.APLOG_DEBUG)
-        _dispatcher.transfer_data(conn_context)
-    except dispatch.DispatchError, e:
-        conn.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
+        request.log_error('mod_pywebsocket: resource:%r' % request.ws_resource,
+                          apache.APLOG_DEBUG)
+        _dispatcher.transfer_data(request)
+    except handshake.HandshakeError, e:
+        # Handshake for ws/wss failed.
+        # But the request can be valid http/https request.
+        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
         return apache.DECLINED
-    return apache.OK
+    except dispatch.DispatchError, e:
+        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
+        return apache.DECLINED
+    return apache.DONE  # Return DONE such that no other handlers are invoked.
 
 
 # vi:sts=4 sw=4 et

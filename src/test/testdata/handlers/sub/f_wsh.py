@@ -17,13 +17,13 @@
 """
 
 
-def web_socket_shake_hands(conn_context):
+def web_socket_shake_hands(request):
     pass
 
 
-def web_socket_transfer_data(conn_context):
+def web_socket_transfer_data(request):
     raise Exception('Intentional Exception for %s, %s' %
-                    (conn_context.resource, conn_context.protocol))
+                    (request.ws_resource, request.ws_protocol))
 
 
 # vi:sts=4 sw=4 et

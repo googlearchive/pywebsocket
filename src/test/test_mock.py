@@ -76,6 +76,34 @@ class MockBlockingConnTest(unittest.TestCase):
         self.assertEqual('Foo bar\r\n', read)
 
 
+class MockTableTest(unittest.TestCase):
+    def test_create_from_dict(self):
+        table = mock.MockTable({'Key':'Value'})
+        self.assertEqual('Value', table.get('KEY'))
+        self.assertEqual('Value', table['key'])
+
+    def test_create_from_list(self):
+        table = mock.MockTable([('Key', 'Value')])
+        self.assertEqual('Value', table.get('KEY'))
+        self.assertEqual('Value', table['key'])
+
+    def test_create_from_tuple(self):
+        table = mock.MockTable((('Key', 'Value'),))
+        self.assertEqual('Value', table.get('KEY'))
+        self.assertEqual('Value', table['key'])
+
+    def test_set_and_get(self):
+        table = mock.MockTable()
+        self.assertEqual(None, table.get('Key'))
+        table['Key'] = 'Value'
+        self.assertEqual('Value', table.get('Key'))
+        self.assertEqual('Value', table.get('key'))
+        self.assertEqual('Value', table.get('KEY'))
+        self.assertEqual('Value', table['Key'])
+        self.assertEqual('Value', table['key'])
+        self.assertEqual('Value', table['KEY'])
+
+
 if __name__ == '__main__':
     unittest.main()
 

@@ -25,6 +25,7 @@ import SimpleHTTPServer
 import SocketServer
 import logging
 import optparse
+import os
 import urlparse
 
 import dispatch
@@ -141,9 +142,14 @@ def _main():
                       help='port to listen to')
     parser.add_option('-w', '--websock_handlers', dest='websock_handlers',
                       default='.',
-                      help='Web Socket handlers base directory.')
+                      help='Web Socket handlers root directory.')
+    parser.add_option('-d', '--document_root', dest='document_root',
+                      default='.',
+                      help='Document root directory.')
     # TODO(yuzo): Add wss-related options.
     WebSocketRequestHandler.options = parser.parse_args()[0]
+
+    os.chdir(WebSocketRequestHandler.options.document_root)
 
     WebSocketServer(('', WebSocketRequestHandler.options.port),
                     WebSocketRequestHandler).serve_forever()

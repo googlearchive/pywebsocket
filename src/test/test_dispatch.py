@@ -47,6 +47,16 @@ _TEST_HANDLERS_DIR = os.path.join(
         os.path.split(__file__)[0], 'testdata', 'handlers')
 
 class DispatcherTest(unittest.TestCase):
+    def test_normalize_path(self):
+        self.assertEqual(os.path.abspath('/a/b').replace('\\', '/'),
+                         dispatch._normalize_path('/a/b'))
+        self.assertEqual(os.path.abspath('/a/b').replace('\\', '/'),
+                         dispatch._normalize_path('\\a\\b'))
+        self.assertEqual(os.path.abspath('/a/b').replace('\\', '/'),
+                         dispatch._normalize_path('/a/c/../b'))
+        self.assertEqual(os.path.abspath('abc').replace('\\', '/'),
+                         dispatch._normalize_path('abc'))
+
     def test_converter(self):
         converter = dispatch._path_to_resource_converter('/a/b')
         self.assertEqual('/h', converter('/a/b/h_wsh.py'))
@@ -75,9 +85,9 @@ class DispatcherTest(unittest.TestCase):
         expected_paths = [
                 os.path.join(_TEST_HANDLERS_DIR, 'a_wsh.py'),
                 os.path.join(_TEST_HANDLERS_DIR, 'b_wsh.py'),
-                os.path.join(_TEST_HANDLERS_DIR, 'sub/c_wsh.py'),
-                os.path.join(_TEST_HANDLERS_DIR, 'sub/e_wsh.py'),
-                os.path.join(_TEST_HANDLERS_DIR, 'sub/f_wsh.py'),
+                os.path.join(_TEST_HANDLERS_DIR, 'sub', 'c_wsh.py'),
+                os.path.join(_TEST_HANDLERS_DIR, 'sub', 'e_wsh.py'),
+                os.path.join(_TEST_HANDLERS_DIR, 'sub', 'f_wsh.py'),
                 ]
         for expected, actual in zip(expected_paths, paths):
             self.assertEqual(expected, actual)

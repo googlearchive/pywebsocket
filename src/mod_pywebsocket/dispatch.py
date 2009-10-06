@@ -50,14 +50,31 @@ class DispatchError(Exception):
     pass
 
 
+def _normalize_path(path):
+    """Normalize path.
+
+    Args:
+        path: the path to normalize.
+
+    Path is converted to the absolute path.
+    The input path can use either '\\' or '/' as the separator.
+    The normalized path always uses '/' regardless of the platform.
+    """
+
+    path = path.replace('\\', os.path.sep)
+    path = os.path.abspath(path)
+    path = path.replace('\\', '/')
+    return path
+
+
 def _path_to_resource_converter(base_dir):
-    base_dir = os.path.normpath(base_dir).replace('\\', '/')
+    base_dir = _normalize_path(base_dir)
     base_len = len(base_dir)
     suffix_len = len(_SOURCE_SUFFIX)
     def converter(path):
         if not path.endswith(_SOURCE_SUFFIX):
             return None
-        path = os.path.normpath(path).replace('\\', '/')
+        path = _normalize_path(path)
         if not path.startswith(base_dir):
             return None
         return path[base_len:-suffix_len]

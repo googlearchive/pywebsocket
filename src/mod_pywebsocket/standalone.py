@@ -33,6 +33,22 @@
 """Standalone Web Socket server.
 
 Use this server to run mod_pywebsocket without Apache HTTP Server.
+
+Usage:
+    python standalone.py [-p <ws_port>] [-w <websock_handlers>]
+                         [-d <document_root>]
+
+<ws_port> is the port number to use for ws:// connection.
+
+<document_root> is the path to the root directory of HTML files.
+
+<websock_handlers> is the path to the root directory of Web Socket handlers.
+See __init__.py for details of <websock_handlers> and how to write Web Socket
+handlers. If this path is relative, <document_root> is used as the base.
+
+Note:
+This server is derived from SocketServer.ThreadingMixIn. Hence a thread is
+used for each request.
 """
 
 import BaseHTTPServer

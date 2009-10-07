@@ -49,6 +49,9 @@ handlers. If this path is relative, <document_root> is used as the base.
 Note:
 This server is derived from SocketServer.ThreadingMixIn. Hence a thread is
 used for each request.
+
+This server doesn't support wss yet. pyOpenSSL has been tried but it causes:
+Fatal Python error: PyEval_RestoreThread: NULL tstate.
 """
 
 import BaseHTTPServer

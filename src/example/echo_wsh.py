@@ -36,11 +36,9 @@ def web_socket_shake_hands(request):
 
 
 def web_socket_transfer_data(request):
-    receiver = msgutil.MessageReceiver(request)
-    sender = msgutil.MessageSender(request)
     while True:
-        line = receiver.receive()
-        sender.send(line)
+        line = msgutil.receive_message(request)
+        msgutil.send_message(request, line)
 
 
 # vi:sts=4 sw=4 et

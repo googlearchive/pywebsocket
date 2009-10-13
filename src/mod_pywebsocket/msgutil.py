@@ -116,6 +116,10 @@ class MessageReceiver(threading.Thread):
 
     This class provides both synchronous and asynchronous ways to receive
     messages.
+
+    Note: This class should not be used with the standalone server for wss
+    because pyOpenSSL used by the server raises a fatal error if the socket
+    is accessed from multiple threads.
     """
     def __init__(self, request, onmessage=None):
         """Construct an instance.
@@ -167,6 +171,10 @@ class MessageSender(threading.Thread):
 
     This class provides both synchronous and asynchronous ways to send
     messages.
+
+    Note: This class should not be used with the standalone server for wss
+    because pyOpenSSL used by the server raises a fatal error if the socket
+    is accessed from multiple threads.
     """
     def __init__(self, request):
         """Construct an instance.

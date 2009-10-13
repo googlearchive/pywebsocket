@@ -49,9 +49,6 @@ handlers. If this path is relative, <document_root> is used as the base.
 Note:
 This server is derived from SocketServer.ThreadingMixIn. Hence a thread is
 used for each request.
-
-This server doesn't support wss yet. pyOpenSSL has been tried but it causes:
-Fatal Python error: PyEval_RestoreThread: NULL tstate.
 """
 
 import BaseHTTPServer
@@ -60,7 +57,15 @@ import SocketServer
 import logging
 import optparse
 import os
-import urlparse
+import socket
+import sys
+
+_HAS_OPEN_SSL = False
+try:
+    import OpenSSL.SSL
+    _HAS_OPEN_SSL = True
+except ImportError:
+    pass
 
 import dispatch
 import handshake
@@ -95,7 +100,7 @@ class _StandaloneConnection(object):
 class _StandaloneRequest(object):
     """Mimic mod_python request."""
 
-    def __init__(self, request_handler):
+    def __init__(self, request_handler, use_tls):
         """Construct an instance.
 
         Args:
@@ -103,6 +108,7 @@ class _StandaloneRequest(object):
         """
         self._request_handler = request_handler
         self.connection = _StandaloneConnection(request_handler)
+        self._use_tls = use_tls
 
     def get_uri(self):
         """Getter to mimic request.uri."""
@@ -116,22 +122,45 @@ class _StandaloneRequest(object):
 
     def is_https(self):
         """Mimic request.is_https()."""
-        # TODO(yuzo): Implement this.
-        return False
+        return self._use_tls
 
 
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """HTTPServer specialized for Web Socket."""
 
-    daemon_threads = True
-    pass
+    SocketServer.ThreadingMixIn.daemon_threads = True
 
+    def __init__(self, server_address, RequestHandlerClass):
+        """Override SocketServer.BaseServer.__init__."""
+
+        SocketServer.BaseServer.__init__(
+                self, server_address, RequestHandlerClass)
+        self.socket = self._create_socket()
+        self.server_bind()
+        self.server_activate()
+
+    def _create_socket(self):
+        socket_ = socket.socket(self.address_family, self.socket_type)
+        if WebSocketServer.options.use_tls:
+            ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+            ctx.use_privatekey_file(WebSocketServer.options.private_key)
+            ctx.use_certificate_file(WebSocketServer.options.certificate)
+            socket_ = OpenSSL.SSL.Connection(ctx, socket_)
+        return socket_
 
 class WebSocketRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler specialized for Web Socket."""
 
+    def setup(self):
+        """Override SocketServer.StreamRequestHandler.setup."""
+
+        self.connection = self.request
+        self.rfile = socket._fileobject(self.request, "rb", self.rbufsize)
+        self.wfile = socket._fileobject(self.request, "wb", self.wbufsize)
+
     def __init__(self, *args, **keywords):
-        self._request = _StandaloneRequest(self)
+        self._request = _StandaloneRequest(
+                self, WebSocketRequestHandler.options.use_tls)
         self._dispatcher = dispatch.Dispatcher(
                 WebSocketRequestHandler.options.websock_handlers)
         self._print_warnings_if_any()
@@ -180,13 +209,30 @@ def _main():
     parser.add_option('-d', '--document_root', dest='document_root',
                       default='.',
                       help='Document root directory.')
-    # TODO(yuzo): Add wss-related options.
-    WebSocketRequestHandler.options = parser.parse_args()[0]
+    parser.add_option('-t', '--tls', dest='use_tls', action='store_true',
+                      default=False, help='use TLS (wss://)')
+    parser.add_option('-k', '--private_key', dest='private_key',
+                      default='', help='TLS private key file.')
+    parser.add_option('-c', '--certificate', dest='certificate',
+                      default='', help='TLS certificate file.')
+    options = parser.parse_args()[0]
 
-    os.chdir(WebSocketRequestHandler.options.document_root)
+    if options.use_tls:
+        if not _HAS_OPEN_SSL:
+            print >>sys.stderr, 'To use TLS, install pyOpenSSL.'
+            sys.exit(1)
+        if not options.private_key or not options.certificate:
+            print >>sys.stderr, ('To use TLS, specify private_key and '
+                                 'certificate.')
+            sys.exit(1)
 
-    WebSocketServer(('', WebSocketRequestHandler.options.port),
-                    WebSocketRequestHandler).serve_forever()
+    WebSocketRequestHandler.options = options
+    WebSocketServer.options = options
+
+    os.chdir(options.document_root)
+
+    server = WebSocketServer(('', options.port), WebSocketRequestHandler)
+    server.serve_forever()
 
 
 if __name__ == '__main__':

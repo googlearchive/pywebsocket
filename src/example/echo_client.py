@@ -50,6 +50,21 @@ _DEFAULT_PORT = 80
 _DEFAULT_SECURE_PORT = 443
 _UNDEFINED_PORT = -1
 
+_UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
+_CONNECTION_HEADER = 'Connection: Upgrade\r\n'
+_EXPECTED_RESPONSE = (
+        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
+        _UPGRADE_HEADER +
+        _CONNECTION_HEADER)
+
+
+def _method_line(resource):
+    return 'GET %s HTTP/1.1\r\n' % resource
+
+
+def _origin_header(origin):
+    return 'Origin: %s\r\n' % origin
+
 
 class _TLSSocket(object):
     """Wrapper for a TLS connection."""
@@ -101,19 +116,14 @@ class EchoClient(object):
             self._socket.close()
 
     def _handshake(self):
-        self._socket.send(
-                'GET %s HTTP/1.1\r\n' % self._options.resource)
-        self._socket.send('Upgrade: WebSocket\r\n')
-        self._socket.send('Connection: Upgrade\r\n')
+        self._socket.send(_method_line(self._options.resource))
+        self._socket.send(_UPGRADE_HEADER)
+        self._socket.send(_CONNECTION_HEADER)
         self._socket.send(self._format_host_header())
-        self._socket.send(
-                'Origin: %s\r\n' % self._options.origin)
+        self._socket.send(_origin_header(self._options.origin))
         self._socket.send('\r\n')
 
-        for expected_char in (
-                'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
-                'Upgrade: WebSocket\r\n'
-                'Connection: Upgrade\r\n'):
+        for expected_char in _EXPECTED_RESPONSE:
             received = self._socket.recv(1)[0]
             if expected_char != received:
                 raise Exception('Handshake failure')
@@ -127,6 +137,8 @@ class EchoClient(object):
             received = self._socket.recv(1)[0]
             if received == terminator[pos]:
                 pos += 1
+            elif received == terminator[0]:
+                pos = 1
             else:
                 pos = 0
 
@@ -159,7 +171,7 @@ def main():
                       default=True, help='suppress messages')
     parser.add_option('-t', '--tls', dest='use_tls', action='store_true',
                       default=False, help='use TLS (wss://)')
-    (options, _) = parser.parse_args()
+    (options, unused_args) = parser.parse_args()
 
     # Default port number depends on whether TLS is used.
     if options.server_port == _UNDEFINED_PORT:

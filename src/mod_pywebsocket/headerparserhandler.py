@@ -74,7 +74,7 @@ def headerparserhandler(request):
 
     try:
         handshaker = handshake.Handshaker(request, _dispatcher)
-        handshaker.shake_hands()
+        handshaker.do_handshake()
         request.log_error('mod_pywebsocket: resource:%r' % request.ws_resource,
                           apache.APLOG_DEBUG)
         _dispatcher.transfer_data(request)

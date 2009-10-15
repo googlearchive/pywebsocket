@@ -89,7 +89,7 @@ class Handshaker(object):
         self._request = request
         self._dispatcher = dispatcher
 
-    def shake_hands(self):
+    def do_handshake(self):
         """Perform Web Socket Handshake."""
 
         self._check_header_lines()
@@ -97,7 +97,7 @@ class Handshaker(object):
         self._set_origin()
         self._set_location()
         self._set_protocol()
-        self._dispatcher.shake_hands(self._request)
+        self._dispatcher.do_extra_handshake(self._request)
         self._send_handshake()
 
     def _set_resource(self):

@@ -245,7 +245,7 @@ class HandshakerTest(unittest.TestCase):
         request = _create_request(_GOOD_REQUEST)
         handshaker = handshake.Handshaker(request,
                                           mock.MockDispatcher())
-        handshaker.shake_hands()
+        handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_DEFAULT_PORT,
                          request.connection.written_data())
         self.assertEqual('/demo', request.ws_resource)
@@ -259,7 +259,7 @@ class HandshakerTest(unittest.TestCase):
         request.is_https_ = True
         handshaker = handshake.Handshaker(request,
                                           mock.MockDispatcher())
-        handshaker.shake_hands()
+        handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_SECURE,
                          request.connection.written_data())
         self.assertEqual('sample', request.ws_protocol)
@@ -268,7 +268,7 @@ class HandshakerTest(unittest.TestCase):
         request = _create_request(_GOOD_REQUEST_NONDEFAULT_PORT)
         handshaker = handshake.Handshaker(request,
                                           mock.MockDispatcher())
-        handshaker.shake_hands()
+        handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_NONDEFAULT_PORT,
                          request.connection.written_data())
         self.assertEqual('sample', request.ws_protocol)
@@ -278,7 +278,7 @@ class HandshakerTest(unittest.TestCase):
         request.is_https_ = True
         handshaker = handshake.Handshaker(request,
                                           mock.MockDispatcher())
-        handshaker.shake_hands()
+        handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_SECURE_NONDEF,
                          request.connection.written_data())
         self.assertEqual('sample', request.ws_protocol)
@@ -287,7 +287,7 @@ class HandshakerTest(unittest.TestCase):
         request = _create_request(_GOOD_REQUEST_NO_PROTOCOL)
         handshaker = handshake.Handshaker(request,
                                           mock.MockDispatcher())
-        handshaker.shake_hands()
+        handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_NO_PROTOCOL,
                          request.connection.written_data())
         self.assertEqual(None, request.ws_protocol)
@@ -296,7 +296,7 @@ class HandshakerTest(unittest.TestCase):
         request = _create_request(_GOOD_REQUEST_WITH_OPTIONAL_HEADERS)
         handshaker = handshake.Handshaker(request,
                                           mock.MockDispatcher())
-        handshaker.shake_hands()
+        handshaker.do_handshake()
         self.assertEqual('AValue',
                          request.headers_in['AKey'])
         self.assertEqual('',
@@ -306,7 +306,7 @@ class HandshakerTest(unittest.TestCase):
         for request in map(_create_request, _BAD_REQUESTS):
             handshaker = handshake.Handshaker(request,
                                               mock.MockDispatcher())
-            self.assertRaises(handshake.HandshakeError, handshaker.shake_hands)
+            self.assertRaises(handshake.HandshakeError, handshaker.do_handshake)
 
 
 if __name__ == '__main__':

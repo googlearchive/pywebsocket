@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-def web_socket_shake_hands(request):
+def web_socket_do_extra_handshake(request):
     if request.ws_origin == 'http://example.com':
         return
     raise ValueError('Unacceptable origin: %r' % request.ws_origin)

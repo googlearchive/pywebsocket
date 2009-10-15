@@ -40,7 +40,7 @@ import util
 
 _SOURCE_PATH_PATTERN = re.compile(r'(?i)_wsh\.py$')
 _SOURCE_SUFFIX = '_wsh.py'
-_SHAKE_HANDS_HANDLER_NAME = 'web_socket_shake_hands'
+_DO_EXTRA_HANDSHAKE_HANDLER_NAME = 'web_socket_do_extra_handshake'
 _TRANSFER_DATA_HANDLER_NAME = 'web_socket_transfer_data'
 
 
@@ -100,7 +100,7 @@ def _source(source_str):
     except Exception:
         raise DispatchError('Error in sourcing handler:' +
                             util.get_stack_trace())
-    return (_extract_handler(global_dic, _SHAKE_HANDS_HANDLER_NAME),
+    return (_extract_handler(global_dic, _DO_EXTRA_HANDSHAKE_HANDLER_NAME),
             _extract_handler(global_dic, _TRANSFER_DATA_HANDLER_NAME))
 
 
@@ -136,22 +136,22 @@ class Dispatcher(object):
 
         return self._source_warnings
 
-    def shake_hands(self, request):
-        """Hook into Web Socket handshake.
+    def do_extra_handshake(self, request):
+        """Do extra checking in Web Socket handshake.
 
         Select a handler based on request.uri and call its
-        web_socket_shake_hands function.
+        web_socket_do_extra_handshake function.
 
         Args:
             request: mod_python request.
         """
 
-        shake_hands_, _ = self._handler(request)
+        do_extra_handshake_, unused_transfer_data = self._handler(request)
         try:
-            shake_hands_(request)
+            do_extra_handshake_(request)
         except Exception:
-            raise DispatchError('shake_hands() raised exception: ' +
-                                util.get_stack_trace())
+            raise DispatchError('%s raised exception: %s' %
+                    (_DO_EXTRA_HANDSHAKE_HANDLER_NAME, util.get_stack_trace()))
 
     def transfer_data(self, request):
         """Let a handler transfer_data with a Web Socket client.
@@ -163,12 +163,12 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        _, transfer_data_ = self._handler(request)
+        unused_do_handshake, transfer_data_ = self._handler(request)
         try:
             transfer_data_(request)
         except Exception:
-            raise DispatchError('transfer_data() raised exception: ' +
-                                util.get_stack_trace())
+            raise DispatchError('%s raised exception: %s' %
+                    (_TRANSFER_DATA_HANDLER_NAME, util.get_stack_trace()))
 
     def _handler(self, request):
         try:
@@ -182,11 +182,11 @@ class Dispatcher(object):
         to_resource = _path_to_resource_converter(root_dir)
         for path in _source_file_paths(root_dir):
             try:
-                handler = _source(open(path).read())
+                handlers = _source(open(path).read())
             except DispatchError, e:
                 self._source_warnings.append('%s: %s' % (path, e))
                 continue
-            self._handlers[to_resource(path)] = handler
+            self._handlers[to_resource(path)] = handlers
 
 
 # vi:sts=4 sw=4 et

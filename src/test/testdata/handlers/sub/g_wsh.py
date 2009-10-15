@@ -28,11 +28,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Wrong web_socket_shake_hands signature.
+"""Wrong web_socket_do_extra_handshake signature.
 """
 
 
-def no_web_socket_shake_hands(request):
+def no_web_socket_do_extra_handshake(request):
     pass
 
 

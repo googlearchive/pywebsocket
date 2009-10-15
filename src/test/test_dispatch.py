@@ -97,7 +97,7 @@ class DispatcherTest(unittest.TestCase):
         self.assertRaises(dispatch.DispatchError, dispatch._source, 'def')
         self.assertRaises(dispatch.DispatchError, dispatch._source, '1/0')
         self.failUnless(dispatch._source(
-                'def web_socket_shake_hands(request):pass\n'
+                'def web_socket_do_extra_handshake(request):pass\n'
                 'def web_socket_transfer_data(request):pass\n'))
 
     def test_source_warnings(self):
@@ -106,11 +106,11 @@ class DispatcherTest(unittest.TestCase):
         warnings.sort()
         expected_warnings = [
                 (os.path.join(_TEST_HANDLERS_DIR, 'b_wsh.py') + ': '
-                 'web_socket_shake_hands is not defined.'),
+                 'web_socket_do_extra_handshake is not defined.'),
                 (os.path.join(_TEST_HANDLERS_DIR, 'sub', 'c_wsh.py') + ': '
-                 'web_socket_shake_hands is not callable.'),
+                 'web_socket_do_extra_handshake is not callable.'),
                 (os.path.join(_TEST_HANDLERS_DIR, 'sub', 'g_wsh.py') + ': '
-                 'web_socket_shake_hands is not defined.'),
+                 'web_socket_do_extra_handshake is not defined.'),
                 (os.path.join(_TEST_HANDLERS_DIR, 'sub', 'h_wsh.py') + ': '
                  'web_socket_transfer_data is not defined.'),
                 ]
@@ -123,11 +123,11 @@ class DispatcherTest(unittest.TestCase):
         request = mock.MockRequest()
         request.ws_resource = '/a'
         request.ws_origin = 'http://example.com'
-        dispatcher.shake_hands(request)  # Must not raise exception.
+        dispatcher.do_extra_handshake(request)  # Must not raise exception.
 
         request.ws_origin = 'http://bad.example.com'
         self.assertRaises(dispatch.DispatchError,
-                          dispatcher.shake_hands, request)
+                          dispatcher.do_extra_handshake, request)
 
     def test_transfer_data(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR)

@@ -193,7 +193,7 @@ class MockRequest(object):
 class MockDispatcher(object):
     """Mock for dispatch.Dispatcher."""
 
-    def shake_hands(self, conn_context):
+    def do_extra_handshake(self, conn_context):
         pass
 
     def transfer_data(self, conn_context):

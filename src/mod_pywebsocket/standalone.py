@@ -183,7 +183,7 @@ class WebSocketRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         result = SimpleHTTPServer.SimpleHTTPRequestHandler.parse_request(self)
         if result:
             try:
-                self._handshaker.shake_hands()
+                self._handshaker.do_handshake()
                 self._dispatcher.transfer_data(self._request)
                 return False
             except handshake.HandshakeError, e:

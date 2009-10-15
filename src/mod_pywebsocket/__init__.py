@@ -73,16 +73,16 @@ For example, if the resource name is /example/chat, the handler defined in
 
 A Web Socket handler is composed of the following two functions:
 
-    web_socket_shake_hands(request)
+    web_socket_do_extra_handshake(request)
     web_socket_transfer_data(request)
 
 where:
     request: mod_python request.
 
-web_socket_shake_hands is called during the handshake after the headers
-are successfully parsed and Web Socket properties (ws_location,
-ws_origin, ws_protocol, and ws_resource) are added to request.
-A handler can reject the request by raising an exception.
+web_socket_do_extra_handshake is called during the handshake after the
+headers are successfully parsed and Web Socket properties (ws_location,
+ws_origin, ws_protocol, and ws_resource) are added to request. A handler
+can reject the request by raising an exception.
 
 web_socket_transfer_data is called after the handshake completed
 successfully. A handler can receive/send messages from/to the client

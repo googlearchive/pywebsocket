@@ -81,7 +81,7 @@ class MockConn(_MockConnBase):
         if self._read_pos >= len(self._read_data):
             return ''
         end_index = self._read_data.find('\n', self._read_pos) + 1
-        if end_index == 0:
+        if not end_index:
             end_index = len(self._read_data)
         return self._read_up_to(end_index)
 
@@ -115,16 +115,16 @@ class MockBlockingConn(_MockConnBase):
         """Override mod_python.apache.mp_conn.readline."""
         line = ''
         while True:
-            ch = self._queue.get()
-            line += ch
-            if ch == '\n':
+            c = self._queue.get()
+            line += c
+            if c == '\n':
                 return line
 
     def read(self, length):
         """Override mod_python.apache.mp_conn.read."""
 
         data = ''
-        for _ in range(length):
+        for unused in range(length):
             data += self._queue.get()
         return data
 
@@ -142,7 +142,7 @@ class MockBlockingConn(_MockConnBase):
 class MockTable(dict):
     """Mock table.
 
-    This mimicks mod_python mp_table. Note that only the methods used by
+    This mimics mod_python mp_table. Note that only the methods used by
     tests are overridden.
     """
 
@@ -178,11 +178,13 @@ class MockRequest(object):
             connection: Connection used for the request.
             is_https: Whether this request is over SSL.
 
-        See the document of mod_python mp_conn for details.
+        See the document of mod_python Request for details.
         """
         self.uri = uri
         self.connection = connection
         self.headers_in = MockTable(headers_in)
+        # self.is_https_ needs to be accessible from tests.  To avoid name
+        # conflict with self.is_https(), it is named as such.
         self.is_https_ = is_https
 
     def is_https(self):

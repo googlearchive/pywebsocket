@@ -43,7 +43,7 @@ class UtilTest(unittest.TestCase):
     def test_get_stack_trace(self):
         self.assertEqual('None\n', util.get_stack_trace())
         try:
-            a = 1 / 0  # Intentionally raise exception
+            a = 1 / 0  # Intentionally raise exception.
         except Exception:
             trace = util.get_stack_trace()
             self.failUnless(trace.startswith('Traceback'))

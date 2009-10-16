@@ -56,6 +56,13 @@ _MANDATORY_HEADERS = [
 ]
 
 
+def _default_port(is_secure):
+    if is_secure:
+        return _DEFAULT_WEB_SOCKET_SECURE_PORT
+    else:
+        return _DEFAULT_WEB_SOCKET_PORT
+
+
 class HandshakeError(Exception):
     """Exception in Web Socket Handshake."""
 
@@ -114,15 +121,12 @@ class Handshaker(object):
             location_parts.append(_WEB_SOCKET_SCHEME)
         location_parts.append('://')
         host, port = self._parse_host_header()
-        conn_port = self._request.connection.local_addr[1]
-        if port != conn_port:
+        connection_port = self._request.connection.local_addr[1]
+        if port != connection_port:
             raise HandshakeError('Header/connection port mismatch: %d/%d' %
-                                 (port, conn_port))
+                                 (port, connection_port))
         location_parts.append(host)
-        if ((not self._request.is_https() and
-             port != _DEFAULT_WEB_SOCKET_PORT) or
-            (self._request.is_https() and
-             port != _DEFAULT_WEB_SOCKET_SECURE_PORT)):
+        if (port != _default_port(self._request.is_https())):
             location_parts.append(':')
             location_parts.append(str(port))
         location_parts.append(self._request.uri)
@@ -131,10 +135,7 @@ class Handshaker(object):
     def _parse_host_header(self):
         fields = self._request.headers_in['Host'].split(':', 1)
         if len(fields) == 1:
-            port = _DEFAULT_WEB_SOCKET_PORT
-            if self._request.is_https():
-                port = _DEFAULT_WEB_SOCKET_SECURE_PORT
-            return fields[0], port
+            return fields[0], _default_port(self._request.is_https())
         try:
             return fields[0], int(fields[1])
         except ValueError, e:
@@ -167,7 +168,7 @@ class Handshaker(object):
         for key, expected_value in _MANDATORY_HEADERS:
             actual_value = self._request.headers_in.get(key)
             if not actual_value:
-                raise HandshakeError('Header %s not defined' % key)
+                raise HandshakeError('Header %s is not defined' % key)
             if expected_value:
                 if actual_value != expected_value:
                     raise HandshakeError('Illegal value for header %s: %s' %

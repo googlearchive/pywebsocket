@@ -163,7 +163,7 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        unused_do_handshake, transfer_data_ = self._handler(request)
+        unused_do_extra_handshake, transfer_data_ = self._handler(request)
         try:
             transfer_data_(request)
         except Exception:

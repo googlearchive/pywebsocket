@@ -38,8 +38,6 @@ not suitable because they don't allow direct raw bytes writing/reading.
 
 
 import Queue
-import StringIO
-import traceback
 import threading
 
 
@@ -93,29 +91,29 @@ def _payload_length(request):
 
 
 def _receive_bytes(request, length):
-    bytes = ''
+    bytes = []
     while length > 0:
         new_bytes = request.connection.read(length)
-        bytes += new_bytes
+        bytes.append(new_bytes)
         length -= len(new_bytes)
-    return bytes
+    return ''.join(bytes)
 
 
 def _read_until(request, delim_char):
-    bytes = ''
+    bytes = []
     while True:
         ch = request.connection.read(1)
         if ch == delim_char:
             break
-        bytes += ch
-    return bytes
+        bytes.append(ch)
+    return ''.join(bytes)
 
 
 class MessageReceiver(threading.Thread):
     """This class receives messages from the client.
 
-    This class provides both synchronous and asynchronous ways to receive
-    messages.
+    This class provides three ways to receive messages: blocking, non-blocking,
+    and via callback. Callback has the highest precedence.
 
     Note: This class should not be used with the standalone server for wss
     because pyOpenSSL used by the server raises a fatal error if the socket
@@ -127,17 +125,21 @@ class MessageReceiver(threading.Thread):
         Args:
             request: mod_python request.
             onmessage: a function to be called when a message is received.
-                       Can be None.
+                       May be None. If not None, the function is called on
+                       another thread. In that case, MessageReceiver.receive
+                       and MessageReceiver.receive_nowait are useless because
+                       they will never return any messages.
         """
         threading.Thread.__init__(self)
         self._request = request
         self._queue = Queue.Queue()
         self._onmessage = onmessage
+        self._stop_requested = False
         self.setDaemon(True)
         self.start()
 
     def run(self):
-        while True:
+        while not self._stop_requested:
             message = receive_message(self._request)
             if self._onmessage:
                 self._onmessage(message)
@@ -150,7 +152,6 @@ class MessageReceiver(threading.Thread):
         Returns:
             message as a unicode string.
         """
-
         return self._queue.get()
 
     def receive_nowait(self):
@@ -164,6 +165,15 @@ class MessageReceiver(threading.Thread):
         except Queue.Empty:
             message = None
         return message
+
+    def stop(self):
+        """Request to stop this instance.
+
+        The instance will be stopped after receiving the next message.
+        This method may not be very useful, but there is no clean way
+        in Python to forcefully stop a running thread.
+        """
+        self._stop_requested = True
 
 
 class MessageSender(threading.Thread):
@@ -190,18 +200,24 @@ class MessageSender(threading.Thread):
 
     def run(self):
         while True:
-            message = self._queue.get()
+            message, condition = self._queue.get()
+            condition.acquire()
             send_message(self._request, message)
+            condition.notify()
+            condition.release()
 
     def send(self, message):
         """Send a message, blocking."""
 
-        send_message(self._request, message)
+        condition = threading.Condition()
+        condition.acquire()
+        self._queue.put((message, condition))
+        condition.wait()
 
     def send_nowait(self, message):
         """Send a message, non-blocking."""
 
-        self._queue.put(message)
+        self._queue.put((message, threading.Condition()))
 
 
 # vi:sts=4 sw=4 et

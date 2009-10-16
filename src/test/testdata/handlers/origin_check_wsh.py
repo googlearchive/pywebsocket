@@ -28,16 +28,14 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Wrong web_socket_transfer_data() signature.
-"""
-
-
 def web_socket_do_extra_handshake(request):
-    pass
+    if request.ws_origin == 'http://example.com':
+        return
+    raise ValueError('Unacceptable origin: %r' % request.ws_origin)
 
 
-def no_web_socket_transfer_data(request):
-    request.connection.write('sub/h_wsh.py is called for %s, %s' %
+def web_socket_transfer_data(request):
+    request.connection.write('origin_check_wsh.py is called for %s, %s' %
                              (request.ws_resource, request.ws_protocol))
 
 

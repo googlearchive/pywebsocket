@@ -28,15 +28,18 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+"""Correct signatures, wrong file name.
+"""
+
+
 def web_socket_do_extra_handshake(request):
-    if request.ws_origin == 'http://example.com':
-        return
-    raise ValueError('Unacceptable origin: %r' % request.ws_origin)
+    pass
 
 
 def web_socket_transfer_data(request):
-    request.connection.write('a_wsh.py is called for %s, %s' %
-                             (request.ws_resource, request.ws_protocol))
+    request.connection.write(
+            'sub/no_wsh_at_the_end.py is called for %s, %s' %
+            (request.ws_resource, request.ws_protocol))
 
 
 # vi:sts=4 sw=4 et

@@ -75,6 +75,13 @@ import dispatch
 import handshake
 
 
+def _print_warnings_if_any(dispatcher):
+    warnings = dispatcher.source_warnings()
+    if warnings:
+        for warning in warnings:
+            logging.warning('mod_pywebsocket: %s' % warning)
+
+
 class _StandaloneConnection(object):
     """Mimic mod_python mp_conn."""
 
@@ -152,6 +159,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
             socket_ = OpenSSL.SSL.Connection(ctx, socket_)
         return socket_
 
+
 class WebSocketRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     """SimpleHTTPRequestHandler specialized for Web Socket."""
 
@@ -165,9 +173,7 @@ class WebSocketRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     def __init__(self, *args, **keywords):
         self._request = _StandaloneRequest(
                 self, WebSocketRequestHandler.options.use_tls)
-        self._dispatcher = dispatch.Dispatcher(
-                WebSocketRequestHandler.options.websock_handlers,
-                WebSocketRequestHandler.options.scan_dir)
+        self._dispatcher = WebSocketRequestHandler.options.dispatcher
         self._print_warnings_if_any()
         self._handshaker = handshake.Handshaker(self._request,
                                                 self._dispatcher)
@@ -237,6 +243,12 @@ def _main():
 
     if not options.scan_dir:
         options.scan_dir = options.websock_handlers
+
+    # Share a Dispatcher among request handlers to save time for instantiation.
+    # Dispatcher can be shared because it is thread-safe.
+    options.dispatcher = dispatch.Dispatcher(options.websock_handlers,
+                                             options.scan_dir)
+    _print_warnings_if_any(options.dispatcher)
 
     WebSocketRequestHandler.options = options
     WebSocketServer.options = options

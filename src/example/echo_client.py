@@ -114,7 +114,8 @@ class EchoClient(object):
                 if received != frame:
                     raise Exception('Incorrect echo: %r' % received)
                 if self._options.verbose:
-                    print 'Recv: %s' % received[1:-1].decode('utf-8')
+                    print 'Recv: %s' % received[1:-1].decode('utf-8',
+                                                             'replace')
         finally:
             self._socket.close()
 

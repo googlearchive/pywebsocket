@@ -46,6 +46,8 @@ import socket
 import sys
 
 
+_TIMEOUT_SEC = 10
+
 _DEFAULT_PORT = 80
 _DEFAULT_SECURE_PORT = 443
 _UNDEFINED_PORT = -1
@@ -96,6 +98,7 @@ class EchoClient(object):
         Shake hands and then repeat sending message and receiving its echo.
         """
         self._socket = socket.socket()
+        self._socket.settimeout(self._options.socket_timeout)
         try:
             self._socket.connect((self._options.server_host,
                                   self._options.server_port))
@@ -171,6 +174,10 @@ def main():
                       default=True, help='suppress messages')
     parser.add_option('-t', '--tls', dest='use_tls', action='store_true',
                       default=False, help='use TLS (wss://)')
+    parser.add_option('-k', '--socket_timeout', dest='socket_timeout',
+                      type='int', default=_TIMEOUT_SEC,
+                      help='Timeout(sec) for sockets')
+
     (options, unused_args) = parser.parse_args()
 
     # Default port number depends on whether TLS is used.

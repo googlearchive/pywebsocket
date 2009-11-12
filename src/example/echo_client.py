@@ -59,6 +59,8 @@ _EXPECTED_RESPONSE = (
         _UPGRADE_HEADER +
         _CONNECTION_HEADER)
 
+_GOODBYE_MESSAGE = 'Goodbye'
+
 
 def _method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
@@ -105,7 +107,7 @@ class EchoClient(object):
             if self._options.use_tls:
                 self._socket = _TLSSocket(self._socket)
             self._handshake()
-            for line in self._options.message.split(','):
+            for line in self._options.message.split(',') + [_GOODBYE_MESSAGE]:
                 frame = '\x00' + line.encode('utf-8') + '\xff'
                 self._socket.send(frame)
                 if self._options.verbose:
@@ -170,7 +172,9 @@ def main():
     parser.add_option('-r', '--resource', dest='resource', type='string',
                       default='/echo', help='resource path')
     parser.add_option('-m', '--message', dest='message', type='string',
-                      help='comma-separated messages to send')
+                      help=('comma-separated messages to send excluding "%s" '
+                            'that is always sent at the end' %
+                            _GOODBYE_MESSAGE))
     parser.add_option('-q', '--quiet', dest='verbose', action='store_false',
                       default=True, help='suppress messages')
     parser.add_option('-t', '--tls', dest='use_tls', action='store_true',

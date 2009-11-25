@@ -38,6 +38,7 @@ Usage:
     python standalone.py [-p <ws_port>] [-w <websock_handlers>]
                          [-s <scan_dir>]
                          [-d <document_root>]
+                         ... for other options, see _main below ...
 
 <ws_port> is the port number to use for ws:// connection.
 
@@ -59,6 +60,7 @@ import BaseHTTPServer
 import SimpleHTTPServer
 import SocketServer
 import logging
+import logging.handlers
 import optparse
 import os
 import socket
@@ -73,6 +75,17 @@ except ImportError:
 
 import dispatch
 import handshake
+
+
+_LOG_LEVELS = {
+    'debug': logging.DEBUG,
+    'info': logging.INFO,
+    'warn': logging.WARN,
+    'error': logging.ERROR,
+    'critical': logging.CRITICAL};
+
+_DEFAULT_LOG_MAX_BYTES = 1024 * 256
+_DEFAULT_LOG_BACKUP_COUNT = 5
 
 
 def _print_warnings_if_any(dispatcher):
@@ -167,8 +180,8 @@ class WebSocketRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         """Override SocketServer.StreamRequestHandler.setup."""
 
         self.connection = self.request
-        self.rfile = socket._fileobject(self.request, "rb", self.rbufsize)
-        self.wfile = socket._fileobject(self.request, "wb", self.wbufsize)
+        self.rfile = socket._fileobject(self.request, 'rb', self.rbufsize)
+        self.wfile = socket._fileobject(self.request, 'wb', self.wbufsize)
 
     def __init__(self, *args, **keywords):
         self._request = _StandaloneRequest(
@@ -206,10 +219,35 @@ class WebSocketRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
                 return False
         return result
 
+    def log_request(self, code='-', size='-'):
+        """Override BaseHTTPServer.log_request."""
+
+        logging.info('"%s" %s %s',
+                     self.requestline, str(code), str(size))
+
+    def log_error(self, *args):
+        """Override BaseHTTPServer.log_error."""
+
+        # Despite the name, this method is for warnings than for errors.
+        # For example, HTTP status code is logged by this method.
+        logging.warn('%s - %s' % (self.address_string(), (args[0] % args[1:])))
+
+
+def _configure_logging(options):
+    logger = logging.getLogger()
+    logger.setLevel(_LOG_LEVELS[options.log_level])
+    if options.log_file:
+        handler = logging.handlers.RotatingFileHandler(
+                options.log_file, 'a', options.log_max, options.log_count)
+    else:
+        handler = logging.StreamHandler()
+    formatter = logging.Formatter(
+            "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s")
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
 
 def _main():
-    logging.basicConfig()
-
     parser = optparse.OptionParser()
     parser.add_option('-p', '--port', dest='port', type='int',
                       default=handshake._DEFAULT_WEB_SOCKET_PORT,
@@ -230,33 +268,51 @@ def _main():
                       default='', help='TLS private key file.')
     parser.add_option('-c', '--certificate', dest='certificate',
                       default='', help='TLS certificate file.')
+    parser.add_option('-l', '--log_file', dest='log_file',
+                      default='', help='Log file.')
+    parser.add_option('--log_level', type='choice', dest='log_level',
+                      default='warn',
+                      choices=['debug', 'info', 'warn', 'error', 'critical'],
+                      help='Log level.')
+    parser.add_option('--log_max', dest='log_max', type='int',
+                      default=_DEFAULT_LOG_MAX_BYTES,
+                      help='Log maximum bytes')
+    parser.add_option('--log_count', dest='log_count', type='int',
+                      default=_DEFAULT_LOG_BACKUP_COUNT,
+                      help='Log backup count')
     options = parser.parse_args()[0]
+
+    os.chdir(options.document_root)
+
+    _configure_logging(options)
 
     if options.use_tls:
         if not _HAS_OPEN_SSL:
-            print >>sys.stderr, 'To use TLS, install pyOpenSSL.'
+            logging.critical('To use TLS, install pyOpenSSL.')
             sys.exit(1)
         if not options.private_key or not options.certificate:
-            print >>sys.stderr, ('To use TLS, specify private_key and '
-                                 'certificate.')
+            logging.critical(
+                    'To use TLS, specify private_key and certificate.')
             sys.exit(1)
 
     if not options.scan_dir:
         options.scan_dir = options.websock_handlers
 
-    # Share a Dispatcher among request handlers to save time for instantiation.
-    # Dispatcher can be shared because it is thread-safe.
-    options.dispatcher = dispatch.Dispatcher(options.websock_handlers,
-                                             options.scan_dir)
-    _print_warnings_if_any(options.dispatcher)
+    try:
+        # Share a Dispatcher among request handlers to save time for
+        # instantiation.  Dispatcher can be shared because it is thread-safe.
+        options.dispatcher = dispatch.Dispatcher(options.websock_handlers,
+                                                 options.scan_dir)
+        _print_warnings_if_any(options.dispatcher)
 
-    WebSocketRequestHandler.options = options
-    WebSocketServer.options = options
+        WebSocketRequestHandler.options = options
+        WebSocketServer.options = options
 
-    os.chdir(options.document_root)
-
-    server = WebSocketServer(('', options.port), WebSocketRequestHandler)
-    server.serve_forever()
+        server = WebSocketServer(('', options.port), WebSocketRequestHandler)
+        server.serve_forever()
+    except Exception, e:
+        logging.critical(str(e))
+        sys.exit(1)
 
 
 if __name__ == '__main__':

@@ -183,7 +183,8 @@ class Dispatcher(object):
 
     def _handler(self, request):
         try:
-            return self._handlers[request.ws_resource]
+            ws_resource_path = request.ws_resource.split('?', 1)[0]
+            return self._handlers[ws_resource_path]
         except KeyError:
             raise DispatchError('No handler for: %r' % request.ws_resource)
 

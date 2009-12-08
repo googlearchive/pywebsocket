@@ -214,7 +214,7 @@ _BAD_REQUESTS = (
             'Connection':'Upgrade',
             'Host':'example.com',
             'Origin':'http://example.com',
-            'WebSocket-Protocol':'illegal protocol',
+            'WebSocket-Protocol':'illegal\x09protocol',
         }
     ),
 )
@@ -233,9 +233,17 @@ class HandshakerTest(unittest.TestCase):
     def test_validate_protocol(self):
         handshake._validate_protocol('sample')  # should succeed.
         handshake._validate_protocol('Sample')  # should succeed.
+        handshake._validate_protocol('sample\x20protocol')  # should succeed.
+        handshake._validate_protocol('sample\x7eprotocol')  # should succeed.
         self.assertRaises(handshake.HandshakeError,
                           handshake._validate_protocol,
-                          'sample protocol')
+                          '')
+        self.assertRaises(handshake.HandshakeError,
+                          handshake._validate_protocol,
+                          'sample\x19protocol')
+        self.assertRaises(handshake.HandshakeError,
+                          handshake._validate_protocol,
+                          'sample\x7fprotocol')
         self.assertRaises(handshake.HandshakeError,
                           handshake._validate_protocol,
                           # "Japan" in Japanese

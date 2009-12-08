@@ -75,7 +75,7 @@ def _validate_protocol(protocol):
     if not protocol:
         raise HandshakeError('Invalid WebSocket-Protocol: empty')
     for c in protocol:
-        if not 0x21 <= ord(c) <= 0x7e:
+        if not 0x20 <= ord(c) <= 0x7e:
             raise HandshakeError('Illegal character in protocol: %r' % c)
 
 

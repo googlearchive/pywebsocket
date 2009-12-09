@@ -219,6 +219,119 @@ _BAD_REQUESTS = (
     ),
 )
 
+_STRICTLY_GOOD_REQUESTS = (
+    (
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # WebSocket-Protocol
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'WebSocket-Protocol: sample\r\n',
+        '\r\n',
+    ),
+    (  # WebSocket-Protocol and Cookie
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'WebSocket-Protocol: sample\r\n',
+        'Cookie: xyz\r\n'
+        '\r\n',
+    ),
+    (  # Cookie
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie2: xyz\r\n'
+        '\r\n',
+    ),
+    (  # Cookie with continuation lines
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie2: xyz\r\n',
+        ' abc\r\n',
+        ' defg\r\n',
+        '\r\n',
+    ),
+)
+
+_NOT_STRICTLY_GOOD_REQUESTS = (
+    (  # Extra space after GET
+        'GET  /demo HTTP/1.1\r\n',
+        'upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # No space after :
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade:WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Lower case Upgrade header
+        'GET /demo HTTP/1.1\r\n',
+        'upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Origin comes before Host
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Origin: http://example.com\r\n',
+        'Host: example.com\r\n',
+        '\r\n',
+    ),
+    (  # Host continued to the next line
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example\r\n',
+        ' .com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    ( # Cookie comes before WebSocket-Protocol
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie: xyz\r\n'
+        'WebSocket-Protocol: sample\r\n',
+        '\r\n',
+    ),
+    (  # Unknow header
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Content-Type: text/html\r\n'
+        '\r\n',
+    ),
+)
+
 
 def _create_request(request_def):
     conn = mock.MockConn('')
@@ -227,6 +340,22 @@ def _create_request(request_def):
             uri=request_def[1],
             headers_in=request_def[2],
             connection=conn)
+
+
+def _create_get_memorized_lines(lines):
+    def get_memorized_lines():
+        return lines
+    return get_memorized_lines
+
+
+def _create_requests_with_lines(request_lines_set):
+    requests = []
+    for lines in request_lines_set:
+        request = _create_request(_GOOD_REQUEST)
+        request.connection.get_memorized_lines = _create_get_memorized_lines(
+                lines)
+        requests.append(request)
+    return requests
 
 
 class HandshakerTest(unittest.TestCase):
@@ -315,6 +444,22 @@ class HandshakerTest(unittest.TestCase):
             handshaker = handshake.Handshaker(request,
                                               mock.MockDispatcher())
             self.assertRaises(handshake.HandshakeError, handshaker.do_handshake)
+
+    def test_strictly_good_requests(self):
+        for request in _create_requests_with_lines(_STRICTLY_GOOD_REQUESTS):
+            strict_handshaker = handshake.Handshaker(request,
+                                                     mock.MockDispatcher(),
+                                                     True)
+            strict_handshaker.do_handshake()
+
+    def test_not_strictly_good_requests(self):
+        for request in _create_requests_with_lines(_NOT_STRICTLY_GOOD_REQUESTS):
+            strict_handshaker = handshake.Handshaker(request,
+                                                     mock.MockDispatcher(),
+                                                     True)
+            self.assertRaises(handshake.HandshakeError,
+                              strict_handshaker.do_handshake)
+
 
 
 if __name__ == '__main__':

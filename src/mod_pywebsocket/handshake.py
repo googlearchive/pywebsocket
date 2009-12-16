@@ -56,7 +56,7 @@ _MANDATORY_HEADERS = [
 ]
 
 _FIRST_FIVE_LINES = map(re.compile, [
-    r'^GET [\S]+ HTTP/1.1\r\n$',
+    r'^GET /[\S]+ HTTP/1.1\r\n$',
     r'^Upgrade: WebSocket\r\n$',
     r'^Connection: Upgrade\r\n$',
     r'^Host: [\S]+\r\n$',
@@ -66,7 +66,9 @@ _FIRST_FIVE_LINES = map(re.compile, [
 _SIXTH_AND_LATER = re.compile(
     r'^'
     r'(WebSocket-Protocol: [\x20-\x7e]+\r\n)?'
-    r'([Cc][Oo][Oo][Kk][Ii][Ee]2?:[^\r]*(\r\n[ \t][^\r]*)*\r\n)?'
+    r'([Cc][Oo][Oo][Kk][Ii][Ee]:[^\r]*\r\n)*'
+    r'([Cc][Oo][Oo][Kk][Ii][Ee]2:[^\r]*\r\n)?'
+    r'([Cc][Oo][Oo][Kk][Ii][Ee]:[^\r]*\r\n)*'
     r'\r\n')
 
 

@@ -253,18 +253,9 @@ _STRICTLY_GOOD_REQUESTS = (
         'Connection: Upgrade\r\n',
         'Host: example.com\r\n',
         'Origin: http://example.com\r\n',
-        'Cookie2: xyz\r\n'
-        '\r\n',
-    ),
-    (  # Cookie with continuation lines
-        'GET /demo HTTP/1.1\r\n',
-        'Upgrade: WebSocket\r\n',
-        'Connection: Upgrade\r\n',
-        'Host: example.com\r\n',
-        'Origin: http://example.com\r\n',
-        'Cookie2: xyz\r\n',
-        ' abc\r\n',
-        ' defg\r\n',
+        'Cookie: abc/xyz\r\n'
+        'Cookie2: $Version=1\r\n'
+        'Cookie: abc\r\n'
         '\r\n',
     ),
 )
@@ -272,7 +263,15 @@ _STRICTLY_GOOD_REQUESTS = (
 _NOT_STRICTLY_GOOD_REQUESTS = (
     (  # Extra space after GET
         'GET  /demo HTTP/1.1\r\n',
-        'upgrade: WebSocket\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Resource name doesn't stat with '/'
+        'GET demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
         'Connection: Upgrade\r\n',
         'Host: example.com\r\n',
         'Origin: http://example.com\r\n',
@@ -290,6 +289,14 @@ _NOT_STRICTLY_GOOD_REQUESTS = (
         'GET /demo HTTP/1.1\r\n',
         'upgrade: WebSocket\r\n',
         'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Connection comes before Upgrade
+        'GET /demo HTTP/1.1\r\n',
+        'Connection: Upgrade\r\n',
+        'Upgrade: WebSocket\r\n',
         'Host: example.com\r\n',
         'Origin: http://example.com\r\n',
         '\r\n',
@@ -321,13 +328,24 @@ _NOT_STRICTLY_GOOD_REQUESTS = (
         'WebSocket-Protocol: sample\r\n',
         '\r\n',
     ),
-    (  # Unknow header
+    (  # Unknown header
         'GET /demo HTTP/1.1\r\n',
         'Upgrade: WebSocket\r\n',
         'Connection: Upgrade\r\n',
         'Host: example.com\r\n',
         'Origin: http://example.com\r\n',
         'Content-Type: text/html\r\n'
+        '\r\n',
+    ),
+    (  # Cookie with continuation lines
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie: xyz\r\n',
+        ' abc\r\n',
+        ' defg\r\n',
         '\r\n',
     ),
 )

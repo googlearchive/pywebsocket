@@ -66,11 +66,10 @@ _FIRST_FIVE_LINES = map(re.compile, [
 _SIXTH_AND_LATER = re.compile(
     r'^'
     r'(WebSocket-Protocol: [\x20-\x7e]+\r\n)?'
-    r'([Cc][Oo][Oo][Kk][Ii][Ee]:[^\r]*\r\n)*'
-    r'([Cc][Oo][Oo][Kk][Ii][Ee]2:[^\r]*\r\n)?'
-    r'([Cc][Oo][Oo][Kk][Ii][Ee]:[^\r]*\r\n)*'
+    r'(Cookie: [^\r]*\r\n)*'
+    r'(Cookie2: [^\r]*\r\n)?'
+    r'(Cookie: [^\r]*\r\n)*'
     r'\r\n')
-
 
 
 def _default_port(is_secure):

@@ -334,6 +334,9 @@ def _alias_handlers(dispatcher, websock_handlers_map_file):
 
 def _main():
     parser = optparse.OptionParser()
+    parser.add_option('--server_host', dest='server_host',
+                      default='',
+                      help='server hostname to listen to')
     parser.add_option('-p', '--port', dest='port', type='int',
                       default=handshake._DEFAULT_WEB_SOCKET_PORT,
                       help='port to listen to')
@@ -420,7 +423,8 @@ def _main():
         WebSocketRequestHandler.options = options
         WebSocketServer.options = options
 
-        server = WebSocketServer(('', options.port), WebSocketRequestHandler)
+        server = WebSocketServer((options.server_host, options.port),
+                                 WebSocketRequestHandler)
         server.serve_forever()
     except Exception, e:
         logging.critical(str(e))

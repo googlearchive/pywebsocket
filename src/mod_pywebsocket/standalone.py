@@ -276,9 +276,18 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
     def is_cgi(self):
         """Test whether self.path corresponds to a CGI script.
 
-        Add extra check that self.path doesn't contains .."""
+        Add extra check that self.path doesn't contains ..
+        Also check if the file is a executable file or not.
+        If the file is not executable, it is handled as static file or dir
+        rather than a CGI script.
+        """
         if CGIHTTPServer.CGIHTTPRequestHandler.is_cgi(self):
             if '..' in self.path:
+                return False
+            scriptfile = self.translate_path(self.path.split('?', 2)[0])
+            if not os.path.isfile(scriptfile):
+                return False
+            if not self.is_executable(scriptfile):
                 return False
             return True
         return False

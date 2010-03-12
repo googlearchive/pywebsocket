@@ -168,7 +168,7 @@ class MockRequest(object):
     This mimics mod_python request.
     """
 
-    def __init__(self, uri=None, headers_in={}, connection=None,
+    def __init__(self, uri=None, headers_in={}, connection=None, method='GET',
                  is_https=False):
         """Construct an instance.
 
@@ -176,12 +176,14 @@ class MockRequest(object):
             uri: URI of the request.
             headers_in: Request headers.
             connection: Connection used for the request.
+            method: request method.
             is_https: Whether this request is over SSL.
 
         See the document of mod_python Request for details.
         """
         self.uri = uri
         self.connection = connection
+        self.method = method
         self.headers_in = MockTable(headers_in)
         # self.is_https_ needs to be accessible from tests.  To avoid name
         # conflict with self.is_https(), it is named as such.

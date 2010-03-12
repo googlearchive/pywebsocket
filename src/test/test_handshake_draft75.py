@@ -36,129 +36,107 @@
 import unittest
 
 import config  # This must be imported before mod_pywebsocket.
-from mod_pywebsocket import handshake
+from mod_pywebsocket.handshake import draft75 as handshake
 
 import mock
 
 
 _GOOD_REQUEST = (
     80,
-    'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'Sec-WebSocket-Protocol':'sample',
         'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+        'Connection':'Upgrade',
+        'Host':'example.com',
         'Origin':'http://example.com',
-    },
-    '^n:ds[4U'
+        'WebSocket-Protocol':'sample',
+    }
 )
 
 _GOOD_RESPONSE_DEFAULT_PORT = (
-    'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
+    'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
-    'Sec-WebSocket-Location: ws://example.com/demo\r\n'
-    'Sec-WebSocket-Protocol: sample\r\n'
-    '\r\n'
-    '8jKS\'y:G*Co,Wxa-')
+    'WebSocket-Origin: http://example.com\r\n'
+    'WebSocket-Location: ws://example.com/demo\r\n'
+    'WebSocket-Protocol: sample\r\n'
+    '\r\n')
 
 _GOOD_RESPONSE_SECURE = (
-    'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
+    'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
-    'Sec-WebSocket-Location: wss://example.com/demo\r\n'
-    'Sec-WebSocket-Protocol: sample\r\n'
-    '\r\n'
-    '8jKS\'y:G*Co,Wxa-')
+    'WebSocket-Origin: http://example.com\r\n'
+    'WebSocket-Location: wss://example.com/demo\r\n'
+    'WebSocket-Protocol: sample\r\n'
+    '\r\n')
 
 _GOOD_REQUEST_NONDEFAULT_PORT = (
     8081,
-    'GET',
     '/demo',
     {
-        'Host':'example.com:8081',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'Sec-WebSocket-Protocol':'sample',
         'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+        'Connection':'Upgrade',
+        'Host':'example.com:8081',
         'Origin':'http://example.com',
-    },
-    '^n:ds[4U'
+        'WebSocket-Protocol':'sample',
+    }
 )
 
 _GOOD_RESPONSE_NONDEFAULT_PORT = (
-    'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
+    'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
-    'Sec-WebSocket-Location: ws://example.com:8081/demo\r\n'
-    'Sec-WebSocket-Protocol: sample\r\n'
-    '\r\n'
-    '8jKS\'y:G*Co,Wxa-')
+    'WebSocket-Origin: http://example.com\r\n'
+    'WebSocket-Location: ws://example.com:8081/demo\r\n'
+    'WebSocket-Protocol: sample\r\n'
+    '\r\n')
 
 _GOOD_RESPONSE_SECURE_NONDEF = (
-    'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
+    'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
-    'Sec-WebSocket-Location: wss://example.com:8081/demo\r\n'
-    'Sec-WebSocket-Protocol: sample\r\n'
-    '\r\n'
-    '8jKS\'y:G*Co,Wxa-')
+    'WebSocket-Origin: http://example.com\r\n'
+    'WebSocket-Location: wss://example.com:8081/demo\r\n'
+    'WebSocket-Protocol: sample\r\n'
+    '\r\n')
 
 _GOOD_REQUEST_NO_PROTOCOL = (
     80,
-    'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
         'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+        'Connection':'Upgrade',
+        'Host':'example.com',
         'Origin':'http://example.com',
-    },
-    '^n:ds[4U'
+    }
 )
 
 _GOOD_RESPONSE_NO_PROTOCOL = (
-    'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
+    'HTTP/1.1 101 Web Socket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
-    'Sec-WebSocket-Location: ws://example.com/demo\r\n'
-    '\r\n'
-    '8jKS\'y:G*Co,Wxa-')
+    'WebSocket-Origin: http://example.com\r\n'
+    'WebSocket-Location: ws://example.com/demo\r\n'
+    '\r\n')
 
 _GOOD_REQUEST_WITH_OPTIONAL_HEADERS = (
     80,
-    'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'EmptyValue':'',
-        'Sec-WebSocket-Protocol':'sample',
-        'AKey':'AValue',
         'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+        'Connection':'Upgrade',
+        'Host':'example.com',
         'Origin':'http://example.com',
-    },
-    '^n:ds[4U'
+        'WebSocket-Protocol':'sample',
+        'AKey':'AValue',
+        'EmptyValue':'',
+    }
 )
 
 _BAD_REQUESTS = (
     (  # HTTP request
         80,
-        'GET',
         '/demo',
         {
             'Host':'www.google.com',
@@ -174,124 +152,238 @@ _BAD_REQUESTS = (
             'Connection':'keep-alive',
         }
     ),
-    (  # Wrong method
-        80,
-        'POST',
-        '/demo',
-        {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
-            'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
-        },
-        '^n:ds[4U'
-    ),
     (  # Missing Upgrade
         80,
-        'GET',
         '/demo',
         {
-            'Host':'example.com',
             'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+            'Host':'example.com',
             'Origin':'http://example.com',
-        },
-        '^n:ds[4U'
+            'WebSocket-Protocol':'sample',
+        }
     ),
     (  # Wrong Upgrade
         80,
-        'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
             'Upgrade':'NonWebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+            'Connection':'Upgrade',
+            'Host':'example.com',
             'Origin':'http://example.com',
-        },
-        '^n:ds[4U'
+            'WebSocket-Protocol':'sample',
+        }
     ),
     (  # Empty WebSocket-Protocol
         80,
-        'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'',
             'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+            'Connection':'Upgrade',
+            'Host':'example.com',
             'Origin':'http://example.com',
-        },
-        '^n:ds[4U'
+            'WebSocket-Protocol':'',
+        }
     ),
     (  # Wrong port number format
         80,
-        'GET',
         '/demo',
         {
-            'Host':'example.com:0x50',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
             'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+            'Connection':'Upgrade',
+            'Host':'example.com:0x50',
             'Origin':'http://example.com',
-        },
-        '^n:ds[4U'
+            'WebSocket-Protocol':'sample',
+        }
     ),
     (  # Header/connection port mismatch
         8080,
-        'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
             'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+            'Connection':'Upgrade',
+            'Host':'example.com',
             'Origin':'http://example.com',
-        },
-        '^n:ds[4U'
+            'WebSocket-Protocol':'sample',
+        }
     ),
     (  # Illegal WebSocket-Protocol
         80,
-        'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'illegal\x09protocol',
             'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+            'Connection':'Upgrade',
+            'Host':'example.com',
             'Origin':'http://example.com',
-        },
-        '^n:ds[4U'
+            'WebSocket-Protocol':'illegal\x09protocol',
+        }
+    ),
+)
+
+_STRICTLY_GOOD_REQUESTS = (
+    (
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # WebSocket-Protocol
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'WebSocket-Protocol: sample\r\n',
+        '\r\n',
+    ),
+    (  # WebSocket-Protocol and Cookie
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'WebSocket-Protocol: sample\r\n',
+        'Cookie: xyz\r\n'
+        '\r\n',
+    ),
+    (  # Cookie
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie: abc/xyz\r\n'
+        'Cookie2: $Version=1\r\n'
+        'Cookie: abc\r\n'
+        '\r\n',
+    ),
+    (
+        'GET / HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+)
+
+_NOT_STRICTLY_GOOD_REQUESTS = (
+    (  # Extra space after GET
+        'GET  /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Resource name doesn't stat with '/'
+        'GET demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # No space after :
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade:WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Lower case Upgrade header
+        'GET /demo HTTP/1.1\r\n',
+        'upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Connection comes before Upgrade
+        'GET /demo HTTP/1.1\r\n',
+        'Connection: Upgrade\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    (  # Origin comes before Host
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Origin: http://example.com\r\n',
+        'Host: example.com\r\n',
+        '\r\n',
+    ),
+    (  # Host continued to the next line
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example\r\n',
+        ' .com\r\n',
+        'Origin: http://example.com\r\n',
+        '\r\n',
+    ),
+    ( # Cookie comes before WebSocket-Protocol
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie: xyz\r\n'
+        'WebSocket-Protocol: sample\r\n',
+        '\r\n',
+    ),
+    (  # Unknown header
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Content-Type: text/html\r\n'
+        '\r\n',
+    ),
+    (  # Cookie with continuation lines
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie: xyz\r\n',
+        ' abc\r\n',
+        ' defg\r\n',
+        '\r\n',
+    ),
+    (  # Wrong-case cookie
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'cookie: abc/xyz\r\n'
+        '\r\n',
+    ),
+    (  # Cookie, no space after colon
+        'GET /demo HTTP/1.1\r\n',
+        'Upgrade: WebSocket\r\n',
+        'Connection: Upgrade\r\n',
+        'Host: example.com\r\n',
+        'Origin: http://example.com\r\n',
+        'Cookie:abc/xyz\r\n'
+        '\r\n',
     ),
 )
 
 
 def _create_request(request_def):
-    data = ''
-    if len(request_def) > 4:
-        data = request_def[4]
-    conn = mock.MockConn(data)
+    conn = mock.MockConn('')
     conn.local_addr = ('0.0.0.0', request_def[0])
     return mock.MockRequest(
-        method=request_def[1],
-        uri=request_def[2],
-        headers_in=request_def[3],
-        connection=conn)
+            uri=request_def[1],
+            headers_in=request_def[2],
+            connection=conn)
 
 
 def _create_get_memorized_lines(lines):
@@ -311,25 +403,6 @@ def _create_requests_with_lines(request_lines_set):
 
 
 class HandshakerTest(unittest.TestCase):
-    def test_validate_protocol(self):
-        handshake.validate_protocol('sample')  # should succeed.
-        handshake.validate_protocol('Sample')  # should succeed.
-        handshake.validate_protocol('sample\x20protocol')  # should succeed.
-        handshake.validate_protocol('sample\x7eprotocol')  # should succeed.
-        self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
-                          '')
-        self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
-                          'sample\x19protocol')
-        self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
-                          'sample\x7fprotocol')
-        self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
-                          # "Japan" in Japanese
-                          u'\u65e5\u672c')
-
     def test_good_request_default_port(self):
         request = _create_request(_GOOD_REQUEST)
         handshaker = handshake.Handshaker(request,
@@ -396,6 +469,22 @@ class HandshakerTest(unittest.TestCase):
             handshaker = handshake.Handshaker(request,
                                               mock.MockDispatcher())
             self.assertRaises(handshake.HandshakeError, handshaker.do_handshake)
+
+    def test_strictly_good_requests(self):
+        for request in _create_requests_with_lines(_STRICTLY_GOOD_REQUESTS):
+            strict_handshaker = handshake.Handshaker(request,
+                                                     mock.MockDispatcher(),
+                                                     True)
+            strict_handshaker.do_handshake()
+
+    def test_not_strictly_good_requests(self):
+        for request in _create_requests_with_lines(_NOT_STRICTLY_GOOD_REQUESTS):
+            strict_handshaker = handshake.Handshaker(request,
+                                                     mock.MockDispatcher(),
+                                                     True)
+            self.assertRaises(handshake.HandshakeError,
+                              strict_handshaker.do_handshake)
+
 
 
 if __name__ == '__main__':

@@ -226,7 +226,8 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         self._print_warnings_if_any()
         self._handshaker = handshake.Handshaker(
                 self._request, self._dispatcher,
-                WebSocketRequestHandler.options.strict)
+                allowDraft75=WebSocketRequestHandler.options.allow_draft75,
+                strict=WebSocketRequestHandler.options.strict)
         CGIHTTPServer.CGIHTTPRequestHandler.__init__(
                 self, *args, **keywords)
 
@@ -384,6 +385,9 @@ def _main():
     parser.add_option('--log-count', '--log_count', dest='log_count',
                       type='int', default=_DEFAULT_LOG_BACKUP_COUNT,
                       help='Log backup count')
+    parser.add_option('--allow-draft75', dest='allow_draft75',
+                      action='store_true', default=False,
+                      help='Allow draft 75 handshake')
     parser.add_option('--strict', dest='strict', action='store_true',
                       default=False, help='Strictly check handshake request')
     parser.add_option('-q', '--queue', dest='request_queue_size', type='int',

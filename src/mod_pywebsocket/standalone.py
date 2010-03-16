@@ -164,6 +164,11 @@ class _StandaloneRequest(object):
         return self._request_handler.path
     uri = property(get_uri)
 
+    def get_method(self):
+        """Getter to mimic request.method."""
+        return self._request_handler.command
+    method = property(get_method)
+
     def get_headers_in(self):
         """Getter to mimic request.headers_in."""
         return self._request_handler.headers
@@ -340,7 +345,7 @@ def _main():
                       default='',
                       help='server hostname to listen to')
     parser.add_option('-p', '--port', dest='port', type='int',
-                      default=handshake._DEFAULT_WEB_SOCKET_PORT,
+                      default=handshake.DEFAULT_WEB_SOCKET_PORT,
                       help='port to listen to')
     parser.add_option('-w', '--websock-handlers', '--websock_handlers',
                       dest='websock_handlers',

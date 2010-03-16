@@ -37,6 +37,7 @@ not suitable because they don't allow direct raw bytes writing/reading.
 """
 
 
+import logging
 from md5 import md5
 import re
 import struct
@@ -49,6 +50,9 @@ _MANDATORY_HEADERS = [
     ['Upgrade', 'WebSocket'],
     ['Connection', 'Upgrade'],
 ]
+
+def _hexify(s):
+    return re.sub('.', lambda x: '%02x ' % ord(x.group(0)), s)
 
 class Handshaker(object):
     """This class performs Web Socket handshake."""
@@ -115,6 +119,8 @@ class Handshaker(object):
         self._request.ws_challenge = self._get_challenge()
         self._request.ws_challenge_md5 = md5(
             self._request.ws_challenge).digest()
+        logging.debug("challenge: %s" % _hexify(self._request.ws_challenge))
+        logging.debug("response:  %s" % _hexify(self._request.ws_challenge_md5))
 
     def _get_key_value(self, key_field):
         key_field = self._request.headers_in.get(key_field)
@@ -122,9 +128,11 @@ class Handshaker(object):
             return None
         try:
             # take the digits from the value to obtain a number
-            digit = int(re.subn("\\D", "", key_field)[0])
+            digit = int(re.sub("\\D", "", key_field))
             # number of spaces characters in the value.
             num_spaces = re.subn(" ", "", key_field)[1]
+            logging.debug("%s: %d / %d => %d" % (
+                key_field, digit, num_spaces, digit / num_spaces))
             return digit / num_spaces
         except:
             return None

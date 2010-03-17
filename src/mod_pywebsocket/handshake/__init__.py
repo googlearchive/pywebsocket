@@ -68,6 +68,7 @@ class Handshaker(object):
         handshake.
         """
 
+        self._logger = logging.getLogger("mod_pywebsocket.handshake")
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict
@@ -83,9 +84,9 @@ class Handshaker(object):
         try:
             self._handshaker.do_handshake()
         except HandshakeError, e:
-            logging.info('Handshake error: %s' % e)
+            self._logger.error('Handshake error: %s' % e)
             if self._fallbackHandshaker:
-                logging.info('fallback to old protocol')
+                self._logger.warning('fallback to old protocol')
                 self._fallbackHandshaker.do_handshake()
                 return
             raise e

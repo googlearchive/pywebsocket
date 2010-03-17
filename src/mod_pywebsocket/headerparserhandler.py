@@ -39,6 +39,7 @@ from mod_python import apache
 
 import dispatch
 import handshake
+import logging
 import util
 
 
@@ -49,6 +50,35 @@ _PYOPT_HANDLER_ROOT = 'mod_pywebsocket.handler_root'
 # This must be a directory under the root directory.
 # The default is the root directory.
 _PYOPT_HANDLER_SCAN = 'mod_pywebsocket.handler_scan'
+
+# PythonOption to specify to allow draft75 handshake.
+# The default is None (Off)
+_PYOPT_ALLOW_DRAFT75 = 'mod_pywebsocket.allow_draft75'
+
+
+class ApacheLogHandler(logging.Handler):
+    """Wrapper logging.Handler to emit log message to apache's error.log"""
+    _LEVELS = {
+        logging.DEBUG: apache.APLOG_DEBUG,
+        logging.INFO: apache.APLOG_INFO,
+        logging.WARNING: apache.APLOG_WARNING,
+        logging.ERROR: apache.APLOG_ERR,
+        logging.CRITICAL: apache.APLOG_CRIT,
+        }
+    def __init__(self, request=None):
+        logging.Handler.__init__(self)
+        self.log_error = apache.log_error
+        if request is not None:
+             self.log_error = request.log_error
+
+    def emit(self, record):
+        apache_level = apache.APLOG_DEBUG
+        if record.levelno in ApacheLogHandler._LEVELS:
+            apache_level = ApacheLogHandler._LEVELS[record.levelno]
+        self.log_error(record.getMessage(), apache_level)
+
+
+logging.getLogger("mod_pywebsocket").addHandler(ApacheLogHandler())
 
 
 def _create_dispatcher():
@@ -80,11 +110,20 @@ def headerparserhandler(request):
     """
 
     try:
-        handshaker = handshake.Handshaker(request, _dispatcher)
+        allowDraft75 = apache.main_server.get_options().get(
+		_PYOPT_ALLOW_DRAFT75, None)
+        handshaker = handshake.Handshaker(request, _dispatcher,
+                                          allowDraft75=allowDraft75)
         handshaker.do_handshake()
         request.log_error('mod_pywebsocket: resource: %r' % request.ws_resource,
                           apache.APLOG_DEBUG)
-        _dispatcher.transfer_data(request)
+        try:
+            _dispatcher.transfer_data(request)
+        except Exception, e:
+            # Catch exception in transfer_data.
+            # In this case, handshake has been successful, so just log the
+            # exception and return apache.DONE
+            request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
     except handshake.HandshakeError, e:
         # Handshake for ws/wss failed.
         # But the request can be valid http/https request.

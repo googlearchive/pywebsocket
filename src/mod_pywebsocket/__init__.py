@@ -53,11 +53,17 @@ Installation:
 
    To limit the search for Web Socket handlers to a directory <scan_dir>
    under <websock_handlers>, configure as follows:
-   
+
        PythonOption mod_pywebsocket.handler_scan <scan_dir>
-       
+
    <scan_dir> is useful in saving scan time when <websock_handlers>
    contains many non-Web Socket handler files.
+
+   If you want to support old handshake based on
+   draft-hixie-thewebsocketprotocol-75:
+
+       PythonOption mod_pywebsocket.allow_draft75 On
+
 
    Example snippet of httpd.conf:
    (mod_pywebsocket is in /websock_lib, Web Socket handlers are in

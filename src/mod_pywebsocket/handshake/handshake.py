@@ -68,6 +68,7 @@ class Handshaker(object):
         handshake.
         """
 
+        self._logger = logging.getLogger("mod_pywebsocket.handshake")
         self._request = request
         self._dispatcher = dispatcher
 
@@ -119,8 +120,10 @@ class Handshaker(object):
         self._request.ws_challenge = self._get_challenge()
         self._request.ws_challenge_md5 = md5(
             self._request.ws_challenge).digest()
-        logging.debug("challenge: %s" % _hexify(self._request.ws_challenge))
-        logging.debug("response:  %s" % _hexify(self._request.ws_challenge_md5))
+        self._logger.debug("challenge: %s" % _hexify(
+	    self._request.ws_challenge))
+        self._logger.debug("response:  %s" % _hexify(
+	    self._request.ws_challenge_md5))
 
     def _get_key_value(self, key_field):
         key_field = self._request.headers_in.get(key_field)
@@ -131,7 +134,7 @@ class Handshaker(object):
             digit = int(re.sub("\\D", "", key_field))
             # number of spaces characters in the value.
             num_spaces = re.subn(" ", "", key_field)[1]
-            logging.debug("%s: %d / %d => %d" % (
+            self._logger.debug("%s: %d / %d => %d" % (
                 key_field, digit, num_spaces, digit / num_spaces))
             return digit / num_spaces
         except:

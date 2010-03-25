@@ -46,8 +46,8 @@ Example Usage:
     -d $cwd/src/example
 
 # run client
- % python ./example/echo_client.py -p 8880 -s localhost -o http://localhost \
-     -r /echo -m test
+ % python ./src/example/echo_client.py -p 8880 -s localhost \
+     -o http://localhost -r /echo -m test
 
 or
 # server setup to test old protocol
@@ -82,7 +82,9 @@ def _method_line(resource):
 
 
 def _origin_header(origin):
-    return 'Origin: %s\r\n' % origin
+    # 4.1 13. concatenation of the string "Origin:", a U+0020 SPACE character,
+    # and the /origin/ value, converted to ASCII lowercase, to /fields/.
+    return 'Origin: %s\r\n' % origin.lower()
 
 def _hexify(s):
     return re.sub(".", lambda x: "%02x " % ord(x.group(0)), s)
@@ -121,82 +123,82 @@ class WebSocketHandshake(object):
         Raises:
           Exception: handshake failed.
         """
+        # 4.1 5. send request line.
         self._socket.send(_method_line(self._options.resource))
+        # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
+        # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
         fields.append(WebSocketHandshake._UPGRADE_HEADER)
+        # 4.1 8. Add the string "Connection: Upgrade" to /fields/.
         fields.append(WebSocketHandshake._CONNECTION_HEADER)
+        # 4.1 9-12. Add Host: field to /fields/.
         fields.append(self._format_host_header())
+        # 4.1 13. Add Origin: field to /fields/.
         fields.append(_origin_header(self._options.origin))
+        # TODO: 4.1 14 Add Sec-WebSocket-Protocol: field to /fields/.
+        # TODO: 4.1 15 Add cookie headers to /fields/.
+
+        # 4.1 16-23. Add Sec-WebSocket-Key<n> to /fields/.
         self._number1, key1 = self._generate_sec_websocket_key()
         fields.append('Sec-WebSocket-Key1: ' + key1 + '\r\n')
         self._number2, key2 = self._generate_sec_websocket_key()
         fields.append('Sec-WebSocket-Key2: ' + key2 + '\r\n')
 
-        fields.sort(cmp=lambda _i, _j: random.randint(-1, 1))
+        # 4.1 24. For each string in /fields/, in a random order: send the
+        # string, encoded as UTF-8, followed by a UTF-8 encoded U+000D CARRIAGE
+        # RETURN U+000A LINE FEED character pair (CRLF).
+        random.shuffle(fields)
         for field in fields:
             self._socket.send(field)
+        # 4.1 25. send a UTF-8-encoded U+000D CARRIAGE RETURN U+000A LINE FEED
+        # character pair (CRLF).
         self._socket.send('\r\n')
+        # 4.1 26. let /key3/ be a string consisting of eight random bytes (or
+        # equivalently, a random 64 bit integer encoded in a big-endian order).
         self._key3 = self._generate_key3()
+        # 4.1 27. send /key3/ to the server.
         self._socket.send(self._key3)
         logging.info("%s" % _hexify(self._key3))
 
-        status_line = ""
+        # 4.1 28. Read bytes from the server until either the connection closes,
+        # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
+        # bytes.
+        field = ""
         while True:
             ch = self._socket.recv(1)
-            status_line += ch
+            field += ch
             if ch == '\n':
                 break
-        if len(status_line) < 7 or not status_line.endswith('\r\n'):
-            raise Exception('wrong status line: %s' % status_line)
-        m = re.match("[^ ]* ([^ ]*) .*", status_line)
+        # if /field/ is not at least seven bytes long, or if the last
+        # two bytes aren't 0x0D and 0x0A respectively, or if it does not
+        # contain at least two 0x20 bytes, then fail the WebSocket connection
+        # and abort these steps.
+        if len(field) < 7 or not field.endswith('\r\n'):
+            raise Exception('wrong status line: %s' % field)
+        m = re.match("[^ ]* ([^ ]*) .*", field)
         if m is None:
-            raise Exception('no code found in: %s' % status_line)
+            raise Exception('no code found in: %s' % field)
+        # 4.1 29. let /code/ be the substring of /field/ that starts from the
+        # byte after the first 0x20 byte, and ends with the byte before the
+        # second 0x20 byte.
         code = m.group(1)
+        # 4.1 30. if /code/ is not three bytes long, or if any of the bytes in
+        # /code/ are not in the range 0x30 to 0x90, then fail the WebSocket
+        # connection and abort these steps.
         if not re.match("[0-9][0-9][0-9]", code):
-            raise Exception('wrong code %s in: %s' % (code, status_line))
+            raise Exception('wrong code %s in: %s' % (code, field))
+        # 4.1 31. if /code, interpreted as UTF-8, is "101", then move to the
+        # next step.
         if code != "101":
-            raise Exception('unexpected code in: %s' % status_line)
+            raise Exception('unexpected code in: %s' % field)
+        # 4.1 32-39. read fields into /fields/
         fields = self._read_fields()
-
-    def _generate_sec_websocket_key(self):
-        spaces = random.randint(1, 12)
-        maxnum = 4294967295 / spaces
-        number = random.randint(0, maxnum)
-        product = number * spaces
-        key = str(product)
-        for _ in range(spaces):
-            pos = random.randint(1, len(key) - 1)
-            key = key[0:pos] + ' ' + key[pos:]
-        available_chars = range(0x21, 0x2f) + range(0x3a, 0x7e)
-        for _ in range(12):
-            ch = available_chars[random.randint(0, len(available_chars) - 1)]
-            pos = random.randint(0, len(key))
-            key = key[0:pos] + chr(ch) + key[pos:]
-        return number, key
-
-    def _generate_key3(self):
-        key3 = ""
-        for _ in range(8):
-            key3 += chr(random.randint(0, 255))
-        return key3
-
-    def _read_fields(self):
-        fields = {}
-        while True:
-            name = self._read_name()
-            if name is None:
-                break
-            value = self._read_value()
-            ch = self._socket.recv(1)[0]
-            if ch != '\n':
-                raise Exception('expected LF after line: %s: %s' % (
-                    name, value))
-            fields.setdefault(name, []).append(value)
-
-        # Fields processing
+        # 4.1 40. _Fields processing_
+        # read a byte from server
         ch = self._socket.recv(1)[0]
-        if ch != '\n':
+        if ch != '\n':  # 0x0A
             raise Exception('expected LF after line: %s: %s' % (name, value))
+        # 4.1 41. check /fields/
         if len(fields['upgrade']) != 1:
             raise Exception('not one ugprade: %s' % fields['upgrade'])
         if len(fields['connection']) != 1:
@@ -208,13 +210,24 @@ class WebSocketHandshake(object):
             raise Exception('not one sec-websocket-location: %s' %
                             fields['sec-sebsocket-location'])
         # TODO(ukai): protocol
+        # if the entry's name is "upgrade"
+        #  if the value is not exactly equal to the string "WebSocket",
+        #  then fail the WebSocket connection and abort these steps.
         if fields['upgrade'][0] != 'WebSocket':
             raise Exception('unexpected upgrade: %s' % fields['upgrade'][0])
+        # if the entry's name is "connection"
+        #  if the value, converted to ASCII lowercase, is not exactly equal
+        #  to the string "upgrade", then fail the WebSocket connection and
+        #  abort these steps.
         if fields['connection'][0].lower() != 'upgrade':
             raise Exception('unexpected connection: %s' %
                             fields['connection'][0])
         # TODO(ukai): check origin, location, cookie, ..
 
+        # 4.1 42. let /challenge/ be the concatenation of /number_1/,
+        # expressed as a big endian 32 bit integer, /number_2/, expressed
+        # as big endian 32 bit integer, and the eight bytes of /key_3/ in the
+        # order they were sent on the wire.
         challenge = struct.pack("!I", self._number1)
         challenge += struct.pack("!I", self._number2)
         challenge += self._key3
@@ -224,46 +237,125 @@ class WebSocketHandshake(object):
             _hexify(self._key3)))
         logging.info("challenge: %s" % _hexify(challenge))
 
+        # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
+        # big-endian 128 bit string.
         expected = md5(challenge).digest()
         logging.info("expected : %s" % _hexify(expected))
 
+        # 4.1 44. read sixteen bytes from the server.
+        # let /reply/ be those bytes.
         reply = self._socket.recv(16)
         logging.info("reply    : %s" % _hexify(reply))
 
+        # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
+        # the WebSocket connection and abort these steps.
         if expected != reply:
             raise Exception('challenge/response failed: %s != %s' % (
                 expected, reply))
-        # connection is established.
+        # 4.1 46. The *WebSocket connection is established*.
+
+    def _generate_sec_websocket_key(self):
+        # 4.1 16. let /spaces_n/ be a random integer from 1 to 12 inclusive.
+        spaces = random.randint(1, 12)
+        # 4.1 17. let /max_n/ be the largest integer not greater than
+        #  4,294,967,295 divided by /spaces_n/.
+        maxnum = 4294967295 / spaces
+        # 4.1 18. let /number_n/ be a random integer from 0 to /max_n/
+        # inclusive.
+        number = random.randint(0, maxnum)
+        # 4.1 19. let /product_n/ be the result of multiplying /number_n/ and
+        # /spaces_n/ together.
+        product = number * spaces
+        # 4.1 20. let /key_n/ be a string consisting of /product_n/, expressed
+        # in base ten using the numerals in the range U+0030 DIGIT ZERO (0) to
+        # U+0039 DIGIT NINE (9).
+        key = str(product)
+        # 4.1 21. insert /spaces_n/ U+0020 SPACE characters into /key_n/ at
+        # random positions.
+        for _ in range(spaces):
+            pos = random.randint(1, len(key) - 1)
+            key = key[0:pos] + ' ' + key[pos:]
+        # 4.1 22. insert between one and twelve random characters from the
+        # range U+0021 to U+002F and U+003A to U+007E into /key_n/ at random
+        # positions.
+        available_chars = range(0x21, 0x2f + 1) + range(0x3a, 0x7e + 1)
+        n = random.randint(1, 12)
+        for _ in range(n):
+            ch = random.choice(available_chars)
+            pos = random.randint(0, len(key))
+            key = key[0:pos] + chr(ch) + key[pos:]
+        return number, key
+
+    def _generate_key3(self):
+        # 4.1 26. let /key3/ be a string consisting of eight random bytes (or
+        # equivalently, a random 64 bit integer encoded in a big-endian order).
+        return ''.join([chr(random.randint(0, 255)) for _ in xrange(8)])
+
+    def _read_fields(self):
+        # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
+        fields = {}
+        while True:  # "Field"
+            # 4.1 33. let /name/ and /value/ be empty byte arrays
+            name = ''
+            value = ''
+            # 4.1 34. read /name/
+            name = self._read_name()
+            if name is None:
+                break
+            # 4.1 35. read spaces
+            ch = self._skip_spaces()
+            # 4.1 36. read /value/
+            value = self._read_value(ch)
+            # 4.1 37. read a byte fro mthe server
+            ch = self._socket.recv(1)[0]
+            if ch != '\n':  # 0x0A
+                raise Exception('expected LF after line: %s: %s' % (
+                    name, value))
+            # 4.1 38. append an entry to the /fields/ list that has the name
+            # given by the string obtained by interpreting the /name/ byte array
+            # as a UTF-8 stream and the value given by the string obtained by
+            # interpreting the /value/ byte array as a UTF-8 byte stream.
+            fields.setdefault(name, []).append(value)
+            # 4.1 39. return to the "Field" step above
+        return fields
 
     def _read_name(self):
+        # 4.1 33. let /name/ be empty byte arrays
         name = ""
         while True:
+            # 4.1 34. read a byte from the server
             ch = self._socket.recv(1)[0]
-            if ch == '\r':
+            if ch == '\r':  # 0x0D
                 return None
-            elif ch == '\n':
+            elif ch == '\n':  # 0x0A
                 raise Exception('unexpected LF in name reading')
-            elif ch == ':':
+            elif ch == ':':  # 0x3A
                 return name
-            elif ch >= 'A' and ch <= 'Z':
+            elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
                 ch = chr(ord(ch) + 0x20)
                 name += ch
             else:
                 name += ch
 
-    def _read_value(self):
-        value = ""
+    def _skip_spaces(self):
+        # 4.1 35. read a byte from the server
         while True:
             ch = self._socket.recv(1)[0]
-            if ch == ' ':
+            if ch == ' ':  # 0x20
                 continue
-            value = ch
-            break
+            return ch
+
+    def _read_value(self, ch):
+        # 4.1 33. let /name/ be empty byte arrays
+        value = ''
+        # 4.1 35. treat the byte as described by the list in the next step
+        value += ch
+        # 4.1 36. read a byte from server.
         while True:
             ch = self._socket.recv(1)[0]
-            if ch == '\r':
+            if ch == '\r':  # 0x0D
                 return value
-            elif ch == '\n':
+            elif ch == '\n':  # 0x0A
                 raise Exception('unexpected LF in value reading')
             else:
                 value += ch
@@ -281,13 +373,23 @@ class WebSocketHandshake(object):
                 pos = 0
 
     def _format_host_header(self):
-        host = 'Host: ' + self._options.server_host.lower()
+        # 4.1 9. Let /hostport/ be an empty string.
+        hostport = ''
+        # 4.1 10. Append the /host/ value, converted to ASCII lowercase, to
+        # /hostport/
+        hostport = self._options.server_host.lower()
+        # 4.1 11. If /secure/ is false, and /port/ is not 80, or if /secure/
+        # is true, and /port/ is not 443, then append a U+003A COLON character
+        # (:) followed by the value of /port/, expressed as a base-ten integer,
+        # to /hostport/
         if ((not self._options.use_tls and
              self._options.server_port != _DEFAULT_PORT) or
             (self._options.use_tls and
              self._options.server_port != _DEFAULT_SECURE_PORT)):
-            host += ':' + str(self._options.server_port)
-        host += '\r\n'
+            hostport += ':' + str(self._options.server_port)
+        # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE character,
+        # and /hostport/, to /fields/.
+        host = 'Host: ' + hostport + '\r\n'
         return host
 
 

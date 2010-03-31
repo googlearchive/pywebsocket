@@ -35,7 +35,8 @@
 import os
 import re
 
-import util
+from mod_pywebsocket import msgutil
+from mod_pywebsocket import util
 
 
 _SOURCE_PATH_PATTERN = re.compile(r'(?i)_wsh\.py$')
@@ -197,13 +198,25 @@ class Dispatcher(object):
 
         unused_do_extra_handshake, transfer_data_ = self._handler(request)
         try:
+            request.client_terminated = False
+            request.server_terminated = False
             transfer_data_(request)
+        except msgutil.ConnectionTerminatedException, e:
+            util.prepend_message_to_exception(
+                'client initiated closing handshake for %s: ' % (
+                request.ws_resource),
+                e)
+            raise
         except Exception, e:
+            print 'exception: %s' % type(e)
             util.prepend_message_to_exception(
                     '%s raised exception for %s: ' % (
                             _TRANSFER_DATA_HANDLER_NAME, request.ws_resource),
                     e)
             raise
+        finally:
+            msgutil.close_connection(request)
+
 
     def _handler(self, request):
         try:

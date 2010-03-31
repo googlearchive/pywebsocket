@@ -80,10 +80,10 @@ try:
 except ImportError:
     pass
 
-import dispatch
-import handshake
-import memorizingfile
-import util
+from mod_pywebsocket import dispatch
+from mod_pywebsocket import handshake
+from mod_pywebsocket import memorizingfile
+from mod_pywebsocket import util
 
 
 _LOG_LEVELS = {
@@ -251,7 +251,13 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         if result:
             try:
                 self._handshaker.do_handshake()
-                self._dispatcher.transfer_data(self._request)
+                try:
+                    self._dispatcher.transfer_data(self._request)
+                except Exception, e:
+                    # Catch exception in transfer_data.
+                    # In this case, handshake has been successful, so just log
+                    # the exception and return False.
+                    logging.info('mod_pywebsocket: %s' % e)
                 return False
             except handshake.HandshakeError, e:
                 # Handshake for ws(s) failed. Assume http(s).

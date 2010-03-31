@@ -39,10 +39,15 @@ not suitable because they don't allow direct raw bytes writing/reading.
 
 import Queue
 import threading
-import util
+
+from mod_pywebsocket import util
 
 
 class MsgUtilException(Exception):
+    pass
+
+
+class ConnectionTerminatedException(MsgUtilException):
     pass
 
 
@@ -66,14 +71,37 @@ def _write(request, bytes):
         raise
 
 
+def close_connection(request):
+    """Close connection.
+
+    Args:
+        request: mod_python request.
+    """
+    if request.server_terminated:
+        return
+    # 5.3 the server may decide to terminate the WebSocket connection by
+    # running through the following steps:
+    # 1. send a 0xFF byte and a 0x00 byte to the client to indicate the start
+    # of the closing handshake.
+    _write(request, '\xff\x00')
+    request.server_terminated = True
+    # TODO(ukai): 2. wait until the /client terminated/ flag has been set, or
+    # until a server-defined timeout expires.
+    # TODO: 3. close the WebSocket connection.
+    # note: mod_python Connection (mp_conn) doesn't have close method.
+
+
 def send_message(request, message):
     """Send message.
 
     Args:
         request: mod_python request.
         message: unicode string to send.
+    Raises:
+        ConnectionTerminatedException: when server already terminated.
     """
-
+    if request.server_terminated:
+        raise ConnectionTerminatedException
     _write(request, '\x00' + message.encode('utf-8') + '\xff')
 
 
@@ -82,8 +110,12 @@ def receive_message(request):
 
     Args:
         request: mod_python request.
+    Raises:
+        ConnectionTerminatedException: when client already terminated.
     """
 
+    if request.client_terminated:
+        raise ConnectionTerminatedException
     while True:
         # Read 1 byte.
         # mp_conn.read will block if no bytes are available.
@@ -95,6 +127,11 @@ def receive_message(request):
             # Read and discard.
             length = _payload_length(request)
             _receive_bytes(request, length)
+            # 5.3 3. 12. if /type/ is 0xFF and /length/ is 0, then set the
+            # /client terminated/ flag and abort these steps.
+            if frame_type == 0xFF and length == 0:
+                request.client_terminated = True
+                raise ConnectionTerminatedException
         else:
             # The payload is delimited with \xff.
             bytes = _read_until(request, '\xff')
@@ -166,12 +203,15 @@ class MessageReceiver(threading.Thread):
         self.start()
 
     def run(self):
-        while not self._stop_requested:
-            message = receive_message(self._request)
-            if self._onmessage:
-                self._onmessage(message)
-            else:
-                self._queue.put(message)
+        try:
+            while not self._stop_requested:
+                message = receive_message(self._request)
+                if self._onmessage:
+                    self._onmessage(message)
+                else:
+                    self._queue.put(message)
+        finally:
+            close_connection(self._request)
 
     def receive(self):
         """ Receive a message from the channel, blocking.

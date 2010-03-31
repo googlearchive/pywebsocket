@@ -42,7 +42,9 @@ from md5 import md5
 import re
 import struct
 
-from _base import HandshakeError, build_location, validate_protocol
+from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import build_location
+from mod_pywebsocket.handshake._base import validate_protocol
 
 
 _MANDATORY_HEADERS = [

@@ -37,10 +37,10 @@ function is called to handle Web Socket request.
 
 from mod_python import apache
 
-import dispatch
-import handshake
-import logging
-import util
+from mod_pywebsocket import dispatch
+from mod_pywebsocket import handshake
+from mod_pywebsocket import logging
+from mod_pywebsocket import util
 
 
 # PythonOption to specify the handler root directory.

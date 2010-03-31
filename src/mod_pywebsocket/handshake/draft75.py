@@ -39,7 +39,9 @@ not suitable because they don't allow direct raw bytes writing/reading.
 
 import re
 
-from _base import HandshakeError, build_location, validate_protocol
+from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import build_location
+from mod_pywebsocket.handshake._base import validate_protocol
 
 
 _MANDATORY_HEADERS = [

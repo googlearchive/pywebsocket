@@ -40,14 +40,14 @@ not suitable because they don't allow direct raw bytes writing/reading.
 import logging
 import re
 
-import draft75
-import handshake
-from _base import DEFAULT_WEB_SOCKET_PORT
-from _base import DEFAULT_WEB_SOCKET_SECURE_PORT
-from _base import WEB_SOCKET_SCHEME
-from _base import WEB_SOCKET_SECURE_SCHEME
-from _base import HandshakeError
-from _base import validate_protocol
+from mod_pywebsocket.handshake import draft75
+from mod_pywebsocket.handshake import handshake
+from mod_pywebsocket.handshake._base import DEFAULT_WEB_SOCKET_PORT
+from mod_pywebsocket.handshake._base import DEFAULT_WEB_SOCKET_SECURE_PORT
+from mod_pywebsocket.handshake._base import WEB_SOCKET_SCHEME
+from mod_pywebsocket.handshake._base import WEB_SOCKET_SECURE_SCHEME
+from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import validate_protocol
 
 
 class Handshaker(object):

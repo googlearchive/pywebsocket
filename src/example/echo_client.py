@@ -459,45 +459,51 @@ class EchoClient(object):
                     print 'Recv: %s' % received[1:-1].decode('utf-8',
                                                              'replace')
             if not self._options.draft75:
-                closing = ''
-                try:
-                    if self._options.message.split(',')[-1] == _GOODBYE_MESSAGE:
-                        # requested server initiated closing handshake, so
-                        # expecting closing handshake message from server.
-                        closing = self._socket.recv(2)
-                        if closing == '\xff\x00':
-                            # 4.2 3 8 If the /frame type/ is 0xFF and the
-                            # /length/ was 0, then run the following substeps.
-                            # TODO(ukai): handle \xff\x80..\x00 case.
-                            # 1. If the WebSocket closing handshake has not
-                            # yet started, then start the WebSocket closing
-                            # handshake.
-                            self._socket.send('\xff\x00')
-                            # 2. Wait until either the WebSocket closing
-                            # handshake has started or the WebSocket connection
-                            # is closed.
-                            # 3. If the WebSocket connection is not already
-                            # closed, then close the WebSocket connection.
-                            # close() in finally.
-                except Exception, ex:
-                    print 'Exception: %s' % ex
-                finally:
-                    # if server didn't initiate closing handshake, start
-                    # closing handshake from client.
-                    if closing != '\xff\x00':
-                        print 'Closing handshake'
-                        # 2, 3 Send a 0xFF byte and 0x00 byte to the server.
-                        self._socket.send('\xff\x00')
-                        # 4 The WebSocket closing handshake has started.
-                        # 5 Wait a user-agent-determined length of time, or
-                        # until the WebSocket connection is closed.
-                        # NOTE: the closing handshake finishes once the server
-                        # returns the 0xFF package, as described above.
-                        closing = self._socket.recv(2)
-                        if closing != '\xFF\x00':
-                            print 'No 0xFF package from server'
+                self._do_closing_handshake()
         finally:
             self._socket.close()
+
+    def _do_closing_handshake(self):
+        """Perform closing handshake."""
+        closing = ''
+        try:
+            try:
+                if self._options.message.split(',')[-1] == _GOODBYE_MESSAGE:
+                    # requested server initiated closing handshake, so
+                    # expecting closing handshake message from server.
+                    closing = self._socket.recv(2)
+                    if closing == '\xff\x00':
+                        # 4.2 3 8 If the /frame type/ is 0xFF and the
+                        # /length/ was 0, then run the following substeps.
+                        # TODO(ukai): handle \xff\x80..\x00 case.
+                        # 1. If the WebSocket closing handshake has not
+                        # yet started, then start the WebSocket closing
+                        # handshake.
+                        self._socket.send('\xff\x00')
+                        # 2. Wait until either the WebSocket closing
+                        # handshake has started or the WebSocket connection
+                        # is closed.
+                        # 3. If the WebSocket connection is not already
+                        # closed, then close the WebSocket connection.
+                        # close() in finally.
+            except Exception, ex:
+                print 'Exception: %s' % ex
+        finally:
+            # if server didn't initiate closing handshake, start
+            # closing handshake from client.
+            if closing != '\xff\x00':
+                print 'Closing handshake'
+                # 2, 3 Send a 0xFF byte and 0x00 byte to the server.
+                self._socket.send('\xff\x00')
+                # 4 The WebSocket closing handshake has started.
+                # 5 Wait a user-agent-determined length of time, or
+                # until the WebSocket connection is closed.
+                # NOTE: the closing handshake finishes once the server
+                # returns the 0xFF package, as described above.
+                closing = self._socket.recv(2)
+                if closing != '\xFF\x00':
+                    print 'No 0xFF package from server'
+
 
 def main():
     sys.stdout = codecs.getwriter('utf-8')(sys.stdout)

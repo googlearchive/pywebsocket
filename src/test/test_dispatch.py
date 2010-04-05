@@ -145,28 +145,32 @@ class DispatcherTest(unittest.TestCase):
         request.ws_protocol = 'p1'
 
         dispatcher.transfer_data(request)
-        self.assertEqual('origin_check_wsh.py is called for /origin_check, p1',
+        self.assertEqual('origin_check_wsh.py is called for /origin_check, p1'
+                         '\xff\x00',
                          request.connection.written_data())
 
         request = mock.MockRequest(connection=mock.MockConn(''))
         request.ws_resource = '/sub/plain'
         request.ws_protocol = None
         dispatcher.transfer_data(request)
-        self.assertEqual('sub/plain_wsh.py is called for /sub/plain, None',
+        self.assertEqual('sub/plain_wsh.py is called for /sub/plain, None'
+                         '\xff\x00',
                          request.connection.written_data())
 
         request = mock.MockRequest(connection=mock.MockConn(''))
         request.ws_resource = '/sub/plain?'
         request.ws_protocol = None
         dispatcher.transfer_data(request)
-        self.assertEqual('sub/plain_wsh.py is called for /sub/plain?, None',
+        self.assertEqual('sub/plain_wsh.py is called for /sub/plain?, None'
+                         '\xff\x00',
                          request.connection.written_data())
 
         request = mock.MockRequest(connection=mock.MockConn(''))
         request.ws_resource = '/sub/plain?q=v'
         request.ws_protocol = None
         dispatcher.transfer_data(request)
-        self.assertEqual('sub/plain_wsh.py is called for /sub/plain?q=v, None',
+        self.assertEqual('sub/plain_wsh.py is called for /sub/plain?q=v, None'
+                         '\xff\x00',
                          request.connection.written_data())
 
     def test_transfer_data_no_handler(self):

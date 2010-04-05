@@ -61,8 +61,8 @@ _GOOD_RESPONSE_DEFAULT_PORT = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Location: ws://example.com/demo\r\n'
+    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Protocol: sample\r\n'
     '\r\n'
     '8jKS\'y:G*Co,Wxa-')
@@ -71,8 +71,8 @@ _GOOD_RESPONSE_SECURE = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Location: wss://example.com/demo\r\n'
+    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Protocol: sample\r\n'
     '\r\n'
     '8jKS\'y:G*Co,Wxa-')
@@ -97,8 +97,8 @@ _GOOD_RESPONSE_NONDEFAULT_PORT = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Location: ws://example.com:8081/demo\r\n'
+    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Protocol: sample\r\n'
     '\r\n'
     '8jKS\'y:G*Co,Wxa-')
@@ -107,8 +107,8 @@ _GOOD_RESPONSE_SECURE_NONDEF = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Location: wss://example.com:8081/demo\r\n'
+    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Protocol: sample\r\n'
     '\r\n'
     '8jKS\'y:G*Co,Wxa-')
@@ -132,8 +132,8 @@ _GOOD_RESPONSE_NO_PROTOCOL = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
     'Connection: Upgrade\r\n'
-    'Sec-WebSocket-Origin: http://example.com\r\n'
     'Sec-WebSocket-Location: ws://example.com/demo\r\n'
+    'Sec-WebSocket-Origin: http://example.com\r\n'
     '\r\n'
     '8jKS\'y:G*Co,Wxa-')
 

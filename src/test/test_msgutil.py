@@ -43,10 +43,16 @@ import mock
 
 
 def _create_request(read_data):
-    return mock.MockRequest(connection=mock.MockConn(read_data))
+    req = mock.MockRequest(connection=mock.MockConn(read_data))
+    req.client_terminated = False
+    req.server_terminated = False
+    return req
 
 def _create_blocking_request():
-    return mock.MockRequest(connection=mock.MockBlockingConn())
+    req = mock.MockRequest(connection=mock.MockBlockingConn())
+    req.client_terminated = False
+    req.server_terminated = False
+    return req
 
 class MessageTest(unittest.TestCase):
     def test_send_message(self):

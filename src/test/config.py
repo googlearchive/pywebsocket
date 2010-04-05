@@ -39,7 +39,7 @@ import sys
 
 
 # Add the parent directory to sys.path to enable importing mod_pywebsocket.
-sys.path += [os.path.join(os.path.split(__file__)[0], '..')]
+sys.path.insert(0, os.path.join(os.path.split(__file__)[0], '..'))
 
 
 # vi:sts=4 sw=4 et

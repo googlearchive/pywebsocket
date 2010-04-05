@@ -34,12 +34,12 @@ Apache HTTP Server and mod_python must be configured such that this
 function is called to handle Web Socket request.
 """
 
+import logging
 
 from mod_python import apache
 
 from mod_pywebsocket import dispatch
 from mod_pywebsocket import handshake
-from mod_pywebsocket import logging
 from mod_pywebsocket import util
 
 

@@ -270,12 +270,7 @@ class WebSocketHandshake(object):
         # in base ten using the numerals in the range U+0030 DIGIT ZERO (0) to
         # U+0039 DIGIT NINE (9).
         key = str(product)
-        # 4.1 21. insert /spaces_n/ U+0020 SPACE characters into /key_n/ at
-        # random positions.
-        for _ in range(spaces):
-            pos = random.randint(1, len(key) - 1)
-            key = key[0:pos] + ' ' + key[pos:]
-        # 4.1 22. insert between one and twelve random characters from the
+        # 4.1 21. insert between one and twelve random characters from the
         # range U+0021 to U+002F and U+003A to U+007E into /key_n/ at random
         # positions.
         available_chars = range(0x21, 0x2f + 1) + range(0x3a, 0x7e + 1)
@@ -284,6 +279,11 @@ class WebSocketHandshake(object):
             ch = random.choice(available_chars)
             pos = random.randint(0, len(key))
             key = key[0:pos] + chr(ch) + key[pos:]
+        # 4.1 22. insert /spaces_n/ U+0020 SPACE characters into /key_n/ at
+        # random positions other than start or end of the string.
+        for _ in range(spaces):
+            pos = random.randint(1, len(key) - 1)
+            key = key[0:pos] + ' ' + key[pos:]
         return number, key
 
     def _generate_key3(self):

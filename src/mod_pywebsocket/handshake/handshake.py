@@ -135,9 +135,9 @@ class Handshaker(object):
         self._request.ws_challenge_md5 = md5(
             self._request.ws_challenge).digest()
         self._logger.debug("challenge: %s" % _hexify(
-	    self._request.ws_challenge))
+            self._request.ws_challenge))
         self._logger.debug("response:  %s" % _hexify(
-	    self._request.ws_challenge_md5))
+            self._request.ws_challenge_md5))
 
     def _get_key_value(self, key_field):
         key_value = self._request.headers_in.get(key_field)

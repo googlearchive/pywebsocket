@@ -296,7 +296,10 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         if CGIHTTPServer.CGIHTTPRequestHandler.is_cgi(self):
             if '..' in self.path:
                 return False
-            scriptfile = self.translate_path(self.path.split('?', 2)[0])
+            # strip query parameter from request path
+            resource_name = self.path.split('?', 2)[0]
+            # convert resource_name into real path name in filesystem.
+            scriptfile = self.translate_path(resource_name)
             if not os.path.isfile(scriptfile):
                 return False
             if not self.is_executable(scriptfile):

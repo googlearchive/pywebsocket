@@ -44,8 +44,8 @@ if sys.version < '2.3':
     print >>sys.stderr, '%s requires Python 2.3 or later.' % _PACKAGE_NAME
     sys.exit(1)
 
-setup(author='Yuzo Fujishima',
-      author_email='yuzo@chromium.org',
+setup(author='Yuzo Fujishima, Fumitoshi Ukai',
+      author_email='yuzo@chromium.org, ukai@chromium.org',
       description='Web Socket extension for Apache HTTP Server.',
       long_description=(
               'mod_pywebsocket is an Apache HTTP Server extension for '
@@ -56,7 +56,7 @@ setup(author='Yuzo Fujishima',
       name=_PACKAGE_NAME,
       packages=[_PACKAGE_NAME, _PACKAGE_NAME + '.handshake'],
       url='http://code.google.com/p/pywebsocket/',
-      version='0.4.9.2',
+      version='0.5',
       )
 
 

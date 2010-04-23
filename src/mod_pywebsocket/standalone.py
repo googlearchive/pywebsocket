@@ -400,7 +400,7 @@ def _main():
                       type='int', default=_DEFAULT_LOG_BACKUP_COUNT,
                       help='Log backup count')
     parser.add_option('--allow-draft75', dest='allow_draft75',
-                      action='store_true', default=False,
+                      action='store_true', default=True,
                       help='Allow draft 75 handshake')
     parser.add_option('--strict', dest='strict', action='store_true',
                       default=False, help='Strictly check handshake request')

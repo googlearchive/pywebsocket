@@ -52,7 +52,7 @@ _PYOPT_HANDLER_ROOT = 'mod_pywebsocket.handler_root'
 _PYOPT_HANDLER_SCAN = 'mod_pywebsocket.handler_scan'
 
 # PythonOption to specify to allow draft75 handshake.
-# The default is None (Off)
+# The default is True (On)
 _PYOPT_ALLOW_DRAFT75 = 'mod_pywebsocket.allow_draft75'
 
 
@@ -111,7 +111,7 @@ def headerparserhandler(request):
 
     try:
         allowDraft75 = apache.main_server.get_options().get(
-		_PYOPT_ALLOW_DRAFT75, None)
+                _PYOPT_ALLOW_DRAFT75, "On")
         handshaker = handshake.Handshaker(request, _dispatcher,
                                           allowDraft75=allowDraft75)
         handshaker.do_handshake()

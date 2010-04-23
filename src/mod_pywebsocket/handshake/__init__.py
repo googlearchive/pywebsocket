@@ -53,7 +53,7 @@ from mod_pywebsocket.handshake._base import validate_protocol
 class Handshaker(object):
     """This class performs Web Socket handshake."""
 
-    def __init__(self, request, dispatcher, allowDraft75=False, strict=False):
+    def __init__(self, request, dispatcher, allowDraft75=True, strict=False):
         """Construct an instance.
 
         Args:

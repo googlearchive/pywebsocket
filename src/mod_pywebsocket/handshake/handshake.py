@@ -170,10 +170,10 @@ class Handshaker(object):
     def _get_challenge(self):
         # 5.2 4-7.
         key1 = self._get_key_value('Sec-Websocket-Key1')
-        if not key1:
+        if key1 is None:
             raise HandshakeError('Sec-WebSocket-Key1 not found')
         key2 = self._get_key_value('Sec-Websocket-Key2')
-        if not key2:
+        if key2 is None:
             raise HandshakeError('Sec-WebSocket-Key2 not found')
         # 5.2 8. let /challenge/ be the concatenation of /part_1/,
         challenge = ""

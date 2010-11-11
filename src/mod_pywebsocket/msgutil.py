@@ -77,18 +77,7 @@ def close_connection(request):
     Args:
         request: mod_python request.
     """
-    if request.server_terminated:
-        return
-    # 5.3 the server may decide to terminate the WebSocket connection by
-    # running through the following steps:
-    # 1. send a 0xFF byte and a 0x00 byte to the client to indicate the start
-    # of the closing handshake.
-    _write(request, '\xff\x00')
-    request.server_terminated = True
-    # TODO(ukai): 2. wait until the /client terminated/ flag has been set, or
-    # until a server-defined timeout expires.
-    # TODO: 3. close the WebSocket connection.
-    # note: mod_python Connection (mp_conn) doesn't have close method.
+    request.ws_stream.close_connection()
 
 
 def send_message(request, message):
@@ -100,9 +89,7 @@ def send_message(request, message):
     Raises:
         ConnectionTerminatedException: when server already terminated.
     """
-    if request.server_terminated:
-        raise ConnectionTerminatedException
-    _write(request, '\x00' + message.encode('utf-8') + '\xff')
+    request.ws_stream.send_message(message)
 
 
 def receive_message(request):
@@ -113,34 +100,7 @@ def receive_message(request):
     Raises:
         ConnectionTerminatedException: when client already terminated.
     """
-
-    if request.client_terminated:
-        raise ConnectionTerminatedException
-    while True:
-        # Read 1 byte.
-        # mp_conn.read will block if no bytes are available.
-        # Timeout is controlled by TimeOut directive of Apache.
-        frame_type_str = _read(request, 1)
-        frame_type = ord(frame_type_str[0])
-        if (frame_type & 0x80) == 0x80:
-            # The payload length is specified in the frame.
-            # Read and discard.
-            length = _payload_length(request)
-            _receive_bytes(request, length)
-            # 5.3 3. 12. if /type/ is 0xFF and /length/ is 0, then set the
-            # /client terminated/ flag and abort these steps.
-            if frame_type == 0xFF and length == 0:
-                request.client_terminated = True
-                raise ConnectionTerminatedException
-        else:
-            # The payload is delimited with \xff.
-            bytes = _read_until(request, '\xff')
-            # The Web Socket protocol section 4.4 specifies that invalid
-            # characters must be replaced with U+fffd REPLACEMENT CHARACTER.
-            message = bytes.decode('utf-8', 'replace')
-            if frame_type == 0x00:
-                return message
-            # Discard data of other types.
+    return request.ws_stream.receive_message()
 
 
 def _payload_length(request):

@@ -38,20 +38,19 @@ import unittest
 
 import config  # This must be imported before mod_pywebsocket.
 from mod_pywebsocket import msgutil
+from mod_pywebsocket import stream
 
 import mock
 
 
 def _create_request(read_data):
     req = mock.MockRequest(connection=mock.MockConn(read_data))
-    req.client_terminated = False
-    req.server_terminated = False
+    req.ws_stream = stream.Stream(req)
     return req
 
 def _create_blocking_request():
     req = mock.MockRequest(connection=mock.MockBlockingConn())
-    req.client_terminated = False
-    req.server_terminated = False
+    req.ws_stream = stream.Stream(req)
     return req
 
 class MessageTest(unittest.TestCase):

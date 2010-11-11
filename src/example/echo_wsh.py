@@ -28,9 +28,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-from mod_pywebsocket import msgutil
-
-
 _GOODBYE_MESSAGE = 'Goodbye'
 
 
@@ -40,8 +37,8 @@ def web_socket_do_extra_handshake(request):
 
 def web_socket_transfer_data(request):
     while True:
-        line = msgutil.receive_message(request)
-        msgutil.send_message(request, line)
+        line = request.ws_stream.receive_message()
+        request.ws_stream.send_message(line)
         if line == _GOODBYE_MESSAGE:
             return
 

@@ -303,6 +303,7 @@ class WebSocketHandshake(object):
             if name is None:
                 break
             # 4.1 35. read spaces
+            # TODO(tyoshino): Skip only one space as described in the spec.
             ch = self._skip_spaces()
             # 4.1 36. read /value/
             value = self._read_value(ch)
@@ -328,7 +329,8 @@ class WebSocketHandshake(object):
             if ch == '\r':  # 0x0D
                 return None
             elif ch == '\n':  # 0x0A
-                raise Exception('unexpected LF in name reading')
+                raise Exception(
+                    'unexpected LF when reading header name (%r)' % name)
             elif ch == ':':  # 0x3A
                 return name
             elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
@@ -346,19 +348,18 @@ class WebSocketHandshake(object):
             return ch
 
     def _read_value(self, ch):
-        # 4.1 33. let /name/ be empty byte arrays
+        # 4.1 33. let /value/ be empty byte arrays
         value = ''
-        # 4.1 35. treat the byte as described by the list in the next step
-        value += ch
         # 4.1 36. read a byte from server.
         while True:
-            ch = self._socket.recv(1)[0]
             if ch == '\r':  # 0x0D
                 return value
             elif ch == '\n':  # 0x0A
-                raise Exception('unexpected LF in value reading')
+                raise Exception(
+                    'unexpected LF when reading header value (%r)' % value)
             else:
                 value += ch
+            ch = self._socket.recv(1)
 
     def _skip_headers(self):
         terminator = '\r\n\r\n'

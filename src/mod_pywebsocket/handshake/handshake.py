@@ -54,7 +54,7 @@ _MANDATORY_HEADERS = [
 ]
 
 def _hexify(s):
-    return re.sub('.', lambda x: '%02x ' % ord(x.group(0)), s)
+    return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
 
 class Handshaker(object):
     """This class performs Web Socket handshake."""
@@ -142,7 +142,7 @@ class Handshaker(object):
     def _get_key_value(self, key_field):
         key_value = self._request.headers_in.get(key_field)
         if key_value is None:
-            self._logger.debug("no %s" % key_value)
+            self._logger.debug("no %s" % key_field)
             return None
         try:
             # 5.2 4. let /key-number_n/ be the digits (characters in the range

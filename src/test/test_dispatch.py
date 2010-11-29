@@ -197,7 +197,8 @@ class DispatcherTest(unittest.TestCase):
             dispatcher.transfer_data(request)
             self.fail()
         except Exception, e:
-            self.failUnless(str(e).find('Intentional') != -1)
+            self.failUnless(str(e).find('Intentional') != -1,
+                            "Unexpected exception: %s" % e)
 
     def test_scan_dir(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)

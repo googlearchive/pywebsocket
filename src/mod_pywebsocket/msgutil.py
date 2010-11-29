@@ -38,20 +38,37 @@ not suitable because they don't allow direct raw bytes writing/reading.
 
 
 import Queue
+import struct
 import threading
 
 from mod_pywebsocket import util
+
+
+# Frame opcodes defined in the spec
+OPCODE_CONTINUATION = 0x0
+OPCODE_CLOSE        = 0x1
+OPCODE_PING         = 0x2
+OPCODE_PONG         = 0x3
+OPCODE_TEXT         = 0x4
+OPCODE_BINARY       = 0x5
 
 
 class MsgUtilException(Exception):
     pass
 
 
+# TODO(tyoshino): This class is not used only for client initiated closing
+# handshake. Arrange exception definition and fix the code prepending
+# exception info in dispatch.py.
 class ConnectionTerminatedException(MsgUtilException):
     pass
 
 
-def _read(request, length):
+def read_better_exc(request, length):
+    """Reads length bytes from connection. In case we catch any exception,
+    prepends remote address to the exception message and raise again.
+    """
+
     bytes = request.connection.read(length)
     if not bytes:
         raise MsgUtilException(
@@ -60,7 +77,11 @@ def _read(request, length):
     return bytes
 
 
-def _write(request, bytes):
+def write_better_exc(request, bytes):
+    """Writes given bytes to connection. In case we catch any exception,
+    prepends remote address to the exception message and raise again.
+    """
+
     try:
         request.connection.write(bytes)
     except Exception, e:
@@ -103,10 +124,67 @@ def receive_message(request):
     return request.ws_stream.receive_message()
 
 
+def create_length_header(length, rsv4):
+    """Creates a length header."""
+
+    if rsv4 != 0 and rsv4 != 1:
+        raise Exception('rsv4 must be 0 or 1')
+
+    header = ''
+
+    if length <= 125:
+        second_byte = rsv4 << 7 | length
+        header += chr(second_byte)
+    elif length < 1 << 16:
+        second_byte = rsv4 << 7 | 126
+        header += chr(second_byte) + struct.pack('!H', length)
+    elif length < 1 << 63:
+        second_byte = rsv4 << 7 | 127
+        header += chr(second_byte) + struct.pack('!Q', length)
+    else:
+        raise StreamException('Payload is too big for one frame')
+
+    return header
+
+
+def create_header(opcode, payload_length, more, rsv1, rsv2, rsv3, rsv4):
+    """Creates a frame header."""
+
+    if opcode < 0 or 0xf < opcode:
+        raise Exception('Opcode out of range')
+
+    if payload_length < 0 or 1 << 63 <= payload_length:
+        raise Exception('payload_length out of range')
+
+    if (more | rsv1 | rsv2 | rsv3 | rsv4) & ~1:
+        raise Exception('Reserved bit parameter must be 0 or 1')
+
+    header = ''
+
+    first_byte = (more << 7
+                  | rsv1 << 6 | rsv2 << 5 | rsv3 << 4
+                  | opcode)
+    header += chr(first_byte)
+    header += create_length_header(payload_length, rsv4)
+
+    return header
+
+
+def create_text_frame(message):
+    """Creates a simple text frame with no extension, reserved bit."""
+
+    encoded_message = message.encode('utf-8')
+    frame = create_header(OPCODE_TEXT, len(encoded_message), 0, 0, 0, 0, 0)
+    frame += encoded_message
+    return frame
+
+
 def _payload_length(request):
+    """Reads a length header in a Hixie75 version frame with length."""
+
     length = 0
     while True:
-        b_str = _read(request, 1)
+        b_str = read_better_exc(request, 1)
         b = ord(b_str[0])
         length = length * 128 + (b & 0x7f)
         if (b & 0x80) == 0:
@@ -114,19 +192,30 @@ def _payload_length(request):
     return length
 
 
-def _receive_bytes(request, length):
+def receive_bytes(request, length):
+    """Receives multiple bytes. Retries read when we couldn't receive the
+    specified amount.
+
+    Raises:
+        ConnectionTerminatedException: when read returns empty string.
+    """
+
     bytes = []
     while length > 0:
-        new_bytes = _read(request, length)
+        new_bytes = read_better_exc(request, length)
         bytes.append(new_bytes)
         length -= len(new_bytes)
     return ''.join(bytes)
 
 
-def _read_until(request, delim_char):
+def read_until(request, delim_char):
+    """Reads bytes until we encounter delim_char. The result will not contain
+    delim_char.
+    """
+
     bytes = []
     while True:
-        ch = _read(request, 1)
+        ch = read_better_exc(request, 1)
         if ch == delim_char:
             break
         bytes.append(ch)

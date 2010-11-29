@@ -101,6 +101,7 @@ _DEFAULT_REQUEST_QUEUE_SIZE = 128
 # 1024 is practically large enough to contain WebSocket handshake lines.
 _MAX_MEMORIZED_LINES = 1024
 
+
 def _print_warnings_if_any(dispatcher):
     warnings = dispatcher.source_warnings()
     if warnings:
@@ -259,6 +260,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                     # In this case, handshake has been successful, so just log
                     # the exception and return False.
                     logging.info('mod_pywebsocket: %s' % e)
+                    logging.info('mod_pywebsocket: %s' % util.get_stack_trace())
                 return False
             except handshake.HandshakeError, e:
                 # Handshake for ws(s) failed. Assume http(s).
@@ -322,6 +324,7 @@ def _configure_logging(options):
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
+
 def _alias_handlers(dispatcher, websock_handlers_map_file):
     """Set aliases specified in websock_handler_map_file in dispatcher.
 
@@ -345,7 +348,6 @@ def _alias_handlers(dispatcher, websock_handlers_map_file):
                 logging.error(str(e))
     finally:
         fp.close()
-
 
 
 def _main():
@@ -462,7 +464,8 @@ def _main():
                                  WebSocketRequestHandler)
         server.serve_forever()
     except Exception, e:
-        logging.critical(str(e))
+        logging.critical('mod_pywebsocket: %s' % e)
+        logging.critical('mod_pywebsocket: %s' % util.get_stack_trace())
         sys.exit(1)
 
 

@@ -45,16 +45,22 @@ Example Usage:
  % PYTHONPATH=$cwd/src python ./mod_pywebsocket/standalone.py -p 8880 \
     -d $cwd/src/example
 
-# run client
+# run echo client
  % python ./src/example/echo_client.py -p 8880 -s localhost \
      -o http://localhost -r /echo -m test
 
 or
-# server setup to test old protocol
+
+# run echo client to test IETF HyBi 00 protocol
+ run with --protocol-version=hybi00
+
+or
+
+# server setup to test Hixie 75 protocol
  run with --allow-draft75
 
-# run client
- run with --draft75
+# run echo client to test Hixie 75 protocol
+ run with --protocol-version=hixie75
 """
 
 
@@ -74,7 +80,12 @@ _DEFAULT_PORT = 80
 _DEFAULT_SECURE_PORT = 443
 _UNDEFINED_PORT = -1
 
+# Special message that tells the echo server to start closing handshake
 _GOODBYE_MESSAGE = 'Goodbye'
+
+# Opcodes introduced in IETF HyBi 01 for the new framing format
+_OPCODE_CLOSE = 1
+_OPCODE_TEXT = 4
 
 
 def _method_line(resource):
@@ -86,8 +97,20 @@ def _origin_header(origin):
     # and the /origin/ value, converted to ASCII lowercase, to /fields/.
     return 'Origin: %s\r\n' % origin.lower()
 
+
 def _hexify(s):
     return re.sub(".", lambda x: "%02x " % ord(x.group(0)), s)
+
+
+def _receive_bytes(socket, length):
+    bytes = []
+    while length > 0:
+        new_bytes = socket.recv(length)
+        if not new_bytes:
+            raise Exception('connection closed unexpectedly')
+        bytes.append(new_bytes)
+        length -= len(new_bytes)
+    return ''.join(bytes)
 
 
 class _TLSSocket(object):
@@ -108,7 +131,7 @@ class _TLSSocket(object):
 
 
 class WebSocketHandshake(object):
-    """Web Socket handshake (draft 76 or later)."""
+    """Web Socket handshake for IETF HyBi 00 or later."""
 
     _UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
     _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
@@ -121,7 +144,7 @@ class WebSocketHandshake(object):
         """Handshake Web Socket.
 
         Raises:
-          Exception: handshake failed.
+            Exception: handshake failed.
         """
         # 4.1 5. send request line.
         self._socket.send(_method_line(self._options.resource))
@@ -144,6 +167,14 @@ class WebSocketHandshake(object):
         self._number2, key2 = self._generate_sec_websocket_key()
         fields.append('Sec-WebSocket-Key2: ' + key2 + '\r\n')
 
+        if self._options.protocol_version == 'hybi01':
+            fields.append('Sec-WebSocket-Draft: 1\r\n')
+        elif self._options.protocol_version == 'hybi00':
+            fields.append('Sec-WebSocket-Draft: 0\r\n')
+        else:
+            raise Exception('illegal --protocol-version flag: %s' %
+                            self._options.protocol_version)
+
         # 4.1 24. For each string in /fields/, in a random order: send the
         # string, encoded as UTF-8, followed by a UTF-8 encoded U+000D CARRIAGE
         # RETURN U+000A LINE FEED character pair (CRLF).
@@ -165,7 +196,7 @@ class WebSocketHandshake(object):
         # bytes.
         field = ""
         while True:
-            ch = self._socket.recv(1)
+            ch = _receive_bytes(self._socket, 1)
             field += ch
             if ch == '\n':
                 break
@@ -187,7 +218,7 @@ class WebSocketHandshake(object):
         # connection and abort these steps.
         if not re.match("[0-9][0-9][0-9]", code):
             raise Exception('wrong code %s in: %s' % (code, field))
-        # 4.1 31. if /code, interpreted as UTF-8, is "101", then move to the
+        # 4.1 31. if /code/, interpreted as UTF-8, is "101", then move to the
         # next step.
         if code != "101":
             raise Exception('unexpected code in: %s' % field)
@@ -195,7 +226,7 @@ class WebSocketHandshake(object):
         fields = self._read_fields()
         # 4.1 40. _Fields processing_
         # read a byte from server
-        ch = self._socket.recv(1)[0]
+        ch = _receive_bytes(self._socket, 1)
         if ch != '\n':  # 0x0A
             raise Exception('expected LF after line: %s: %s' % (name, value))
         # 4.1 41. check /fields/
@@ -244,7 +275,7 @@ class WebSocketHandshake(object):
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
-        reply = self._socket.recv(16)
+        reply = _receive_bytes(self._socket, 16)
         logging.info("reply    : %s" % _hexify(reply))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
@@ -275,13 +306,13 @@ class WebSocketHandshake(object):
         # positions.
         available_chars = range(0x21, 0x2f + 1) + range(0x3a, 0x7e + 1)
         n = random.randint(1, 12)
-        for _ in range(n):
+        for _ in xrange(n):
             ch = random.choice(available_chars)
             pos = random.randint(0, len(key))
             key = key[0:pos] + chr(ch) + key[pos:]
         # 4.1 22. insert /spaces_n/ U+0020 SPACE characters into /key_n/ at
         # random positions other than start or end of the string.
-        for _ in range(spaces):
+        for _ in xrange(spaces):
             pos = random.randint(1, len(key) - 1)
             key = key[0:pos] + ' ' + key[pos:]
         return number, key
@@ -307,15 +338,16 @@ class WebSocketHandshake(object):
             ch = self._skip_spaces()
             # 4.1 36. read /value/
             value = self._read_value(ch)
-            # 4.1 37. read a byte fro mthe server
-            ch = self._socket.recv(1)[0]
+            # 4.1 37. read a byte from the server
+            ch = _receive_bytes(self._socket, 1)
             if ch != '\n':  # 0x0A
                 raise Exception('expected LF after line: %s: %s' % (
                     name, value))
             # 4.1 38. append an entry to the /fields/ list that has the name
-            # given by the string obtained by interpreting the /name/ byte array
-            # as a UTF-8 stream and the value given by the string obtained by
-            # interpreting the /value/ byte array as a UTF-8 byte stream.
+            # given by the string obtained by interpreting the /name/ byte
+            # array as a UTF-8 stream and the value given by the string
+            # obtained by interpreting the /value/ byte array as a UTF-8 byte
+            # stream.
             fields.setdefault(name, []).append(value)
             # 4.1 39. return to the "Field" step above
         return fields
@@ -325,7 +357,7 @@ class WebSocketHandshake(object):
         name = ""
         while True:
             # 4.1 34. read a byte from the server
-            ch = self._socket.recv(1)[0]
+            ch = _receive_bytes(self._socket, 1)
             if ch == '\r':  # 0x0D
                 return None
             elif ch == '\n':  # 0x0A
@@ -342,7 +374,7 @@ class WebSocketHandshake(object):
     def _skip_spaces(self):
         # 4.1 35. read a byte from the server
         while True:
-            ch = self._socket.recv(1)[0]
+            ch = _receive_bytes(self._socket, 1)
             if ch == ' ':  # 0x20
                 continue
             return ch
@@ -359,13 +391,13 @@ class WebSocketHandshake(object):
                     'unexpected LF when reading header value (%r)' % value)
             else:
                 value += ch
-            ch = self._socket.recv(1)
+            ch = _receive_bytes(self._socket, 1)
 
     def _skip_headers(self):
         terminator = '\r\n\r\n'
         pos = 0
         while pos < len(terminator):
-            received = self._socket.recv(1)[0]
+            received = _receive_bytes(self._socket, 1)
             if received == terminator[pos]:
                 pos += 1
             elif received == terminator[0]:
@@ -388,14 +420,14 @@ class WebSocketHandshake(object):
             (self._options.use_tls and
              self._options.server_port != _DEFAULT_SECURE_PORT)):
             hostport += ':' + str(self._options.server_port)
-        # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE character,
-        # and /hostport/, to /fields/.
+        # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
+        # character, and /hostport/, to /fields/.
         host = 'Host: ' + hostport + '\r\n'
         return host
 
 
-class WebSocketDraft75Handshake(WebSocketHandshake):
-    """Web Socket draft 75 handshake."""
+class WebSocketHixie75Handshake(WebSocketHandshake):
+    """Web Socket Hixie 75 handshake."""
 
     _EXPECTED_RESPONSE = (
         'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
@@ -413,12 +445,13 @@ class WebSocketDraft75Handshake(WebSocketHandshake):
         self._socket.send(_origin_header(self._options.origin))
         self._socket.send('\r\n')
 
-        for expected_char in WebSocketDraft75Handshake._EXPECTED_RESPONSE:
-            received = self._socket.recv(1)[0]
+        for expected_char in WebSocketHixie75Handshake._EXPECTED_RESPONSE:
+            received = _receive_bytes(self._socket, 1)
             if expected_char != received:
                 raise Exception('Handshake failure')
         # We cut corners and skip other headers.
         self._skip_headers()
+
 
 class EchoClient(object):
     """Web Socket echo client."""
@@ -432,6 +465,7 @@ class EchoClient(object):
 
         Shake hands and then repeat sending message and receiving its echo.
         """
+
         self._socket = socket.socket()
         self._socket.settimeout(self._options.socket_timeout)
         try:
@@ -440,47 +474,59 @@ class EchoClient(object):
             if self._options.use_tls:
                 self._socket = _TLSSocket(self._socket)
 
-            if self._options.draft75:
-                self._handshake = WebSocketDraft75Handshake(
-                    self._socket, self._options)
-            else:
-                self._handshake = WebSocketHandshake(
-                    self._socket, self._options)
+            self._handshake = self._create_handshake()
+
             self._handshake.handshake()
 
             for line in self._options.message.split(','):
-                frame = '\x00' + line.encode('utf-8') + '\xff'
+                frame = self._create_text_frame(line)
+
                 self._socket.send(frame)
                 if self._options.verbose:
                     print 'Send: %s' % line
-                received = self._socket.recv(len(frame))
-                if received != frame:
-                    raise Exception('Incorrect echo: %r' % received)
-                if self._options.verbose:
-                    print 'Recv: %s' % received[1:-1].decode('utf-8',
-                                                             'replace')
-            if not self._options.draft75:
-                self._do_closing_handshake()
+                received = _receive_bytes(self._socket, len(frame))
+
+                try:
+                    payload = self._parse_frame_briefly(received)
+
+                    if self._options.verbose:
+                        print 'Recv: %s' % payload
+
+                    if received != frame:
+                        raise Exception('Incorrect echo: %r' % received)
+                except Exception, e:
+                    if self._options.verbose:
+                        print 'Error: %s' % e
+                    raise
+
+            self._do_closing_handshake()
         finally:
             self._socket.close()
 
-    def _do_closing_handshake(self):
-        """Perform closing handshake."""
+    def _do_closing_handshake_generic(self, closing_frame):
+        """Perform closing handshake using the specified closing frame."""
+
         closing = ''
+
         try:
             try:
                 if self._options.message.split(',')[-1] == _GOODBYE_MESSAGE:
                     # requested server initiated closing handshake, so
                     # expecting closing handshake message from server.
-                    closing = self._socket.recv(2)
-                    if closing == '\xff\x00':
+                    logging.info('Wait for server-initiated closing handshake')
+                    closing = _receive_bytes(self._socket, len(closing_frame))
+                    if closing == closing_frame:
                         # 4.2 3 8 If the /frame type/ is 0xFF and the
                         # /length/ was 0, then run the following substeps.
                         # TODO(ukai): handle \xff\x80..\x00 case.
                         # 1. If the WebSocket closing handshake has not
                         # yet started, then start the WebSocket closing
                         # handshake.
-                        self._socket.send('\xff\x00')
+                        print 'Recv close'
+                        self._socket.send(closing_frame)
+                        print 'Send ack'
+                        logging.info(
+                            'Received closing handshake and sent ack')
                         # 2. Wait until either the WebSocket closing
                         # handshake has started or the WebSocket connection
                         # is closed.
@@ -492,18 +538,119 @@ class EchoClient(object):
         finally:
             # if server didn't initiate closing handshake, start
             # closing handshake from client.
-            if closing != '\xff\x00':
-                print 'Closing handshake'
+            if closing != closing_frame:
                 # 2, 3 Send a 0xFF byte and 0x00 byte to the server.
-                self._socket.send('\xff\x00')
+                self._socket.send(closing_frame)
+                print 'Send close'
+                logging.info('Sent closing handshake')
                 # 4 The WebSocket closing handshake has started.
                 # 5 Wait a user-agent-determined length of time, or
                 # until the WebSocket connection is closed.
                 # NOTE: the closing handshake finishes once the server
                 # returns the 0xFF package, as described above.
-                closing = self._socket.recv(2)
-                if closing != '\xFF\x00':
-                    print 'No 0xFF package from server'
+                closing = _receive_bytes(self._socket, len(closing_frame))
+                if closing != closing_frame:
+                    logging.info('Received no valid ack')
+                else:
+                    print 'Recv ack'
+                    logging.info('Received ack')
+
+    def _create_handshake(self):
+        return WebSocketHandshake(self._socket, self._options)
+
+    def _create_text_frame(self, payload):
+        encoded_payload = payload.encode('utf-8')
+        header = chr(_OPCODE_TEXT)
+        payload_length = len(encoded_payload)
+        if payload_length <= 125:
+            header += chr(payload_length)
+        elif payload_length < 1 << 16:
+            header += chr(126) + struct.pack('!H', payload_length)
+        elif payload_length < 1 << 63:
+            header += chr(127) + struct.pack('!Q', payload_length)
+        else:
+            raise Exception('Too long payload (%d byte)' % payload_length)
+        return header + encoded_payload
+
+    def _parse_frame_briefly(self, frame):
+        if len(frame) <= 1:
+            raise Exception('Incomplete %d octet frame' % len(frame))
+
+        first_byte = ord(frame[0])
+        if first_byte & 0xf != _OPCODE_TEXT:
+            raise Exception('Bad opcode %d' % (first_byte & 0xf))
+        elif first_byte & 0xf0:
+            raise Exception(
+                'Any of unsupported flag more/rsv1/rsv2/rsv3 is set')
+
+        second_byte = ord(frame[1])
+        if second_byte & 0x80:
+            raise Exception('Unsupported flag rsv4 is set')
+
+        payload_length = second_byte & 0x7f
+        if payload_length == 127:
+            if len(frame) < 2 + 8:
+                raise Exception('Incomplete length header')
+            payload_length = struct.unpack('!Q', frame[2:9])[0]
+            payload_pos = 10
+        elif payload_length == 126:
+            if len(frame) < 2 + 2:
+                raise Exception('Incomplete length header')
+            payload_length = struct.unpack('!H', frame[2:3])[0]
+            payload_pos = 4
+        else:
+            payload_pos = 2
+
+        if len(frame) < payload_pos + payload_length:
+            raise Exception('Incomplete payload')
+
+        payload = frame[payload_pos:payload_pos + payload_length]
+        return payload.decode('utf-8', 'replace')
+
+    def _do_closing_handshake(self):
+        self._do_closing_handshake_generic(chr(_OPCODE_CLOSE) + '\x00')
+
+    def _parse_frame_briefly_hixie75(self, frame):
+        if len(frame) <= 0:
+            raise Exception('Incomplete 0 octet frame')
+        elif frame[0] != '\x00':
+            raise Exception('Bad frame type %d' % ord(frame[0]))
+        else:
+            return frame[1:-1].decode('utf-8', 'replace')
+
+
+class EchoClientHybi00(EchoClient):
+    """Web Socket echo client using IETF HyBi 00 protocol."""
+
+    def _create_handshake(self):
+        return WebSocketHandshake(self._socket, self._options)
+
+    def _create_text_frame(self, payload):
+        encoded_payload = payload.encode('utf-8')
+        return ''.join(['\x00', encoded_payload, '\xff'])
+
+    def _parse_frame_briefly(self, frame):
+        return self._parse_frame_briefly_hixie75(frame)
+
+    def _do_closing_handshake(self):
+        self._do_closing_handshake_generic('\xff\x00')
+
+
+class EchoClientHixie75(EchoClient):
+    """Web Socket echo client using Hixie 75 protocol."""
+
+    def _create_handshake(self):
+        return  WebSocketHixie75Handshake(self._socket, self._options)
+
+    def _create_text_frame(self, payload):
+        encoded_payload = payload.encode('utf-8')
+        return ''.join(['\x00', encoded_payload, '\xff'])
+
+    def _parse_frame_briefly(self, frame):
+        return self._parse_frame_briefly_hixie75(frame)
+
+    def _do_closing_handshake(self):
+        pass
 
 
 def main():
@@ -532,10 +679,18 @@ def main():
                       dest='socket_timeout', type='int', default=_TIMEOUT_SEC,
                       help='Timeout(sec) for sockets')
     parser.add_option('--draft75', dest='draft75',
-                      action='store_true', default=False,
-                      help='use draft-75 handshake protocol')
+                       action='store_true', default=False,
+                      help='use the Hixie 75 protocol. This overrides '
+                      'protocol-version flag')
+    parser.add_option('--protocol-version', dest='protocol_version',
+                      type='string', default='hybi01',
+                      help='WebSocket protocol version to use. One of '
+                      + '\'hybi01\', \'hybi00\', \'hixie75\'')
 
     (options, unused_args) = parser.parse_args()
+
+    if options.draft75:
+        options.protocol_version = 'hixie75'
 
     # Default port number depends on whether TLS is used.
     if options.server_port == _UNDEFINED_PORT:
@@ -549,7 +704,15 @@ def main():
     if not options.message:
         options.message = u'Hello,\u65e5\u672c'   # "Japan" in Japanese
 
-    EchoClient(options).run()
+    if options.protocol_version == 'hybi01':
+        EchoClient(options).run()
+    elif options.protocol_version == 'hybi00':
+        EchoClientHybi00(options).run()
+    elif options.protocol_version == 'hixie75':
+        EchoClientHixie75(options).run()
+    else:
+        raise Exception(
+            'Invalid protocol version flag: %s' % options.protocol_version)
 
 
 if __name__ == '__main__':

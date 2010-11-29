@@ -42,6 +42,8 @@ from md5 import md5
 import re
 import struct
 
+from mod_pywebsocket import stream
+from mod_pywebsocket import stream_hixie75
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
 from mod_pywebsocket.handshake._base import validate_protocol
@@ -84,6 +86,7 @@ class Handshaker(object):
         self._set_protocol()
         self._set_location()
         self._set_origin()
+        self._set_protocol_version()
         self._set_challenge_response()
         self._dispatcher.do_extra_handshake(self._request)
         self._send_handshake()
@@ -128,6 +131,25 @@ class Handshaker(object):
         if origin is not None:
             self._request.ws_origin = origin
 
+    def _set_protocol_version(self):
+        # |Sec-WebSocket-Draft|
+        draft = self._request.headers_in.get('Sec-WebSocket-Draft')
+        if draft is not None:
+            try:
+                if int(draft) < 0:
+                    raise ValueError
+                if int(draft) >= 1:
+                    # Make this default when ready.
+                    self._logger.debug('IETF HyBi 01 framing')
+                    self._request.ws_stream = stream.Stream(self._request)
+                    return
+            except ValueError, e:
+                raise HandshakeError(
+                    'Illegal value for Sec-WebSocket-Draft: %s' % draft)
+
+        self._logger.debug('IETF Hixie 75 framing')
+        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
+
     def _set_challenge_response(self):
         # 5.2 4-8.
         self._request.ws_challenge = self._get_challenge()
@@ -142,39 +164,37 @@ class Handshaker(object):
     def _get_key_value(self, key_field):
         key_value = self._request.headers_in.get(key_field)
         if key_value is None:
-            self._logger.debug("no %s" % key_field)
-            return None
+            raise HandshakeError('%s field not found' % key_field)
+
+        # 5.2 4. let /key-number_n/ be the digits (characters in the range
+        # U+0030 DIGIT ZERO (0) to U+0039 DIGIT NINE (9)) in /key_n/,
+        # interpreted as a base ten integer, ignoring all other characters
+        # in /key_n/.
         try:
-            # 5.2 4. let /key-number_n/ be the digits (characters in the range
-            # U+0030 DIGIT ZERO (0) to U+0039 DIGIT NINE (9)) in /key_n/,
-            # interpreted as a base ten integer, ignoring all other characters
-            # in /key_n/
             key_number = int(re.sub("\\D", "", key_value))
-            # 5.2 5. let /spaces_n/ be the number of U+0020 SPACE characters
-            # in /key_n/.
-            spaces = re.subn(" ", "", key_value)[1]
-            # 5.2 6. if /key-number_n/ is not an integral multiple of /spaces_n/
-            # then abort the WebSocket connection.
-            if key_number % spaces != 0:
-                raise handshakeError('key_number %d is not an integral '
-                                     'multiple of spaces %d' % (key_number,
-                                                                spaces))
-            # 5.2 7. let /part_n/ be /key_number_n/ divided by /spaces_n/.
-            part = key_number / spaces
-            self._logger.debug("%s: %s => %d / %d => %d" % (
-                key_field, key_value, key_number, spaces, part))
-            return part
         except:
-            return None
+            raise HandshakeError('%s field contains no digit' % key_field)
+        # 5.2 5. let /spaces_n/ be the number of U+0020 SPACE characters
+        # in /key_n/.
+        spaces = re.subn(" ", "", key_value)[1]
+        if spaces == 0:
+            raise HandshakeError('%s field contains no space' % key_field)
+        # 5.2 6. if /key-number_n/ is not an integral multiple of /spaces_n/
+        # then abort the WebSocket connection.
+        if key_number % spaces != 0:
+            raise HandshakeError('key_number %d is not an integral '
+                                 'multiple of spaces %d' % (key_number,
+                                                            spaces))
+        # 5.2 7. let /part_n/ be /key_number_n/ divided by /spaces_n/.
+        part = key_number / spaces
+        self._logger.debug("%s: %s => %d / %d => %d" % (
+            key_field, key_value, key_number, spaces, part))
+        return part
 
     def _get_challenge(self):
         # 5.2 4-7.
         key1 = self._get_key_value('Sec-Websocket-Key1')
-        if key1 is None:
-            raise HandshakeError('Sec-WebSocket-Key1 not found')
         key2 = self._get_key_value('Sec-Websocket-Key2')
-        if key2 is None:
-            raise HandshakeError('Sec-WebSocket-Key2 not found')
         # 5.2 8. let /challenge/ be the concatenation of /part_1/,
         challenge = ""
         challenge += struct.pack("!I", key1)  # network byteorder int

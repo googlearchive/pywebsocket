@@ -155,6 +155,36 @@ _GOOD_REQUEST_WITH_OPTIONAL_HEADERS = (
     '^n:ds[4U'
 )
 
+# TODO(tyoshino): Include \r \n in key3, challenge response.
+
+_GOOD_REQUEST_WITH_NONPRINTABLE_KEY = (
+    80,
+    'GET',
+    '/demo',
+    {
+        'Host':'example.com',
+        'Connection':'Upgrade',
+        'Sec-WebSocket-Key2':'y  R2 48 Q1O4  e|BV3 i5 1  u- 65',
+        'Sec-WebSocket-Protocol':'sample',
+        'Upgrade':'WebSocket',
+        'Sec-WebSocket-Key1':'36 7   74 i  92 2\'m 9 0G',
+        'Origin':'http://example.com',
+    },
+    ''.join(map(chr, [0x01, 0xd1, 0xdd, 0x3b, 0xd1, 0x56, 0x63, 0xff]))
+)
+
+_GOOD_RESPONSE_WITH_NONPRINTABLE_KEY = (
+    'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
+    'Upgrade: WebSocket\r\n'
+    'Connection: Upgrade\r\n'
+    'Sec-WebSocket-Location: ws://example.com/demo\r\n'
+    'Sec-WebSocket-Origin: http://example.com\r\n'
+    'Sec-WebSocket-Protocol: sample\r\n'
+    '\r\n' +
+    ''.join(map(chr, [0x0b, 0x99, 0xfa, 0x55, 0xbd, 0x01, 0x23, 0x7b,
+                      0x45, 0xa2, 0xf1, 0xd0, 0x87, 0x8a, 0xee, 0xeb]))
+)
+
 _BAD_REQUESTS = (
     (  # HTTP request
         80,
@@ -390,6 +420,15 @@ class HandshakerTest(unittest.TestCase):
                          request.headers_in['AKey'])
         self.assertEqual('',
                          request.headers_in['EmptyValue'])
+
+    def test_good_request_with_nonprintable_key(self):
+        request = _create_request(_GOOD_REQUEST_WITH_NONPRINTABLE_KEY)
+        handshaker = handshake.Handshaker(request,
+                                          mock.MockDispatcher())
+        handshaker.do_handshake()
+        self.assertEqual(_GOOD_RESPONSE_WITH_NONPRINTABLE_KEY,
+                         request.connection.written_data())
+        self.assertEqual('sample', request.ws_protocol)
 
     def test_bad_requests(self):
         for request in map(_create_request, _BAD_REQUESTS):

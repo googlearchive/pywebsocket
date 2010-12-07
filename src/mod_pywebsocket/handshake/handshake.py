@@ -38,7 +38,15 @@ not suitable because they don't allow direct raw bytes writing/reading.
 
 
 import logging
-from md5 import md5
+
+# Use md5 module in Python 2.4
+try:
+    import hashlib
+    md5_hash = hashlib.md5
+except ImportError:
+    import md5
+    md5_hash = md5.md5
+
 import re
 import struct
 
@@ -154,7 +162,7 @@ class Handshaker(object):
         # 5.2 4-8.
         self._request.ws_challenge = self._get_challenge()
         # 5.2 9. let /response/ be the MD5 finterprint of /challenge/
-        self._request.ws_challenge_md5 = md5(
+        self._request.ws_challenge_md5 = md5_hash(
             self._request.ws_challenge).digest()
         self._logger.debug("challenge: %s" % _hexify(
             self._request.ws_challenge))

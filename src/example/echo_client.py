@@ -205,7 +205,9 @@ class WebSocketHandshake(object):
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
         self._socket.send(self._key3)
-        logging.info("%s" % _hexify(self._key3))
+        logging.debug('%s' % _hexify(self._key3))
+
+        logging.info('Sent handshake')
 
         # 4.1 28. Read bytes from the server until either the connection closes,
         # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
@@ -279,20 +281,20 @@ class WebSocketHandshake(object):
         challenge += struct.pack("!I", self._number2)
         challenge += self._key3
 
-        logging.info("num %d, %d, %s" % (
+        logging.debug('num %d, %d, %s' % (
             self._number1, self._number2,
             _hexify(self._key3)))
-        logging.info("challenge: %s" % _hexify(challenge))
+        logging.debug('challenge: %s' % _hexify(challenge))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = md5_hash(challenge).digest()
-        logging.info("expected : %s" % _hexify(expected))
+        logging.debug('expected : %s' % _hexify(expected))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
-        logging.info("reply    : %s" % _hexify(reply))
+        logging.debug('reply    : %s' % _hexify(reply))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.
@@ -461,6 +463,8 @@ class WebSocketHixie75Handshake(WebSocketHandshake):
         self._socket.send(_origin_header(self._options.origin))
         self._socket.send('\r\n')
 
+        logging.info('Sent handshake')
+
         for expected_char in WebSocketHixie75Handshake._EXPECTED_RESPONSE:
             received = _receive_bytes(self._socket, 1)
             if expected_char != received:
@@ -493,6 +497,8 @@ class EchoClient(object):
             self._handshake = self._create_handshake()
 
             self._handshake.handshake()
+
+            logging.info('Connection established')
 
             for line in self._options.message.split(','):
                 frame = self._create_text_frame(line)

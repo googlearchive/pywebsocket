@@ -115,7 +115,7 @@ def _origin_header(origin):
 
 
 def _hexify(s):
-    return re.sub(".", lambda x: "%02x " % ord(x.group(0)), s)
+    return re.sub('.', lambda x: '%02x ' % ord(x.group(0)), s)
 
 
 def _receive_bytes(socket, length):
@@ -212,7 +212,7 @@ class WebSocketHandshake(object):
         # 4.1 28. Read bytes from the server until either the connection closes,
         # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
         # bytes.
-        field = ""
+        field = ''
         while True:
             ch = _receive_bytes(self._socket, 1)
             field += ch
@@ -224,7 +224,7 @@ class WebSocketHandshake(object):
         # and abort these steps.
         if len(field) < 7 or not field.endswith('\r\n'):
             raise Exception('wrong status line: %s' % field)
-        m = re.match("[^ ]* ([^ ]*) .*", field)
+        m = re.match('[^ ]* ([^ ]*) .*', field)
         if m is None:
             raise Exception('no code found in: %s' % field)
         # 4.1 29. let /code/ be the substring of /field/ that starts from the
@@ -234,11 +234,11 @@ class WebSocketHandshake(object):
         # 4.1 30. if /code/ is not three bytes long, or if any of the bytes in
         # /code/ are not in the range 0x30 to 0x90, then fail the WebSocket
         # connection and abort these steps.
-        if not re.match("[0-9][0-9][0-9]", code):
+        if not re.match('[0-9][0-9][0-9]', code):
             raise Exception('wrong code %s in: %s' % (code, field))
         # 4.1 31. if /code/, interpreted as UTF-8, is "101", then move to the
         # next step.
-        if code != "101":
+        if code != '101':
             raise Exception('unexpected code in: %s' % field)
         # 4.1 32-39. read fields into /fields/
         fields = self._read_fields()
@@ -277,8 +277,8 @@ class WebSocketHandshake(object):
         # expressed as a big endian 32 bit integer, /number_2/, expressed
         # as big endian 32 bit integer, and the eight bytes of /key_3/ in the
         # order they were sent on the wire.
-        challenge = struct.pack("!I", self._number1)
-        challenge += struct.pack("!I", self._number2)
+        challenge = struct.pack('!I', self._number1)
+        challenge += struct.pack('!I', self._number2)
         challenge += self._key3
 
         logging.debug('num %d, %d, %s' % (
@@ -372,7 +372,7 @@ class WebSocketHandshake(object):
 
     def _read_name(self):
         # 4.1 33. let /name/ be empty byte arrays
-        name = ""
+        name = ''
         while True:
             # 4.1 34. read a byte from the server
             ch = _receive_bytes(self._socket, 1)

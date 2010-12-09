@@ -72,7 +72,7 @@ def __translate_interp(interp, cygwin_path):
     """
     if not cygwin_path:
         return interp
-    m = re.match("^[^ ]*/([^ ]+)( .*)?", interp)
+    m = re.match('^[^ ]*/([^ ]+)( .*)?', interp)
     if m:
         cmd = os.path.join(cygwin_path, m.group(1))
         return cmd + m.group(2)
@@ -96,7 +96,7 @@ def get_script_interp(script_path, cygwin_path=None):
     fp = open(script_path)
     line = fp.readline()
     fp.close()
-    m = re.match("^#!(.*)", line)
+    m = re.match('^#!(.*)', line)
     if m:
         return __translate_interp(m.group(1), cygwin_path)
     return None
@@ -113,7 +113,7 @@ def wrap_popen3_for_win(cygwin_path):
         cmdline = cmd.split(' ')
         interp = get_script_interp(cmdline[0], cygwin_path)
         if interp:
-            cmd = interp + " " + cmd
+            cmd = interp + ' ' + cmd
         return __orig_popen3(cmd, mode, bufsize)
     os.popen3 = __wrap_popen3
 

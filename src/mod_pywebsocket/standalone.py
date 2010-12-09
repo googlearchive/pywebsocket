@@ -321,7 +321,7 @@ def _configure_logging(options):
     else:
         handler = logging.StreamHandler()
     formatter = logging.Formatter(
-            "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s")
+            '[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 

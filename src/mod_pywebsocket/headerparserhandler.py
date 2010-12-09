@@ -78,7 +78,7 @@ class ApacheLogHandler(logging.Handler):
         self.log_error(record.getMessage(), apache_level)
 
 
-logging.getLogger("mod_pywebsocket").addHandler(ApacheLogHandler())
+logging.getLogger('mod_pywebsocket').addHandler(ApacheLogHandler())
 
 
 def _create_dispatcher():

@@ -80,7 +80,7 @@ class Handshaker(object):
         handshake.
         """
 
-        self._logger = logging.getLogger("mod_pywebsocket.handshake")
+        self._logger = logging.getLogger('mod_pywebsocket.handshake')
         self._request = request
         self._dispatcher = dispatcher
 
@@ -164,9 +164,9 @@ class Handshaker(object):
         # 5.2 9. let /response/ be the MD5 finterprint of /challenge/
         self._request.ws_challenge_md5 = md5_hash(
             self._request.ws_challenge).digest()
-        self._logger.debug("challenge: %s" % _hexify(
+        self._logger.debug('challenge: %s' % _hexify(
             self._request.ws_challenge))
-        self._logger.debug("response:  %s" % _hexify(
+        self._logger.debug('response:  %s' % _hexify(
             self._request.ws_challenge_md5))
 
     def _get_key_value(self, key_field):
@@ -195,7 +195,7 @@ class Handshaker(object):
                                                             spaces))
         # 5.2 7. let /part_n/ be /key_number_n/ divided by /spaces_n/.
         part = key_number / spaces
-        self._logger.debug("%s: %s => %d / %d => %d" % (
+        self._logger.debug('%s: %s => %d / %d => %d' % (
             key_field, key_value, key_number, spaces, part))
         return part
 
@@ -204,9 +204,9 @@ class Handshaker(object):
         key1 = self._get_key_value('Sec-Websocket-Key1')
         key2 = self._get_key_value('Sec-Websocket-Key2')
         # 5.2 8. let /challenge/ be the concatenation of /part_1/,
-        challenge = ""
-        challenge += struct.pack("!I", key1)  # network byteorder int
-        challenge += struct.pack("!I", key2)  # network byteorder int
+        challenge = ''
+        challenge += struct.pack('!I', key1)  # network byteorder int
+        challenge += struct.pack('!I', key2)  # network byteorder int
         challenge += self._request.connection.read(8)
         return challenge
 

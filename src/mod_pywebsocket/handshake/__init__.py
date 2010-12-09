@@ -68,7 +68,7 @@ class Handshaker(object):
         handshake.
         """
 
-        self._logger = logging.getLogger("mod_pywebsocket.handshake")
+        self._logger = logging.getLogger('mod_pywebsocket.handshake')
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict

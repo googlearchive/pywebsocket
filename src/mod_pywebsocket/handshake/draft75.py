@@ -37,8 +37,11 @@ not suitable because they don't allow direct raw bytes writing/reading.
 """
 
 
+import logging
 import re
 
+from mod_pywebsocket import msgutil
+from mod_pywebsocket import stream_hixie75
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
 from mod_pywebsocket.handshake._base import validate_protocol
@@ -86,18 +89,28 @@ class Handshaker(object):
         handshake.
         """
 
+        self._logger = logging.getLogger('mod_pywebsocket.draft75')
+
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict
 
     def do_handshake(self):
-        """Perform Web Socket Handshake."""
+        """Perform Web Socket Handshake.
+
+        On _request, we set
+            ws_resource, ws_origin, ws_location, ws_protocol
+            ws_challenge_md5: WebSocket handshake information.
+            ws_stream: Frame generation/parsing class.
+            ws_version: Protocol version.
+        """
 
         self._check_header_lines()
         self._set_resource()
         self._set_origin()
         self._set_location()
         self._set_protocol()
+        self._set_protocol_version()
         self._dispatcher.do_extra_handshake(self._request)
         self._send_handshake()
 
@@ -115,6 +128,12 @@ class Handshaker(object):
         if protocol is not None:
             validate_protocol(protocol)
         self._request.ws_protocol = protocol
+
+    def _set_protocol_version(self):
+        self._logger.debug('IETF Hixie 75 framing')
+        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
+        # None means Hixie 75 version protocol
+        self._request.ws_version = msgutil.VERSION_HIXIE75
 
     def _send_handshake(self):
         self._request.connection.write(

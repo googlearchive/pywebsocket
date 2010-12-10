@@ -31,11 +31,10 @@
 """Stream of WebSocket protocol with the framing used prior to IETF HyBi 01.
 """
 
+
+import logging
+
 from mod_pywebsocket import msgutil
-
-
-class ConnectionTerminatedException(msgutil.ConnectionTerminatedException):
-    pass
 
 
 class StreamHixie75(object):
@@ -47,6 +46,9 @@ class StreamHixie75(object):
         Args:
             request: mod_python request.
         """
+
+        self._logger = logging.getLogger('mod_pywebsocket.stream_hixie75')
+
         self._request = request
         self._request.client_terminated = False
         self._request.server_terminated = False
@@ -56,36 +58,69 @@ class StreamHixie75(object):
 
         Args:
             message: unicode string to send.
+
+        Raises:
+            msgutil.BadOperationException: when called on a server-terminated
+                connection.
         """
+
         if self._request.server_terminated:
-            raise ConnectionTerminatedException
-        msgutil.write_better_exc(self._request,
-                       ''.join(['\x00', message.encode('utf-8'), '\xff']))
+            raise msgutil.BadOperationException(
+                'Requested send_message after sending out a closing handshake')
+
+        msgutil.write_better_exc(
+            self._request, ''.join(['\x00', message.encode('utf-8'), '\xff']))
 
     def receive_message(self):
         """Receive a WebSocket frame and return its payload an unicode string.
 
         Returns:
             payload unicode string in a WebSocket frame.
+
+        Raises:
+            msgutil.ConnectionTerminatedException: when read returns empty
+                string.
+            msgutil.BadOperationException: when called on a client-terminated
+                connection.
         """
+
         if self._request.client_terminated:
-            raise ConnectionTerminatedException
+            raise msgutil.BadOperationException(
+                'Requested receive_message after receiving a closing handshake')
+
         while True:
             # Read 1 byte.
             # mp_conn.read will block if no bytes are available.
             # Timeout is controlled by TimeOut directive of Apache.
             frame_type_str = msgutil.read_better_exc(self._request, 1)
-            frame_type = ord(frame_type_str[0])
+            frame_type = ord(frame_type_str)
             if (frame_type & 0x80) == 0x80:
                 # The payload length is specified in the frame.
                 # Read and discard.
-                length = msgutil._payload_length(self._request)
-                msgutil.receive_bytes(self._request, length)
+                length = msgutil.payload_length(self._request)
+                if length > 0:
+                    _ = msgutil.receive_bytes(self._request, length)
                 # 5.3 3. 12. if /type/ is 0xFF and /length/ is 0, then set the
                 # /client terminated/ flag and abort these steps.
+                if self._request.ws_version is msgutil.VERSION_HIXIE75:
+                    continue
+
                 if frame_type == 0xFF and length == 0:
                     self._request.client_terminated = True
-                    raise ConnectionTerminatedException
+
+                    if self._request.server_terminated:
+                        self._logger.debug(
+                            'Received ack for server-initiated closing '
+                            'handshake')
+                        return None
+
+                    self._logger.debug(
+                        'Received client-initiated closing handshake')
+
+                    self._send_closing_handshake()
+                    self._logger.debug(
+                        'Sent ack for client-initiated closing handshake')
+                    return None
             else:
                 # The payload is delimited with \xff.
                 bytes = msgutil.read_until(self._request, '\xff')
@@ -97,18 +132,46 @@ class StreamHixie75(object):
                     return message
                 # Discard data of other types.
 
-    def close_connection(self):
-        """Closes a WebSocket connection."""
-        if self._request.server_terminated:
-            return
+    def _send_closing_handshake(self):
+        self._request.server_terminated = True
+
         # 5.3 the server may decide to terminate the WebSocket connection by
         # running through the following steps:
         # 1. send a 0xFF byte and a 0x00 byte to the client to indicate the
         # start of the closing handshake.
         msgutil.write_better_exc(self._request, '\xff\x00')
-        self._request.server_terminated = True
+
+    def close_connection(self):
+        """Closes a WebSocket connection.
+
+        Raises:
+            msgutil.ConnectionTerminatedException: when closing handshake was
+                not successfull.
+        """
+
+        if self._request.server_terminated:
+            self._logger.debug(
+                'Requested close_connection but server is already terminated')
+            return
+
+        if self._request.ws_version is msgutil.VERSION_HIXIE75:
+            self._request.server_terminated = True
+            self._logger.debug('Connection closed')
+            return
+
+        self._send_closing_handshake()
+        self._logger.debug('Sent server-initiated closing handshake')
+
         # TODO(ukai): 2. wait until the /client terminated/ flag has been set,
         # or until a server-defined timeout expires.
+        #
+        # For now, we expect receiving closing handshake right after sending
+        # out closing handshake, and if we couldn't receive non-handshake
+        # frame, we take it as ConnectionTerminatedException.
+        message = self.receive_message()
+        if message is not None:
+            raise msgutil.ConnectionTerminatedException(
+                'Didn\'t receive valid ack for closing handshake')
         # TODO: 3. close the WebSocket connection.
         # note: mod_python Connection (mp_conn) doesn't have close method.
 

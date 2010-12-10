@@ -103,6 +103,29 @@ successfully. A handler can receive/send messages from/to the client
 using request. mod_pywebsocket.msgutil module provides utilities
 for data transfer.
 
+You can receive a message by the following statement.
+
+    message = request.ws_stream.receive_message()
+
+This call blocks until any complete text frame arrives, and the payload data of
+the incoming frame will be stored into message. When you're using IETF HyBi 00
+or later protocol, receive_message() will return None on receiving
+client-initiated closing handshake. When any error occurs, receive_message()
+will raise some exception.
+
+You can send a message by the following statement.
+
+    request.ws_stream.send_message(message)
+
+Executing the following statement or just return-ing from
+web_socket_transfer_data cause connection close.
+
+    request.ws_stream.close_connection()
+
+When you're using IETF HyBi 00 or later protocol, close_connection will wait
+for closing handshake acknowledgement coming from the client. When it couldn't
+receive a valid acknowledgement, raises an exception.
+
 A Web Socket handler must be thread-safe if the server (Apache or
 standalone.py) is configured to use threads.
 """

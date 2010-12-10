@@ -32,20 +32,21 @@
 """
 
 
+import logging
 import struct
 
 from mod_pywebsocket import msgutil
 
 
-class ConnectionTerminatedException(msgutil.ConnectionTerminatedException):
-    pass
+def receive_frame(request):
+    """Receives a frame and return data in the frame as a tuple containing
+    each header field and payload separately.
 
-
-class StreamException(RuntimeError):
-    pass
-
-
-def _receive_frame(request):
+    Raises:
+        msgutil.ConnectionTerminatedException: when read returns empty
+            string.
+        msgutil.InvalidFrameException: when the frame contains invalid data.
+    """
     received = msgutil.receive_bytes(request, 2)
 
     first_byte = ord(received[0])
@@ -63,6 +64,9 @@ def _receive_frame(request):
         extended_payload_length = msgutil.receive_bytes(request, 8)
         payload_length = struct.unpack(
             '!Q', extended_payload_length)[0]
+        if payload_length > 0x7FFFFFFFFFFFFFFF:
+            raise msgutil.InvalidFrameException(
+                'Extended payload length >= 2^63')
     elif payload_length == 126:
         extended_payload_length = msgutil.receive_bytes(request, 2)
         payload_length = struct.unpack(
@@ -70,7 +74,7 @@ def _receive_frame(request):
 
     bytes = msgutil.receive_bytes(request, payload_length)
 
-    return (opcode, bytes, more, rsv1, rsv2, rsv3, rsv4)
+    return opcode, bytes, more, rsv1, rsv2, rsv3, rsv4
 
 
 class Stream(object):
@@ -84,6 +88,9 @@ class Stream(object):
         Args:
             request: mod_python request.
         """
+
+        self._logger = logging.getLogger('mod_pywebsocket.stream')
+
         self._request = request
         self._request.client_terminated = False
         self._request.server_terminated = False
@@ -93,25 +100,51 @@ class Stream(object):
 
         Args:
             message: unicode string to send.
-        """
-        if self._request.server_terminated:
-            raise ConnectionTerminatedException
 
-        msgutil.write_better_exc(self._request, msgutil.create_text_frame(message))
+        Raises:
+            msgutil.BadOperationException: when called on a server-terminated
+                connection.
+        """
+
+        if self._request.server_terminated:
+            raise msgutil.BadOperationException(
+                'Requested send_message after sending out a closing handshake')
+
+        msgutil.write_better_exc(
+            self._request, msgutil.create_text_frame(message))
 
     def receive_message(self):
         """Receive a WebSocket frame and return its payload an unicode string.
 
         Returns:
-            payload unicode string in a WebSocket frame.
+            payload unicode string in a WebSocket frame. None iff received
+            closing handshake.
+        Raises:
+            msgutil.BadOperationException: when called on a client-terminated
+                connection.
+            msgutil.ConnectionTerminatedException: when read returns empty
+                string.
+            msgutil.InvalidFrameException: when the frame contains invalid
+                data.
+            msgutil.UnsupportedFrameException: when the received frame has
+                flags, opcode we cannot handle. You can ignore this exception
+                and continue receiving the next frame.
         """
+
         if self._request.client_terminated:
-            raise ConnectionTerminatedException
+            raise msgutil.BadOperationException(
+                'Requested receive_message after receiving a closing handshake')
+
         while True:
             # mp_conn.read will block if no bytes are available.
             # Timeout is controlled by TimeOut directive of Apache.
 
-            (opcode, bytes, _, _, _, _, _) = _receive_frame(self._request)
+            opcode, bytes, more, rsv1, rsv2, rsv3, rsv4 = receive_frame(
+                self._request)
+            if more or rsv1 or rsv2 or rsv3 or rsv4:
+                raise UnsupportedFrameException(
+                    'Unsupported flag is set (more, rsv = %d, %d%d%d%d)' %
+                    (more, rsv1, rsv2, rsv3, rsv4))
 
             if opcode == msgutil.OPCODE_TEXT:
                 # The Web Socket protocol section 4.4 specifies that invalid
@@ -121,22 +154,53 @@ class Stream(object):
                 return message
             elif opcode == msgutil.OPCODE_CLOSE:
                 self._request.client_terminated = True
-                raise ConnectionTerminatedException
-            # Discard data of other types.
 
-    def close_connection(self):
-        """Closes a WebSocket connection."""
-        if self._request.server_terminated:
-            return
+                if self._request.server_terminated:
+                    self._logger.debug(
+                        'Received ack for server-initiated closing '
+                        'handshake')
+                    return None
+
+                self._logger.debug(
+                    'Received client-initiated closing handshake')
+
+                self._send_closing_handshake()
+                self._logger.debug(
+                    'Sent ack for client-initiated closing handshake')
+                return None
+            else:
+                raise msgutil.UnsupportedFrameException(
+                    'opcode %d is not supported' % opcode)
+
+    def _send_closing_handshake(self):
+        self._request.server_terminated = True
+
         # 5.3 the server may decide to terminate the WebSocket connection by
         # running through the following steps:
         # 1. send a 0xFF byte and a 0x00 byte to the client to indicate the
-        # start
-        # of the closing handshake.
+        # start of the closing handshake.
         msgutil.write_better_exc(self._request, chr(msgutil.OPCODE_CLOSE) + '\x00')
-        self._request.server_terminated = True
+
+    def close_connection(self):
+        """Closes a WebSocket connection."""
+
+        if self._request.server_terminated:
+            self._logger.debug(
+                'Requested close_connection but server is already terminated')
+            return
+
+        self._send_closing_handshake()
+        self._logger.debug('Sent server-initiated closing handshake')
+
         # TODO(ukai): 2. wait until the /client terminated/ flag has been set,
         # or until a server-defined timeout expires.
+        #
+        # For now, we expect receiving closing handshake right after sending
+        # out closing handshake.
+        message = self.receive_message()
+        if message is not None:
+            raise msgutil.ConnectionTerminatedException(
+                'Didn\'t receive valid ack for closing handshake')
         # TODO: 3. close the WebSocket connection.
         # note: mod_python Connection (mp_conn) doesn't have close method.
 

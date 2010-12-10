@@ -272,7 +272,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 return False
             except Exception, e:
                 logging.warning('mod_pywebsocket: %s' % e)
-                logging.info('mod_pywebsocket: %s' % util.get_stack_trace())
+                logging.warning('mod_pywebsocket: %s' % util.get_stack_trace())
                 return False
         return result
 

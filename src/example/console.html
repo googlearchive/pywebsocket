@@ -1,0 +1,109 @@
+<!--
+Copyright 2010, Google Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+    * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+    * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+
+<!--
+A simple console for testing WebSocket server.
+
+Type an address into the top text input and click connect to establish
+WebSocket. Then, type some message into the bottom text input and click send
+to send the message. Received/sent messages and connection state will be shown
+on the middle textarea.
+-->
+
+<html>
+<head>
+<title>WebSocket console</title>
+<script>
+var socket = null;
+
+var addressBox = null;
+var logBox = null;
+var messageBox = null;
+
+function addToLog(log) {
+  logBox.value += log + '\n'
+  // Large enough to keep showing the latest message.
+  logBox.scrollTop = 1000000;
+}
+
+function send() {
+  socket.send(messageBox.value);
+  addToLog('> ' + messageBox.value);
+  messageBox.value = '';
+}
+
+function connect() {
+  socket = new WebSocket(addressBox.value);
+
+  socket.onopen = function () {
+    addToLog('Opened');
+  };
+  socket.onmessage = function (event) {
+    addToLog('< ' + event.data);
+  };
+  socket.onerror = function () {
+    addToLog('Error');
+  };
+  socket.onclose = function () {
+    addToLog('Closed');
+  };
+
+  addToLog('Connect ' + addressBox.value);
+}
+
+function init() {
+  var scheme = window.location.protocol == 'https:' ? 'wss://' : 'ws://';
+  var defaultAddress = scheme + window.location.host + '/echo';
+
+  addressBox = document.getElementById('address');
+  logBox = document.getElementById('log');
+  messageBox = document.getElementById('message');
+
+  addressBox.value = defaultAddress;
+}
+</script>
+</head>
+<body onload="init()">
+
+<form action="#" onsubmit="connect(); return false;">
+<input type="text" id="address" size="40">
+<input type="submit" value="connect">
+</form>
+
+<textarea id="log" rows="10" cols="40" readonly></textarea>
+
+<form action="#" onsubmit="send(); return false;">
+<input type="text" id="message" size="40">
+<input type="submit" value="send">
+</form>
+
+</body>
+</html>

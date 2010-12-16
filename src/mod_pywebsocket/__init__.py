@@ -28,10 +28,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Web Socket extension for Apache HTTP Server.
+"""WebSocket extension for Apache HTTP Server.
 
-mod_pywebsocket is a Web Socket extension for Apache HTTP Server
+mod_pywebsocket is a WebSocket extension for Apache HTTP Server
 intended for testing or experimental purposes. mod_python is required.
+
 
 Installation:
 
@@ -46,27 +47,26 @@ Installation:
        PythonPath "sys.path+['<websock_lib>']"
 
    Always specify the following. <websock_handlers> is the directory where
-   user-written Web Socket handlers are placed.
+   user-written WebSocket handlers are placed.
 
        PythonOption mod_pywebsocket.handler_root <websock_handlers>
        PythonHeaderParserHandler mod_pywebsocket.headerparserhandler
 
-   To limit the search for Web Socket handlers to a directory <scan_dir>
+   To limit the search for WebSocket handlers to a directory <scan_dir>
    under <websock_handlers>, configure as follows:
 
        PythonOption mod_pywebsocket.handler_scan <scan_dir>
 
    <scan_dir> is useful in saving scan time when <websock_handlers>
-   contains many non-Web Socket handler files.
+   contains many non-WebSocket handler files.
 
    If you want to support old handshake based on
    draft-hixie-thewebsocketprotocol-75:
 
        PythonOption mod_pywebsocket.allow_draft75 On
 
-
    Example snippet of httpd.conf:
-   (mod_pywebsocket is in /websock_lib, Web Socket handlers are in
+   (mod_pywebsocket is in /websock_lib, WebSocket handlers are in
    /websock_handlers, port is 80 for ws, 443 for wss.)
 
        <IfModule python_module>
@@ -75,9 +75,17 @@ Installation:
          PythonHeaderParserHandler mod_pywebsocket.headerparserhandler
        </IfModule>
 
-Writing Web Socket handlers:
+2. Tune Apache parameters for serving WebSocket. We'd like to note that at
+   least TimeOut directive from core features and RequestReadTimeout directive
+   from mod_reqtimeout should be modified not to kill connections in only a few
+   seconds of idle time.
 
-When a Web Socket request comes in, the resource name
+3. Verify installation. You can use example/console.html to poke the server.
+
+
+Writing WebSocket handlers:
+
+When a WebSocket request comes in, the resource name
 specified in the handshake is considered as if it is a file path under
 <websock_handlers> and the handler defined in
 <websock_handlers>/<resource_name>_wsh.py is invoked.
@@ -85,7 +93,7 @@ specified in the handshake is considered as if it is a file path under
 For example, if the resource name is /example/chat, the handler defined in
 <websock_handlers>/example/chat_wsh.py is invoked.
 
-A Web Socket handler is composed of the following two functions:
+A WebSocket handler is composed of the following two functions:
 
     web_socket_do_extra_handshake(request)
     web_socket_transfer_data(request)
@@ -94,7 +102,7 @@ where:
     request: mod_python request.
 
 web_socket_do_extra_handshake is called during the handshake after the
-headers are successfully parsed and Web Socket properties (ws_location,
+headers are successfully parsed and WebSocket properties (ws_location,
 ws_origin, ws_protocol, and ws_resource) are added to request. A handler
 can reject the request by raising an exception.
 
@@ -126,7 +134,7 @@ When you're using IETF HyBi 00 or later protocol, close_connection will wait
 for closing handshake acknowledgement coming from the client. When it couldn't
 receive a valid acknowledgement, raises an exception.
 
-A Web Socket handler must be thread-safe if the server (Apache or
+A WebSocket handler must be thread-safe if the server (Apache or
 standalone.py) is configured to use threads.
 """
 

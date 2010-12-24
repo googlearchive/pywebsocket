@@ -79,6 +79,10 @@ function connect() {
   addToLog('Connect ' + addressBox.value);
 }
 
+function closeSocket() {
+  socket.close();
+}
+
 function init() {
   var scheme = window.location.protocol == 'https:' ? 'wss://' : 'ws://';
   var defaultAddress = scheme + window.location.host + '/echo';
@@ -96,6 +100,7 @@ function init() {
 <form action="#" onsubmit="connect(); return false;">
 <input type="text" id="address" size="40">
 <input type="submit" value="connect">
+<input type="button" value="close" onclick="closeSocket();">
 </form>
 
 <textarea id="log" rows="10" cols="40" readonly></textarea>

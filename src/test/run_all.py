@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,9 @@
 
 
 """Run all tests in the same directory.
+
+This suite is expected to be run under pywebsocket's src directory, i.e. the
+directory containing mod_pywebsocket, test, etc.
 """
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2010, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -31,6 +31,7 @@
 
 """Test for end-to-end."""
 
+import client_for_testing
 import config  # to fix sys.path.
 import os
 import signal
@@ -41,22 +42,43 @@ import time
 import unittest
 
 
+# Special message that tells the echo server to start closing handshake
+_GOODBYE_MESSAGE = 'Goodbye'
+
+
 class EndToEndTest(unittest.TestCase):
     def setUp(self):
         self.top_dir = os.path.join(os.path.split(__file__)[0], '..')
         os.putenv('PYTHONPATH', os.path.pathsep.join(sys.path))
         self.standalone_command = os.path.join(
             self.top_dir, 'mod_pywebsocket', 'standalone.py')
-        self.echo_client_command = os.path.join(self.top_dir,
-                                                'example', 'echo_client.py')
         self.document_root = os.path.join(self.top_dir, 'example')
         s = socket.socket()
         s.bind(('127.0.0.1', 0))
         (_, self.test_port) = s.getsockname()
         s.close()
 
-    def _run_server(self, commandline):
+        self._options = client_for_testing.ClientOptions()
+        self._options.server_host = 'localhost'
+        self._options.origin = 'http://localhost'
+        self._options.resource = '/echo'
+        self._options.server_port = self.test_port
+
+    def _run_python_command(self, commandline):
         return subprocess.Popen([sys.executable] + commandline, close_fds=True)
+
+    def _run_server(self):
+        return self._run_python_command(
+            [self.standalone_command,
+             '-p', str(self.test_port),
+             '-d', self.document_root])
+
+    def _run_server_allow_draft75(self):
+        return self._run_python_command(
+            [self.standalone_command,
+             '-p', str(self.test_port),
+             '-d', self.document_root,
+             '--allow-draft75'])
 
     def _kill_process(self, pid):
         if sys.platform in ('win32', 'cygwin'):
@@ -65,127 +87,134 @@ class EndToEndTest(unittest.TestCase):
         else:
             os.kill(pid, signal.SIGKILL)
 
-    def _run_client(self, commandline):
-        return subprocess.Popen([sys.executable] + commandline,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                close_fds=True)
-
-    def _get_client_output(self, client):
-        out = ''
-        while client.returncode is None:
-            out += client.stdout.read()
-            client.poll()
-        return out
-
     def test_echo(self):
         try:
-            server = self._run_server(
-                [self.standalone_command, '-p', str(self.test_port),
-                 '-d', self.document_root])
-            # TODO(tyoshino): add some logic to poll the server until it
-            # becomes ready
+            server = self._run_server()
+
+            # TODO(tyoshino): add some logic to poll the server until it becomes
+            # ready
             time.sleep(0.2)
-            client = self._run_client(
-                [self.echo_client_command, '-p', str(self.test_port),
-                 '-s', 'localhost', '-o', 'http://localhost',
-                 '-r', '/echo', '-m', 'test'])
-            actual = self._get_client_output(client)
-            self.assertEqual('Send: test\nRecv: test\nSend close\nRecv ack\n'
-                             '', actual)
-            client.wait()
+
+            client = client_for_testing.create_client(self._options)
+            try:
+                client.connect()
+
+                client.send_message('test')
+                client.assert_receive('test')
+
+                client.send_close()
+                client.assert_receive_close()
+
+                client.assert_connection_closed()
+            finally:
+                client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_server_close(self):
         try:
-            server = self._run_server(
-                [self.standalone_command, '-p', str(self.test_port),
-                 '-d', self.document_root])
+            server = self._run_server()
+
             time.sleep(0.2)
-            client = self._run_client(
-                [self.echo_client_command, '-p', str(self.test_port),
-                 '-s', 'localhost', '-o', 'http://localhost',
-                 '-r', '/echo', '-m', 'test,Goodbye'])
-            actual = self._get_client_output(client)
-            self.assertEqual('Send: test\nRecv: test\n'
-                             'Send: Goodbye\nRecv: Goodbye\n'
-                             'Recv close\nSend ack\n', actual)
-            client.wait()
+
+            client = client_for_testing.create_client(self._options)
+            try:
+                client.connect()
+
+                client.send_message('test')
+                client.assert_receive('test')
+
+                client.send_message(_GOODBYE_MESSAGE)
+                client.assert_receive(_GOODBYE_MESSAGE)
+
+                client.assert_receive_close()
+                client.send_close()
+            finally:
+                client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_hybi00(self):
         try:
-            server = self._run_server(
-                [self.standalone_command, '-p', str(self.test_port),
-                 '-d', self.document_root])
+            server = self._run_server()
+
             time.sleep(0.2)
-            client = self._run_client(
-                [self.echo_client_command, '-p', str(self.test_port),
-                 '-s', 'localhost', '-o', 'http://localhost',
-                 '-r', '/echo', '-m', 'test',
-                 '--protocol-version', 'hybi00'])
-            actual = self._get_client_output(client)
-            self.assertEqual(
-                'Send: test\nRecv: test\nSend close\nRecv ack\n', actual)
-            client.wait()
+
+            client = client_for_testing.create_client_hybi00(self._options)
+            try:
+                client.connect()
+
+                client.send_message('test')
+                client.assert_receive('test')
+
+                client.send_close()
+                client.assert_receive_close()
+
+                client.assert_connection_closed()
+            finally:
+                client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_server_close_hybi00(self):
         try:
-            server = self._run_server(
-                [self.standalone_command, '-p', str(self.test_port),
-                 '-d', self.document_root])
+            server = self._run_server()
+
             time.sleep(0.2)
-            client = self._run_client(
-                [self.echo_client_command, '-p', str(self.test_port),
-                 '-s', 'localhost', '-o', 'http://localhost',
-                 '-r', '/echo', '-m', 'test,Goodbye',
-                 '--protocol-version', 'hybi00'])
-            actual = self._get_client_output(client)
-            self.assertEqual('Send: test\nRecv: test\n'
-                             'Send: Goodbye\nRecv: Goodbye\n'
-                             'Recv close\nSend ack\n', actual)
-            client.wait()
+
+            client = client_for_testing.create_client_hybi00(self._options)
+            try:
+                client.connect()
+
+                client.send_message('test')
+                client.assert_receive('test')
+
+                client.send_message(_GOODBYE_MESSAGE)
+                client.assert_receive(_GOODBYE_MESSAGE)
+
+                client.assert_receive_close()
+                client.send_close()
+            finally:
+                client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_hixie75(self):
         try:
-            server = self._run_server(
-                [self.standalone_command, '-p', str(self.test_port),
-                 '-d', self.document_root,
-                 '--allow-draft75'])
+            server = self._run_server_allow_draft75()
+
             time.sleep(0.2)
-            client = self._run_client(
-                [self.echo_client_command, '-p', str(self.test_port),
-                 '-s', 'localhost', '-o', 'http://localhost',
-                 '-r', '/echo', '-m', 'test',
-                 '--protocol-version', 'hixie75'])
-            actual = self._get_client_output(client)
-            self.assertEqual('Send: test\nRecv: test\n', actual)
-            client.wait()
+
+            client = client_for_testing.create_client_hixie75(self._options)
+            try:
+                client.connect()
+
+                client.send_message('test')
+                client.assert_receive('test')
+            finally:
+                client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_server_close_hixie75(self):
         try:
-            server = self._run_server(
-                [self.standalone_command, '-p', str(self.test_port),
-                 '-d', self.document_root,
-                 '--allow-draft75'])
+            server = self._run_server_allow_draft75()
+
             time.sleep(0.2)
-            client = self._run_client(
-                [self.echo_client_command, '-p', str(self.test_port),
-                 '-s', 'localhost', '-o', 'http://localhost',
-                 '-r', '/echo', '-m', 'test,Goodbye',
-                 '--protocol-version', 'hixie75'])
-            actual = self._get_client_output(client)
-            self.assertEqual('Send: test\nRecv: test\n'
-                             'Send: Goodbye\nRecv: Goodbye\n', actual)
-            client.wait()
+
+            client = client_for_testing.create_client_hixie75(self._options)
+            try:
+                client.connect()
+
+                client.send_message('test')
+                client.assert_receive('test')
+
+                client.send_message(_GOODBYE_MESSAGE)
+                client.assert_receive(_GOODBYE_MESSAGE)
+            finally:
+                client.close_socket()
         finally:
             self._kill_process(server.pid)
+
+
+# vi:sts=4 sw=4 et

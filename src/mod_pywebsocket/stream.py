@@ -80,8 +80,6 @@ def receive_frame(request):
 class Stream(object):
     """Stream of WebSocket messages."""
 
-    # TODO(tyoshino): Add fragment support
-
     def __init__(self, request):
         """Construct an instance.
 
@@ -95,7 +93,14 @@ class Stream(object):
         self._request.client_terminated = False
         self._request.server_terminated = False
 
-    def send_message(self, message):
+        # Holds body of received fragments.
+        self._received_fragments = []
+        # Holds the opcode of the first fragment.
+        self._original_opcode = None
+
+        self._writer = msgutil.FragmentedTextFrameBuilder()
+
+    def send_message(self, message, end=True):
         """Send message.
 
         Args:
@@ -111,7 +116,7 @@ class Stream(object):
                 'Requested send_message after sending out a closing handshake')
 
         msgutil.write_better_exc(
-            self._request, msgutil.create_text_frame(message))
+            self._request, self._writer.build(message, end))
 
     def receive_message(self):
         """Receive a WebSocket frame and return its payload an unicode string.
@@ -141,18 +146,58 @@ class Stream(object):
 
             opcode, bytes, more, rsv1, rsv2, rsv3, rsv4 = receive_frame(
                 self._request)
-            if more or rsv1 or rsv2 or rsv3 or rsv4:
+            if rsv1 or rsv2 or rsv3 or rsv4:
                 raise UnsupportedFrameException(
-                    'Unsupported flag is set (more, rsv = %d, %d%d%d%d)' %
-                    (more, rsv1, rsv2, rsv3, rsv4))
+                    'Unsupported flag is set (rsv = %d%d%d%d)' %
+                    (rsv1, rsv2, rsv3, rsv4))
 
-            if opcode == msgutil.OPCODE_TEXT:
+            if opcode == msgutil.OPCODE_CONTINUATION:
+                if not self._received_fragments:
+                    if more:
+                        raise msgutil.InvalidFrameException(
+                            'Received an intermediate frame but '
+                            'fragmentation not started')
+                    else:
+                        raise msgutil.InvalidFrameException(
+                            'Received a termination frame but fragmentation '
+                            'not started')
+
+                if more:
+                    # Intermediate frame
+                    self._received_fragments.append(bytes)
+                    continue
+                else:
+                    # End of fragmentation frame
+                    self._received_fragments.append(bytes)
+                    message = ''.join(self._received_fragments)
+                    self._received_fragments = []
+            else:
+                if self._received_fragments:
+                    if more:
+                        raise msgutil.InvalidFrameException(
+                            'New fragmentation started without terminating '
+                            'existing fragmentation')
+                    else:
+                        raise msgutil.InvalidFrameException(
+                            'Received an unfragmented frame without '
+                            'terminating existing fragmentation')
+
+                if more:
+                    # Start of fragmentation frame
+                    self._original_opcode = opcode
+                    self._received_fragments.append(bytes)
+                    continue
+                else:
+                    # Unfragmented frame
+                    self._original_opcode = opcode
+                    message = bytes
+
+            if self._original_opcode == msgutil.OPCODE_TEXT:
                 # The Web Socket protocol section 4.4 specifies that invalid
                 # characters must be replaced with U+fffd REPLACEMENT
                 # CHARACTER.
-                message = bytes.decode('utf-8', 'replace')
-                return message
-            elif opcode == msgutil.OPCODE_CLOSE:
+                return message.decode('utf-8', 'replace')
+            elif self._original_opcode == msgutil.OPCODE_CLOSE:
                 self._request.client_terminated = True
 
                 if self._request.server_terminated:
@@ -170,7 +215,7 @@ class Stream(object):
                 return None
             else:
                 raise msgutil.UnsupportedFrameException(
-                    'opcode %d is not supported' % opcode)
+                    'opcode %d is not supported' % self._original_opcode)
 
     def _send_closing_handshake(self):
         self._request.server_terminated = True

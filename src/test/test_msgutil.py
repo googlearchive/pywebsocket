@@ -107,6 +107,22 @@ class MessageTest(unittest.TestCase):
         self.assertEqual('\x04\x03\xe6\x97\xa5',
                          request.connection.written_data())
 
+    def test_send_message_fragments(self):
+        request = _create_request('')
+        msgutil.send_message(request, 'Hello', False)
+        msgutil.send_message(request, ' ', False)
+        msgutil.send_message(request, 'World', False)
+        msgutil.send_message(request, '!', True)
+        self.assertEqual('\x84\x05Hello\x80\x01 \x80\x05World\x00\x01!',
+                         request.connection.written_data())
+
+    def test_receive_fragments_immediate_zero_termination(self):
+        request = _create_request('')
+        msgutil.send_message(request, 'Hello World!', False)
+        msgutil.send_message(request, '', True)
+        self.assertEqual('\x84\x0cHello World!\x00\x00',
+                         request.connection.written_data())
+
     def test_receive_message(self):
         request = _create_request('\x04\x05Hello\x04\x06World!')
         self.assertEqual('Hello', msgutil.receive_message(request))
@@ -142,6 +158,39 @@ class MessageTest(unittest.TestCase):
         # Invalid characters should be replaced with
         # U+fffd REPLACEMENT CHARACTER
         self.assertEqual(u'\ufffd\ufffd', msgutil.receive_message(request))
+
+    def test_receive_fragments(self):
+        request = _create_request(
+            '\x84\x05Hello\x80\x01 \x80\x05World\x00\x01!')
+        self.assertEqual('Hello World!', msgutil.receive_message(request))
+
+    def test_receive_fragments_unicode(self):
+        # UTF-8 encodes U+6f22 into e6bca2 and U+5b57 into e5ad97.
+        request = _create_request(
+            '\x84\x02\xe6\xbc' '\x80\x02\xa2\xe5' '\x00\x02\xad\x97')
+        self.assertEqual(u'\u6f22\u5b57', msgutil.receive_message(request))
+
+    def test_receive_fragments_immediate_zero_termination(self):
+        request = _create_request('\x84\x0cHello World!\x00\x00')
+        self.assertEqual('Hello World!', msgutil.receive_message(request))
+
+    def test_receive_fragments_duplicate_start(self):
+        request = _create_request('\x84\x05Hello\x84\x05World')
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
+
+    def test_receive_fragments_intermediate_but_not_started(self):
+        request = _create_request('\x80\x05Hello')
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
+
+    def test_receive_fragments_end_but_not_started(self):
+        request = _create_request('\x00\x05Hello')
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
 
     def test_receive_message_discard(self):
         request = _create_request('\x05\x06IGNORE\x04\x05Hello'
@@ -221,7 +270,6 @@ class MessageTestHixie75(unittest.TestCase):
         self.assertRaises(ValueError,
                           msgutil.create_header,
                           msgutil.OPCODE_TEXT, 1 << 63, 0, 0, 0, 0, 0)
-
 
 
 class MessageReceiverTest(unittest.TestCase):

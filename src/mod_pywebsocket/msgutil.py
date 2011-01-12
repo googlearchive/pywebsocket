@@ -58,6 +58,9 @@ OPCODE_TEXT         = 0x4
 OPCODE_BINARY       = 0x5
 
 
+# Exceptions
+
+
 class ConnectionTerminatedException(Exception):
     """This exception will be raised when a connection is terminated
     unexpectedly.
@@ -119,6 +122,9 @@ def write_better_exc(request, bytes):
         raise
 
 
+# An API for handler to send/receive WebSocket messages.
+
+
 def close_connection(request):
     """Close connection.
 
@@ -128,16 +134,19 @@ def close_connection(request):
     request.ws_stream.close_connection()
 
 
-def send_message(request, message):
+def send_message(request, message, end=True):
     """Send message.
 
     Args:
         request: mod_python request.
         message: unicode string to send.
+        end: False to send message as a fragment. All messages until the first
+             call with end=True (inclusive) will be delivered to the client
+             in separate frames but as one WebSocket message.
     Raises:
         BadOperationException: when server already terminated.
     """
-    request.ws_stream.send_message(message)
+    request.ws_stream.send_message(message, end)
 
 
 def receive_message(request):
@@ -149,6 +158,10 @@ def receive_message(request):
         BadOperationException: when client already terminated.
     """
     return request.ws_stream.receive_message()
+
+
+# Helper methods made public to be used for writing unittests for WebSocket
+# clients.
 
 
 def create_length_header(length, rsv4):
@@ -205,13 +218,37 @@ def create_header(opcode, payload_length, more, rsv1, rsv2, rsv3, rsv4):
     return header
 
 
-def create_text_frame(message):
+def create_text_frame(message, opcode=OPCODE_TEXT, more=0):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
-    frame = create_header(OPCODE_TEXT, len(encoded_message), 0, 0, 0, 0, 0)
+    frame = create_header(opcode, len(encoded_message), more, 0, 0, 0, 0)
     frame += encoded_message
     return frame
+
+
+class FragmentedTextFrameBuilder(object):
+    """A stateful class to send a message as fragments."""
+
+    def __init__(self):
+        """Constructs an instance."""
+
+        self._started = False
+
+    def build(self, message, end):
+        if self._started:
+            opcode = OPCODE_CONTINUATION
+        else:
+            opcode = OPCODE_TEXT
+
+        if end:
+            self._started = False
+            more = 0
+        else:
+            self._started = True
+            more = 1
+
+        return create_text_frame(message, opcode, more)
 
 
 def payload_length(request):

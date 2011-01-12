@@ -53,7 +53,7 @@ class StreamHixie75(object):
         self._request.client_terminated = False
         self._request.server_terminated = False
 
-    def send_message(self, message):
+    def send_message(self, message, end=True):
         """Send message.
 
         Args:
@@ -63,6 +63,10 @@ class StreamHixie75(object):
             msgutil.BadOperationException: when called on a server-terminated
                 connection.
         """
+
+        if not end:
+            raise msgutil.BadOperationException(
+                'StreamHixie75 doesn\'t support send_message with end=False')
 
         if self._request.server_terminated:
             raise msgutil.BadOperationException(
@@ -92,7 +96,7 @@ class StreamHixie75(object):
             # Read 1 byte.
             # mp_conn.read will block if no bytes are available.
             # Timeout is controlled by TimeOut directive of Apache.
-            frame_type_str = msgutil.read_better_exc(self._request, 1)
+            frame_type_str = msgutil.receive_bytes(self._request, 1)
             frame_type = ord(frame_type_str)
             if (frame_type & 0x80) == 0x80:
                 # The payload length is specified in the frame.

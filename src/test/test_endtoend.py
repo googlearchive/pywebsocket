@@ -46,6 +46,32 @@ import unittest
 _GOODBYE_MESSAGE = 'Goodbye'
 
 
+# Test body functions
+def _echo_check_procedure(client):
+    client.connect()
+
+    client.send_message('test')
+    client.assert_receive('test')
+
+    client.send_close()
+    client.assert_receive_close()
+
+    client.assert_connection_closed()
+
+
+def _echo_check_procedure_with_goodbye(client):
+    client.connect()
+
+    client.send_message('test')
+    client.assert_receive('test')
+
+    client.send_message(_GOODBYE_MESSAGE)
+    client.assert_receive(_GOODBYE_MESSAGE)
+
+    client.assert_receive_close()
+    client.send_close()
+
+
 class EndToEndTest(unittest.TestCase):
     def setUp(self):
         self.top_dir = os.path.join(os.path.split(__file__)[0], '..')
@@ -87,7 +113,7 @@ class EndToEndTest(unittest.TestCase):
         else:
             os.kill(pid, signal.SIGKILL)
 
-    def test_echo(self):
+    def _run_hybi01_test(self, test_closure):
         try:
             server = self._run_server()
 
@@ -97,124 +123,72 @@ class EndToEndTest(unittest.TestCase):
 
             client = client_for_testing.create_client(self._options)
             try:
-                client.connect()
-
-                client.send_message('test')
-                client.assert_receive('test')
-
-                client.send_close()
-                client.assert_receive_close()
-
-                client.assert_connection_closed()
+                test_closure(client)
             finally:
                 client.close_socket()
         finally:
             self._kill_process(server.pid)
 
+    def test_echo(self):
+        self._run_hybi01_test(_echo_check_procedure)
+
     def test_echo_server_close(self):
+        self._run_hybi01_test(_echo_check_procedure_with_goodbye)
+
+    def _run_hybi00_test(self, test_closure):
         try:
             server = self._run_server()
 
             time.sleep(0.2)
 
-            client = client_for_testing.create_client(self._options)
+            client = client_for_testing.create_client_hybi00(self._options)
             try:
-                client.connect()
-
-                client.send_message('test')
-                client.assert_receive('test')
-
-                client.send_message(_GOODBYE_MESSAGE)
-                client.assert_receive(_GOODBYE_MESSAGE)
-
-                client.assert_receive_close()
-                client.send_close()
+                test_closure(client)
             finally:
                 client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_hybi00(self):
-        try:
-            server = self._run_server()
-
-            time.sleep(0.2)
-
-            client = client_for_testing.create_client_hybi00(self._options)
-            try:
-                client.connect()
-
-                client.send_message('test')
-                client.assert_receive('test')
-
-                client.send_close()
-                client.assert_receive_close()
-
-                client.assert_connection_closed()
-            finally:
-                client.close_socket()
-        finally:
-            self._kill_process(server.pid)
+        self._run_hybi00_test(_echo_check_procedure)
 
     def test_echo_server_close_hybi00(self):
+        self._run_hybi00_test(_echo_check_procedure_with_goodbye)
+
+    def _run_hixie75_test(self, test_closure):
         try:
-            server = self._run_server()
+            server = self._run_server_allow_draft75()
 
             time.sleep(0.2)
 
-            client = client_for_testing.create_client_hybi00(self._options)
+            client = client_for_testing.create_client_hixie75(self._options)
             try:
-                client.connect()
-
-                client.send_message('test')
-                client.assert_receive('test')
-
-                client.send_message(_GOODBYE_MESSAGE)
-                client.assert_receive(_GOODBYE_MESSAGE)
-
-                client.assert_receive_close()
-                client.send_close()
+                test_closure(client)
             finally:
                 client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_hixie75(self):
-        try:
-            server = self._run_server_allow_draft75()
+        def test_closure(client):
+            client.connect()
 
-            time.sleep(0.2)
+            client.send_message('test')
+            client.assert_receive('test')
 
-            client = client_for_testing.create_client_hixie75(self._options)
-            try:
-                client.connect()
-
-                client.send_message('test')
-                client.assert_receive('test')
-            finally:
-                client.close_socket()
-        finally:
-            self._kill_process(server.pid)
+        self._run_hixie75_test(test_closure)
 
     def test_echo_server_close_hixie75(self):
-        try:
-            server = self._run_server_allow_draft75()
+        def test_closure(client):
+            client.connect()
 
-            time.sleep(0.2)
+            client.send_message('test')
+            client.assert_receive('test')
 
-            client = client_for_testing.create_client_hixie75(self._options)
-            try:
-                client.connect()
+            client.send_message(_GOODBYE_MESSAGE)
+            client.assert_receive(_GOODBYE_MESSAGE)
 
-                client.send_message('test')
-                client.assert_receive('test')
-
-                client.send_message(_GOODBYE_MESSAGE)
-                client.assert_receive(_GOODBYE_MESSAGE)
-            finally:
-                client.close_socket()
-        finally:
-            self._kill_process(server.pid)
+        self._run_hixie75_test(test_closure)
 
 
 # vi:sts=4 sw=4 et

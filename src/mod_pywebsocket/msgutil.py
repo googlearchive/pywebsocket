@@ -59,8 +59,6 @@ OPCODE_BINARY       = 0x5
 
 
 # Exceptions
-
-
 class ConnectionTerminatedException(Exception):
     """This exception will be raised when a connection is terminated
     unexpectedly.
@@ -122,9 +120,40 @@ def write_better_exc(request, bytes):
         raise
 
 
+def receive_bytes(request, length):
+    """Receives multiple bytes. Retries read when we couldn't receive the
+    specified amount.
+
+    Raises:
+        ConnectionTerminatedException: when read returns empty string.
+    """
+
+    bytes = []
+    while length > 0:
+        new_bytes = read_better_exc(request, length)
+        bytes.append(new_bytes)
+        length -= len(new_bytes)
+    return ''.join(bytes)
+
+
+def read_until(request, delim_char):
+    """Reads bytes until we encounter delim_char. The result will not contain
+    delim_char.
+
+    Raises:
+        ConnectionTerminatedException: when read returns empty string.
+    """
+
+    bytes = []
+    while True:
+        ch = read_better_exc(request, 1)
+        if ch == delim_char:
+            break
+        bytes.append(ch)
+    return ''.join(bytes)
+
+
 # An API for handler to send/receive WebSocket messages.
-
-
 def close_connection(request):
     """Close connection.
 
@@ -160,10 +189,8 @@ def receive_message(request):
     return request.ws_stream.receive_message()
 
 
-# Helper methods made public to be used for writing unittests for WebSocket
+# Helper functions made public to be used for writing unittests for WebSocket
 # clients.
-
-
 def create_length_header(length, rsv4):
     """Creates a length header.
 
@@ -251,7 +278,8 @@ class FragmentedTextFrameBuilder(object):
         return create_text_frame(message, opcode, more)
 
 
-def payload_length(request):
+# Helper functions for Hixie75
+def payload_length_hixie75(request):
     """Reads a length header in a Hixie75 version frame with length.
 
     Raises:
@@ -266,39 +294,6 @@ def payload_length(request):
         if (b & 0x80) == 0:
             break
     return length
-
-
-def receive_bytes(request, length):
-    """Receives multiple bytes. Retries read when we couldn't receive the
-    specified amount.
-
-    Raises:
-        ConnectionTerminatedException: when read returns empty string.
-    """
-
-    bytes = []
-    while length > 0:
-        new_bytes = read_better_exc(request, length)
-        bytes.append(new_bytes)
-        length -= len(new_bytes)
-    return ''.join(bytes)
-
-
-def read_until(request, delim_char):
-    """Reads bytes until we encounter delim_char. The result will not contain
-    delim_char.
-
-    Raises:
-        ConnectionTerminatedException: when read returns empty string.
-    """
-
-    bytes = []
-    while True:
-        ch = read_better_exc(request, 1)
-        if ch == delim_char:
-            break
-        bytes.append(ch)
-    return ''.join(bytes)
 
 
 class MessageReceiver(threading.Thread):

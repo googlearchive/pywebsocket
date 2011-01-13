@@ -101,7 +101,7 @@ class StreamHixie75(object):
             if (frame_type & 0x80) == 0x80:
                 # The payload length is specified in the frame.
                 # Read and discard.
-                length = msgutil.payload_length(self._request)
+                length = msgutil.payload_length_hixie75(self._request)
                 if length > 0:
                     _ = msgutil.receive_bytes(self._request, length)
                 # 5.3 3. 12. if /type/ is 0xFF and /length/ is 0, then set the

@@ -44,12 +44,15 @@ from mod_pywebsocket import stream_hixie75
 import mock
 
 
+# We'll get data given as read_data on calling request.connection.read().
 def _create_request(read_data):
     req = mock.MockRequest(connection=mock.MockConn(read_data))
     req.ws_stream = stream.Stream(req)
     return req
 
 
+# Data written to this request can be read out by calling
+# request.connection.written_data()
 def _create_blocking_request():
     req = mock.MockRequest(connection=mock.MockBlockingConn())
     req.ws_stream = stream.Stream(req)
@@ -69,6 +72,7 @@ def _create_blocking_request_hixie75():
 
 
 class MessageTest(unittest.TestCase):
+    # Tests for Stream
     def test_send_message(self):
         request = _create_request('')
         msgutil.send_message(request, 'Hello')
@@ -202,8 +206,35 @@ class MessageTest(unittest.TestCase):
                           msgutil.receive_message, request)
         self.assertEqual('World!', msgutil.receive_message(request))
 
+    # Tests for helper functions in msgutil
+    def test_create_header(self):
+        # more, rsv1, ..., rsv4 are all true
+        header = msgutil.create_header(msgutil.OPCODE_TEXT, 1, 1, 1, 1, 1, 1)
+        self.assertEqual('\xf4\x81', header)
+
+        # Maximum payload size
+        header = msgutil.create_header(
+            msgutil.OPCODE_TEXT, (1 << 63) - 1, 0, 0, 0, 0, 0)
+        self.assertEqual('\x04\x7f\x7f\xff\xff\xff\xff\xff\xff\xff', header)
+
+        # Invalid opcode 0x10
+        self.assertRaises(ValueError,
+                          msgutil.create_header,
+                          0x10, 0, 0, 0, 0, 0, 0)
+
+        # Invalid value 0xf passed to more parameter
+        self.assertRaises(ValueError,
+                          msgutil.create_header,
+                          msgutil.OPCODE_TEXT, 0, 0xf, 0, 0, 0, 0)
+
+        # Too long payload_length
+        self.assertRaises(ValueError,
+                          msgutil.create_header,
+                          msgutil.OPCODE_TEXT, 1 << 63, 0, 0, 0, 0, 0)
+
 
 class MessageTestHixie75(unittest.TestCase):
+    # Tests for StreamHixie75
     def test_send_message(self):
         request = _create_request_hixie75('')
         msgutil.send_message(request, 'Hello')
@@ -239,37 +270,13 @@ class MessageTestHixie75(unittest.TestCase):
         self.assertEqual('Hello', msgutil.receive_message(request))
         self.assertEqual('World!', msgutil.receive_message(request))
 
+    # Tests for helper functions in msgutil
     def test_payload_length(self):
         for length, bytes in ((0, '\x00'), (0x7f, '\x7f'), (0x80, '\x81\x00'),
                               (0x1234, '\x80\xa4\x34')):
             self.assertEqual(
                 length,
-                msgutil.payload_length(_create_request_hixie75(bytes)))
-
-    def test_create_header(self):
-        # more, rsv1, ..., rsv4 are all true
-        header = msgutil.create_header(msgutil.OPCODE_TEXT, 1, 1, 1, 1, 1, 1)
-        self.assertEqual('\xf4\x81', header)
-
-        # Maximum payload size
-        header = msgutil.create_header(
-            msgutil.OPCODE_TEXT, (1 << 63) - 1, 0, 0, 0, 0, 0)
-        self.assertEqual('\x04\x7f\x7f\xff\xff\xff\xff\xff\xff\xff', header)
-
-        # Invalid opcode 0x10
-        self.assertRaises(ValueError,
-                          msgutil.create_header,
-                          0x10, 0, 0, 0, 0, 0, 0)
-
-        # Invalid value 0xf passed to more parameter
-        self.assertRaises(ValueError,
-                          msgutil.create_header,
-                          msgutil.OPCODE_TEXT, 0, 0xf, 0, 0, 0, 0)
-
-        # Too long payload_length
-        self.assertRaises(ValueError,
-                          msgutil.create_header,
-                          msgutil.OPCODE_TEXT, 1 << 63, 0, 0, 0, 0, 0)
+                msgutil.payload_length_hixie75(_create_request_hixie75(bytes)))
 
 
 class MessageReceiverTest(unittest.TestCase):

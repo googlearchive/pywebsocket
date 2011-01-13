@@ -179,5 +179,9 @@ class StreamHixie75(object):
         # TODO: 3. close the WebSocket connection.
         # note: mod_python Connection (mp_conn) doesn't have close method.
 
+    def send_ping(self, body):
+        raise msgutil.BadOperationException(
+            'StreamHixie75 doesn\'t support send_ping')
+
 
 # vi:sts=4 sw=4 et

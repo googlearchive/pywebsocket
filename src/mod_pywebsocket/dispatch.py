@@ -178,7 +178,7 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        do_extra_handshake_, unused_transfer_data = self._handler(request)
+        do_extra_handshake_, unused_transfer_data = self._get_handlers(request)
         try:
             do_extra_handshake_(request)
         except Exception, e:
@@ -199,7 +199,7 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        unused_do_extra_handshake, transfer_data_ = self._handler(request)
+        unused_do_extra_handshake, transfer_data_ = self._get_handlers(request)
         # TODO(tyoshino): Terminate underlying TCP connection if possible.
         try:
             transfer_data_(request)
@@ -218,7 +218,9 @@ class Dispatcher(object):
                 e)
             raise
 
-    def _handler(self, request):
+    def _get_handlers(self, request):
+        """Retrieve handlers for the given request."""
+
         try:
             ws_resource_path = request.ws_resource.split('?', 1)[0]
             return self._handlers[ws_resource_path]

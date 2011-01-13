@@ -89,6 +89,12 @@ class UnsupportedFrameException(RuntimeError):
     pass
 
 
+def is_control_opcode(opcode):
+    return (opcode == OPCODE_CLOSE or
+            opcode == OPCODE_PING or
+            opcode == OPCODE_PONG)
+
+
 def read_better_exc(request, length):
     """Reads length bytes from connection. In case we catch any exception,
     prepends remote address to the exception message and raise again.
@@ -187,6 +193,10 @@ def receive_message(request):
         BadOperationException: when client already terminated.
     """
     return request.ws_stream.receive_message()
+
+
+def send_ping(request, body=''):
+    request.ws_stream.send_ping(body)
 
 
 # Helper functions made public to be used for writing unittests for WebSocket

@@ -32,6 +32,7 @@
 """
 
 
+from collections import deque
 import logging
 import struct
 
@@ -99,6 +100,8 @@ class Stream(object):
         self._original_opcode = None
 
         self._writer = msgutil.FragmentedTextFrameBuilder()
+
+        self._ping_queue = deque()
 
     def send_message(self, message, end=True):
         """Send message.
@@ -184,6 +187,11 @@ class Stream(object):
 
                 if more:
                     # Start of fragmentation frame
+
+                    if msgutil.is_control_opcode(opcode):
+                        raise msgutil.InvalidFrameException(
+                            'Control frames must not be fragmented')
+
                     self._original_opcode = opcode
                     self._received_fragments.append(bytes)
                     continue
@@ -213,6 +221,36 @@ class Stream(object):
                 self._logger.debug(
                     'Sent ack for client-initiated closing handshake')
                 return None
+            elif self._original_opcode == msgutil.OPCODE_PING:
+                try:
+                    handler = self._request.on_ping_handler
+                    if handler:
+                        handler(self._request, message)
+                        continue
+                except AttributeError, e:
+                    pass
+                self._send_pong(message)
+            elif self._original_opcode == msgutil.OPCODE_PONG:
+                # TODO(tyoshino): Add ping timeout handling.
+
+                if len(self._ping_queue) == 0:
+                    raise msgutil.InvalidFrameException(
+                        'No ping waiting for pong on our queue')
+                expected_body = self._ping_queue.popleft()
+                if expected_body != message:
+                    raise msgutil.InvalidFrameException(
+                        'Received pong contained a body different from our '
+                        'ping\'s one')
+
+                try:
+                    handler = self._request.on_pong_handler
+                    if handler:
+                        handler(self._request, message)
+                        continue
+                except AttributeError, e:
+                    pass
+
+                continue
             else:
                 raise msgutil.UnsupportedFrameException(
                     'opcode %d is not supported' % self._original_opcode)
@@ -248,6 +286,21 @@ class Stream(object):
                 'Didn\'t receive valid ack for closing handshake')
         # TODO: 3. close the WebSocket connection.
         # note: mod_python Connection (mp_conn) doesn't have close method.
+
+    def send_ping(self, body=''):
+        frame = msgutil.create_header(
+            msgutil.OPCODE_PING, len(body), 0, 0, 0, 0, 0)
+        frame += body
+        msgutil.write_better_exc(self._request, frame)
+
+        self._ping_queue.append(body)
+
+    def _send_pong(self, body):
+        frame = msgutil.create_header(
+            msgutil.OPCODE_PONG, len(body), 0, 0, 0, 0, 0)
+        frame += body
+        msgutil.write_better_exc(self._request, frame)
+
 
 
 # vi:sts=4 sw=4 et

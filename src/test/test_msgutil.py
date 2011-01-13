@@ -120,7 +120,7 @@ class MessageTest(unittest.TestCase):
         self.assertEqual('\x84\x05Hello\x80\x01 \x80\x05World\x00\x01!',
                          request.connection.written_data())
 
-    def test_receive_fragments_immediate_zero_termination(self):
+    def test_send_fragments_immediate_zero_termination(self):
         request = _create_request('')
         msgutil.send_message(request, 'Hello World!', False)
         msgutil.send_message(request, '', True)
@@ -205,6 +205,64 @@ class MessageTest(unittest.TestCase):
         self.assertRaises(msgutil.UnsupportedFrameException,
                           msgutil.receive_message, request)
         self.assertEqual('World!', msgutil.receive_message(request))
+
+    def test_send_ping(self):
+        request = _create_request('')
+        msgutil.send_ping(request, 'Hello World!')
+        self.assertEqual('\x02\x0cHello World!',
+                         request.connection.written_data())
+
+    def test_receive_ping(self):
+        def handler(request, message):
+            request.called = True
+
+        # Stream automatically respond to ping with pong without any action
+        # by application layer.
+        request = _create_request('\x02\x05Hello\x04\x05World')
+        self.assertEqual('World', msgutil.receive_message(request))
+        self.assertEqual('\x03\x05Hello',
+                         request.connection.written_data())
+
+        request = _create_request('\x02\x05Hello\x04\x05World')
+        request.on_ping_handler = handler
+        self.assertEqual('World', msgutil.receive_message(request))
+        self.assertTrue(request.called)
+
+    def test_receive_pong(self):
+        def handler(request, message):
+            request.called = True
+
+        request = _create_request('\x03\x05Hello\x04\x05World')
+        request.on_pong_handler = handler
+        msgutil.send_ping(request, 'Hello')
+        self.assertEqual('\x02\x05Hello',
+                         request.connection.written_data())
+        # Valid pong is received, but receive_message won't return for it.
+        self.assertEqual('World', msgutil.receive_message(request))
+        self.assertEqual('\x02\x05Hello',
+                         request.connection.written_data())
+
+        self.assertTrue(request.called)
+
+    def test_receive_extra_or_bad_pong(self):
+        # No preceding ping.
+        request = _create_request('\x03\x05Hello\x04\x05World')
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
+
+        request = _create_request('\x03\x05Hello\x04\x05World')
+        msgutil.send_ping(request, 'Jumbo')
+        # Body mismatch.
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
+
+    def test_ping_cannot_be_fragmented(self):
+        request = _create_request('\x82\x05Hello')
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
 
     # Tests for helper functions in msgutil
     def test_create_header(self):

@@ -64,6 +64,10 @@ _OPCODE_CONTINUATION = 0x0
 _OPCODE_CLOSE        = 0x1
 _OPCODE_TEXT         = 0x4
 
+# Strings used for handshake
+_UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
+_CONNECTION_HEADER = 'Connection: Upgrade\r\n'
+
 
 def _method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
@@ -73,6 +77,23 @@ def _origin_header(origin):
     # 4.1 13. concatenation of the string "Origin:", a U+0020 SPACE character,
     # and the /origin/ value, converted to ASCII lowercase, to /fields/.
     return 'Origin: %s\r\n' % origin.lower()
+
+
+def _format_host_header(host, port, secure):
+    # 4.1 9. Let /hostport/ be an empty string.
+    # 4.1 10. Append the /host/ value, converted to ASCII lowercase, to
+    # /hostport/
+    hostport = host.lower()
+    # 4.1 11. If /secure/ is false, and /port/ is not 80, or if /secure/
+    # is true, and /port/ is not 443, then append a U+003A COLON character
+    # (:) followed by the value of /port/, expressed as a base-ten integer,
+    # to /hostport/
+    if ((not secure and port != _DEFAULT_PORT) or
+        (secure and port != _DEFAULT_SECURE_PORT)):
+        hostport += ':' + str(port)
+    # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
+    # character, and /hostport/, to /fields/.
+    return 'Host: ' + hostport + '\r\n'
 
 
 def _hexify(s):
@@ -107,35 +128,35 @@ class _TLSSocket(object):
         pass
 
 
-class WebSocketHandshake(object):
-    """WebSocket handshake processor for IETF HyBi 01 or later."""
+class WebSocketHybi00Handshake(object):
+    """WebSocket handshake processor for IETF HyBi 00 and later."""
 
-    _UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
-    _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
-
-    def __init__(self, socket, options):
-        self._socket = socket
+    def __init__(self, options, draft_field):
         self._options = options
+        self._draft_field = draft_field
 
-    def _create_websocket_draft_field(self):
-        return 'Sec-WebSocket-Draft: 1\r\n'
-
-    def handshake(self):
+    def handshake(self, socket):
         """Handshake Web Socket.
 
         Raises:
             Exception: handshake failed.
         """
+
+        self._socket = socket
+
         # 4.1 5. send request line.
         self._socket.send(_method_line(self._options.resource))
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
-        fields.append(WebSocketHandshake._UPGRADE_HEADER)
+        fields.append(_UPGRADE_HEADER)
         # 4.1 8. Add the string "Connection: Upgrade" to /fields/.
-        fields.append(WebSocketHandshake._CONNECTION_HEADER)
+        fields.append(_CONNECTION_HEADER)
         # 4.1 9-12. Add Host: field to /fields/.
-        fields.append(self._format_host_header())
+        fields.append(_format_host_header(
+            self._options.server_host,
+            self._options.server_port,
+            self._options.use_tls))
         # 4.1 13. Add Origin: field to /fields/.
         fields.append(_origin_header(self._options.origin))
         # TODO: 4.1 14 Add Sec-WebSocket-Protocol: field to /fields/.
@@ -147,7 +168,7 @@ class WebSocketHandshake(object):
         self._number2, key2 = self._generate_sec_websocket_key()
         fields.append('Sec-WebSocket-Key2: ' + key2 + '\r\n')
 
-        fields.append(self._create_websocket_draft_field())
+        fields.append('Sec-WebSocket-Draft: %s\r\n' % self._draft_field)
 
         # 4.1 24. For each string in /fields/, in a random order: send the
         # string, encoded as UTF-8, followed by a UTF-8 encoded U+000D CARRIAGE
@@ -369,6 +390,18 @@ class WebSocketHandshake(object):
                 value += ch
             ch = _receive_bytes(self._socket, 1)
 
+
+class WebSocketHixie75Handshake(object):
+    """WebSocket handshake processor for IETF Hixie 75."""
+
+    _EXPECTED_RESPONSE = (
+        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
+        _UPGRADE_HEADER +
+        _CONNECTION_HEADER)
+
+    def __init__(self, options):
+        self._options = options
+
     def _skip_headers(self):
         terminator = '\r\n\r\n'
         pos = 0
@@ -381,53 +414,16 @@ class WebSocketHandshake(object):
             else:
                 pos = 0
 
-    def _format_host_header(self):
-        # 4.1 9. Let /hostport/ be an empty string.
-        hostport = ''
-        # 4.1 10. Append the /host/ value, converted to ASCII lowercase, to
-        # /hostport/
-        hostport = self._options.server_host.lower()
-        # 4.1 11. If /secure/ is false, and /port/ is not 80, or if /secure/
-        # is true, and /port/ is not 443, then append a U+003A COLON character
-        # (:) followed by the value of /port/, expressed as a base-ten integer,
-        # to /hostport/
-        if ((not self._options.use_tls and
-             self._options.server_port != _DEFAULT_PORT) or
-            (self._options.use_tls and
-             self._options.server_port != _DEFAULT_SECURE_PORT)):
-            hostport += ':' + str(self._options.server_port)
-        # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
-        # character, and /hostport/, to /fields/.
-        host = 'Host: ' + hostport + '\r\n'
-        return host
+    def handshake(self, socket):
+        self._socket = socket
 
-
-class WebSocketHybi00Handshake(WebSocketHandshake):
-    """WebSocket handshake processor for IETF HyBi 00."""
-
-    def __init__(self, socket, options):
-        WebSocketHandshake.__init__(self, socket, options)
-
-    def _create_websocket_draft_field(self):
-        return 'Sec-WebSocket-Draft: 0\r\n'
-
-
-class WebSocketHixie75Handshake(WebSocketHandshake):
-    """WebSocket handshake processor for IETF Hixie 75."""
-
-    _EXPECTED_RESPONSE = (
-        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
-        WebSocketHandshake._UPGRADE_HEADER +
-        WebSocketHandshake._CONNECTION_HEADER)
-
-    def __init__(self, socket, options):
-        WebSocketHandshake.__init__(self, socket, options)
-
-    def handshake(self):
         self._socket.send(_method_line(self._options.resource))
-        self._socket.send(WebSocketHandshake._UPGRADE_HEADER)
-        self._socket.send(WebSocketHandshake._CONNECTION_HEADER)
-        self._socket.send(self._format_host_header())
+        self._socket.send(_UPGRADE_HEADER)
+        self._socket.send(_CONNECTION_HEADER)
+        self._socket.send(_format_host_header(
+            self._options.server_host,
+            self._options.server_port,
+            self._options.use_tls))
         self._socket.send(_origin_header(self._options.origin))
         self._socket.send('\r\n')
 
@@ -596,11 +592,11 @@ class ClientOptions(object):
 class Client(object):
     """Web Socket client."""
 
-    def __init__(self, options, handshake_class, stream_class):
+    def __init__(self, options, handshake, stream_class):
         self._options = options
         self._socket = None
 
-        self._handshake_class = handshake_class
+        self._handshake = handshake
         self._stream_class = stream_class
 
     def connect(self):
@@ -612,9 +608,7 @@ class Client(object):
         if self._options.use_tls:
             self._socket = _TLSSocket(self._socket)
 
-        self._handshake = self._handshake_class(self._socket, self._options)
-
-        self._handshake.handshake()
+        self._handshake.handshake(self._socket)
 
         self._stream = self._stream_class(self._socket)
 
@@ -647,17 +641,20 @@ class Client(object):
 
 
 def create_client(options):
-    return Client(options, WebSocketHandshake, WebSocketStream)
+    return Client(
+        options, WebSocketHybi00Handshake(options, '1'), WebSocketStream)
 
 
 def create_client_hybi00(options):
     return Client(
-        options, WebSocketHybi00Handshake, WebSocketStreamHixie75)
+        options,
+        WebSocketHybi00Handshake(options, '0'),
+        WebSocketStreamHixie75)
 
 
 def create_client_hixie75(options):
     return Client(
-        options, WebSocketHixie75Handshake, WebSocketStreamHixie75)
+        options, WebSocketHixie75Handshake(options), WebSocketStreamHixie75)
 
 
 # vi:sts=4 sw=4 et

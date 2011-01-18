@@ -37,6 +37,7 @@ import Queue
 import unittest
 
 import config  # This must be imported before mod_pywebsocket.
+from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
 from mod_pywebsocket import stream
 from mod_pywebsocket import stream_hixie75
@@ -267,12 +268,12 @@ class MessageTest(unittest.TestCase):
     # Tests for helper functions in msgutil
     def test_create_header(self):
         # more, rsv1, ..., rsv4 are all true
-        header = msgutil.create_header(msgutil.OPCODE_TEXT, 1, 1, 1, 1, 1, 1)
+        header = msgutil.create_header(common.OPCODE_TEXT, 1, 1, 1, 1, 1, 1)
         self.assertEqual('\xf4\x81', header)
 
         # Maximum payload size
         header = msgutil.create_header(
-            msgutil.OPCODE_TEXT, (1 << 63) - 1, 0, 0, 0, 0, 0)
+            common.OPCODE_TEXT, (1 << 63) - 1, 0, 0, 0, 0, 0)
         self.assertEqual('\x04\x7f\x7f\xff\xff\xff\xff\xff\xff\xff', header)
 
         # Invalid opcode 0x10
@@ -283,12 +284,12 @@ class MessageTest(unittest.TestCase):
         # Invalid value 0xf passed to more parameter
         self.assertRaises(ValueError,
                           msgutil.create_header,
-                          msgutil.OPCODE_TEXT, 0, 0xf, 0, 0, 0, 0)
+                          common.OPCODE_TEXT, 0, 0xf, 0, 0, 0, 0)
 
         # Too long payload_length
         self.assertRaises(ValueError,
                           msgutil.create_header,
-                          msgutil.OPCODE_TEXT, 1 << 63, 0, 0, 0, 0, 0)
+                          common.OPCODE_TEXT, 1 << 63, 0, 0, 0, 0, 0)
 
 
 class MessageTestHixie75(unittest.TestCase):

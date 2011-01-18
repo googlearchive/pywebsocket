@@ -35,7 +35,7 @@
 import Queue
 import threading
 
-from mod_pywebsocket import msgutil
+from mod_pywebsocket import common
 from mod_pywebsocket import stream_hixie75
 
 
@@ -193,7 +193,7 @@ class MockRequest(object):
         # conflict with self.is_https(), it is named as such.
         self.is_https_ = is_https
         self.ws_stream = stream_hixie75.StreamHixie75(self)
-        self.ws_version = msgutil.VERSION_HYBI00
+        self.ws_version = common.VERSION_HYBI00
 
     def is_https(self):
         """Return whether this request is over SSL."""

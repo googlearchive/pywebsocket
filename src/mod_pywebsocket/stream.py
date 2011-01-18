@@ -36,6 +36,7 @@ from collections import deque
 import logging
 import struct
 
+from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
 
 
@@ -150,11 +151,11 @@ class Stream(object):
             opcode, bytes, more, rsv1, rsv2, rsv3, rsv4 = receive_frame(
                 self._request)
             if rsv1 or rsv2 or rsv3 or rsv4:
-                raise UnsupportedFrameException(
+                raise msgutil.UnsupportedFrameException(
                     'Unsupported flag is set (rsv = %d%d%d%d)' %
                     (rsv1, rsv2, rsv3, rsv4))
 
-            if opcode == msgutil.OPCODE_CONTINUATION:
+            if opcode == common.OPCODE_CONTINUATION:
                 if not self._received_fragments:
                     if more:
                         raise msgutil.InvalidFrameException(
@@ -200,12 +201,12 @@ class Stream(object):
                     self._original_opcode = opcode
                     message = bytes
 
-            if self._original_opcode == msgutil.OPCODE_TEXT:
+            if self._original_opcode == common.OPCODE_TEXT:
                 # The Web Socket protocol section 4.4 specifies that invalid
                 # characters must be replaced with U+fffd REPLACEMENT
                 # CHARACTER.
                 return message.decode('utf-8', 'replace')
-            elif self._original_opcode == msgutil.OPCODE_CLOSE:
+            elif self._original_opcode == common.OPCODE_CLOSE:
                 self._request.client_terminated = True
 
                 if self._request.server_terminated:
@@ -221,7 +222,7 @@ class Stream(object):
                 self._logger.debug(
                     'Sent ack for client-initiated closing handshake')
                 return None
-            elif self._original_opcode == msgutil.OPCODE_PING:
+            elif self._original_opcode == common.OPCODE_PING:
                 try:
                     handler = self._request.on_ping_handler
                     if handler:
@@ -230,7 +231,7 @@ class Stream(object):
                 except AttributeError, e:
                     pass
                 self._send_pong(message)
-            elif self._original_opcode == msgutil.OPCODE_PONG:
+            elif self._original_opcode == common.OPCODE_PONG:
                 # TODO(tyoshino): Add ping timeout handling.
 
                 if len(self._ping_queue) == 0:
@@ -262,7 +263,7 @@ class Stream(object):
         # running through the following steps:
         # 1. send a 0xFF byte and a 0x00 byte to the client to indicate the
         # start of the closing handshake.
-        msgutil.write_better_exc(self._request, chr(msgutil.OPCODE_CLOSE) + '\x00')
+        msgutil.write_better_exc(self._request, chr(common.OPCODE_CLOSE) + '\x00')
 
     def close_connection(self):
         """Closes a WebSocket connection."""
@@ -289,7 +290,7 @@ class Stream(object):
 
     def send_ping(self, body=''):
         frame = msgutil.create_header(
-            msgutil.OPCODE_PING, len(body), 0, 0, 0, 0, 0)
+            common.OPCODE_PING, len(body), 0, 0, 0, 0, 0)
         frame += body
         msgutil.write_better_exc(self._request, frame)
 
@@ -297,10 +298,9 @@ class Stream(object):
 
     def _send_pong(self, body):
         frame = msgutil.create_header(
-            msgutil.OPCODE_PONG, len(body), 0, 0, 0, 0, 0)
+            common.OPCODE_PONG, len(body), 0, 0, 0, 0, 0)
         frame += body
         msgutil.write_better_exc(self._request, frame)
-
 
 
 # vi:sts=4 sw=4 et

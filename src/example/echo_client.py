@@ -30,13 +30,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Web Socket Echo client.
+"""Simple WebSocket client named echo_client just because of historical reason.
 
-This is an example Web Socket client that talks with echo_wsh.py.
-This may be useful for checking mod_pywebsocket installation.
-
-Note:
-This code is far from robust, e.g., we cut corners in handshake.
+mod_pywebsocket directory must be in PYTHONPATH.
 
 Example Usage:
 
@@ -45,8 +41,9 @@ Example Usage:
  % PYTHONPATH=$cwd/src python ./mod_pywebsocket/standalone.py -p 8880 \
     -d $cwd/src/example
 
-# run echo client
- % python ./src/example/echo_client.py -p 8880 -s localhost \
+# run client
+ % PYTHONPATH=$cwd/src python ./src/example/echo_client.py -p 8880 \
+     -s localhost \
      -o http://localhost -r /echo -m test
 
 or
@@ -82,6 +79,11 @@ import socket
 import struct
 import sys
 
+from mod_pywebsocket import common
+from mod_pywebsocket import stream
+from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket import util
+
 
 _LOG_LEVELS = {
     'debug'    : logging.DEBUG,
@@ -92,16 +94,13 @@ _LOG_LEVELS = {
 }
 
 _TIMEOUT_SEC = 10
-_DEFAULT_PORT = 80
-_DEFAULT_SECURE_PORT = 443
 _UNDEFINED_PORT = -1
+
+_UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
+_CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 
 # Special message that tells the echo server to start closing handshake
 _GOODBYE_MESSAGE = 'Goodbye'
-
-# Opcodes introduced in IETF HyBi 01 for the new framing format
-_OPCODE_CLOSE = 1
-_OPCODE_TEXT = 4
 
 
 def _method_line(resource):
@@ -114,8 +113,21 @@ def _origin_header(origin):
     return 'Origin: %s\r\n' % origin.lower()
 
 
-def _hexify(s):
-    return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
+def _format_host_header(host, port, secure):
+    # 4.1 9. Let /hostport/ be an empty string.
+    # 4.1 10. Append the /host/ value, converted to ASCII lowercase, to
+    # /hostport/
+    hostport = host.lower()
+    # 4.1 11. If /secure/ is false, and /port/ is not 80, or if /secure/
+    # is true, and /port/ is not 443, then append a U+003A COLON character
+    # (:) followed by the value of /port/, expressed as a base-ten integer,
+    # to /hostport/
+    if ((not secure and port != common.DEFAULT_WEB_SOCKET_PORT) or
+        (secure and port != common.DEFAULT_WEB_SOCKET_SECURE_PORT)):
+        hostport += ':' + str(port)
+    # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
+    # character, and /hostport/, to /fields/.
+    return 'Host: ' + hostport + '\r\n'
 
 
 def _receive_bytes(socket, length):
@@ -146,11 +158,8 @@ class _TLSSocket(object):
         pass
 
 
-class WebSocketHandshake(object):
+class Handshake(object):
     """Web Socket handshake for IETF HyBi 00 or later."""
-
-    _UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
-    _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 
     def __init__(self, socket, options):
         self._socket = socket
@@ -167,11 +176,14 @@ class WebSocketHandshake(object):
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
-        fields.append(WebSocketHandshake._UPGRADE_HEADER)
+        fields.append(_UPGRADE_HEADER)
         # 4.1 8. Add the string "Connection: Upgrade" to /fields/.
-        fields.append(WebSocketHandshake._CONNECTION_HEADER)
+        fields.append(_CONNECTION_HEADER)
         # 4.1 9-12. Add Host: field to /fields/.
-        fields.append(self._format_host_header())
+        fields.append(_format_host_header(
+            self._options.server_host,
+            self._options.server_port,
+            self._options.use_tls))
         # 4.1 13. Add Origin: field to /fields/.
         fields.append(_origin_header(self._options.origin))
         # TODO: 4.1 14 Add Sec-WebSocket-Protocol: field to /fields/.
@@ -205,7 +217,7 @@ class WebSocketHandshake(object):
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
         self._socket.send(self._key3)
-        logging.debug('key3     : %s' % _hexify(self._key3))
+        logging.debug('key3     : %s' % util.hexify(self._key3))
 
         logging.info('Sent handshake')
 
@@ -283,18 +295,18 @@ class WebSocketHandshake(object):
 
         logging.debug('num+key3 : %d, %d, %s' % (
             self._number1, self._number2,
-            _hexify(self._key3)))
-        logging.debug('challenge: %s' % _hexify(challenge))
+            util.hexify(self._key3)))
+        logging.debug('challenge: %s' % util.hexify(challenge))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = md5_hash(challenge).digest()
-        logging.debug('expected : %s' % _hexify(expected))
+        logging.debug('expected : %s' % util.hexify(expected))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
-        logging.debug('reply    : %s' % _hexify(reply))
+        logging.debug('reply    : %s' % util.hexify(reply))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.
@@ -411,6 +423,19 @@ class WebSocketHandshake(object):
                 value += ch
             ch = _receive_bytes(self._socket, 1)
 
+
+class HandshakeHixie75(object):
+    """Web Socket Hixie 75 handshake."""
+
+    _EXPECTED_RESPONSE = (
+        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
+        _UPGRADE_HEADER +
+        _CONNECTION_HEADER)
+
+    def __init__(self, socket, options):
+        self._socket = socket
+        self._options = options
+
     def _skip_headers(self):
         terminator = '\r\n\r\n'
         pos = 0
@@ -423,49 +448,20 @@ class WebSocketHandshake(object):
             else:
                 pos = 0
 
-    def _format_host_header(self):
-        # 4.1 9. Let /hostport/ be an empty string.
-        hostport = ''
-        # 4.1 10. Append the /host/ value, converted to ASCII lowercase, to
-        # /hostport/
-        hostport = self._options.server_host.lower()
-        # 4.1 11. If /secure/ is false, and /port/ is not 80, or if /secure/
-        # is true, and /port/ is not 443, then append a U+003A COLON character
-        # (:) followed by the value of /port/, expressed as a base-ten integer,
-        # to /hostport/
-        if ((not self._options.use_tls and
-             self._options.server_port != _DEFAULT_PORT) or
-            (self._options.use_tls and
-             self._options.server_port != _DEFAULT_SECURE_PORT)):
-            hostport += ':' + str(self._options.server_port)
-        # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
-        # character, and /hostport/, to /fields/.
-        host = 'Host: ' + hostport + '\r\n'
-        return host
-
-
-class WebSocketHixie75Handshake(WebSocketHandshake):
-    """Web Socket Hixie 75 handshake."""
-
-    _EXPECTED_RESPONSE = (
-        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
-        WebSocketHandshake._UPGRADE_HEADER +
-        WebSocketHandshake._CONNECTION_HEADER)
-
-    def __init__(self, socket, options):
-        WebSocketHandshake.__init__(self, socket, options)
-
     def handshake(self):
         self._socket.send(_method_line(self._options.resource))
-        self._socket.send(WebSocketHandshake._UPGRADE_HEADER)
-        self._socket.send(WebSocketHandshake._CONNECTION_HEADER)
-        self._socket.send(self._format_host_header())
+        self._socket.send(_UPGRADE_HEADER)
+        self._socket.send(_CONNECTION_HEADER)
+        self._socket.send(_format_host_header(
+            self._options.server_host,
+            self._options.server_port,
+            self._options.use_tls))
         self._socket.send(_origin_header(self._options.origin))
         self._socket.send('\r\n')
 
         logging.info('Sent handshake')
 
-        for expected_char in WebSocketHixie75Handshake._EXPECTED_RESPONSE:
+        for expected_char in HandshakeHixie75._EXPECTED_RESPONSE:
             received = _receive_bytes(self._socket, 1)
             if expected_char != received:
                 raise Exception('Handshake failure')
@@ -473,12 +469,35 @@ class WebSocketHixie75Handshake(WebSocketHandshake):
         self._skip_headers()
 
 
+class ClientConnection(object):
+    """A wrapper for socket object to provide the mp_conn interface.
+    mod_pywebsocket library is designed to be working on Apache mod_python's
+    mp_conn object.
+    """
+
+    def __init__(self, socket):
+        self._socket = socket
+
+    def write(self, data):
+        self._socket.send(data)
+
+    def read(self, n):
+        return self._socket.recv(n)
+
+
+class ClientRequest(object):
+    def __init__(self, socket):
+        self.connection = ClientConnection(socket)
+
+
 class EchoClient(object):
     """Web Socket echo client."""
 
-    def __init__(self, options):
+    def __init__(self, options, handshake_class, stream_class):
         self._options = options
         self._socket = None
+        self._handshake_class = handshake_class
+        self._stream_class = stream_class
 
     def run(self):
         """Run the client.
@@ -494,185 +513,62 @@ class EchoClient(object):
             if self._options.use_tls:
                 self._socket = _TLSSocket(self._socket)
 
-            self._handshake = self._create_handshake()
-
+            self._handshake = self._handshake_class(
+                self._socket, self._options)
             self._handshake.handshake()
 
             logging.info('Connection established')
 
-            for line in self._options.message.split(','):
-                frame = self._create_text_frame(line)
+            request = ClientRequest(self._socket)
+            self._stream = self._stream_class(request)
+            if self._options.protocol_version == 'hybi01':
+                request.ws_version = common.VERSION_HYBI01
+            elif self._options.protocol_version == 'hybi00':
+                request.ws_version = common.VERSION_HYBI00
+            elif self._options.protocol_version == 'hixie75':
+                request.ws_version = common.VERSION_HIXIE75
+            else:
+                raise Exception('illegal --protocol-version flag: %s' %
+                                self._options.protocol_version)
 
-                self._socket.send(frame)
+            for line in self._options.message.split(','):
+                self._stream.send_message(line)
                 if self._options.verbose:
                     print 'Send: %s' % line
-                received = _receive_bytes(self._socket, len(frame))
-
                 try:
-                    payload = self._parse_frame_briefly(received)
+                    received = self._stream.receive_message()
 
                     if self._options.verbose:
-                        print 'Recv: %s' % payload
-
-                    if received != frame:
-                        raise Exception('Incorrect echo: %r' % received)
+                        print 'Recv: %s' % received
                 except Exception, e:
                     if self._options.verbose:
                         print 'Error: %s' % e
                     raise
 
-            self._do_closing_handshake()
+            if request.ws_version != common.VERSION_HIXIE75:
+                self._do_closing_handshake()
         finally:
             self._socket.close()
 
-    def _do_closing_handshake_generic(self, closing_frame):
+    def _do_closing_handshake(self):
         """Perform closing handshake using the specified closing frame."""
 
-        closing = ''
-
-        try:
-            try:
-                if self._options.message.split(',')[-1] == _GOODBYE_MESSAGE:
-                    # requested server initiated closing handshake, so
-                    # expecting closing handshake message from server.
-                    logging.info('Wait for server-initiated closing handshake')
-                    closing = _receive_bytes(self._socket, len(closing_frame))
-                    if closing == closing_frame:
-                        # 4.2 3 8 If the /frame type/ is 0xFF and the
-                        # /length/ was 0, then run the following substeps.
-                        # TODO(ukai): handle \xff\x80..\x00 case.
-                        # 1. If the WebSocket closing handshake has not
-                        # yet started, then start the WebSocket closing
-                        # handshake.
-                        print 'Recv close'
-                        self._socket.send(closing_frame)
-                        print 'Send ack'
-                        logging.info(
-                            'Received closing handshake and sent ack')
-                        # 2. Wait until either the WebSocket closing
-                        # handshake has started or the WebSocket connection
-                        # is closed.
-                        # 3. If the WebSocket connection is not already
-                        # closed, then close the WebSocket connection.
-                        # close() in finally.
-            except Exception, ex:
-                print 'Exception: %s' % ex
-        finally:
-            # if server didn't initiate closing handshake, start
-            # closing handshake from client.
-            if closing != closing_frame:
-                # 2, 3 Send a 0xFF byte and 0x00 byte to the server.
-                self._socket.send(closing_frame)
-                print 'Send close'
-                logging.info('Sent closing handshake')
-                # 4 The WebSocket closing handshake has started.
-                # 5 Wait a user-agent-determined length of time, or
-                # until the WebSocket connection is closed.
-                # NOTE: the closing handshake finishes once the server
-                # returns the 0xFF package, as described above.
-                closing = _receive_bytes(self._socket, len(closing_frame))
-                if closing != closing_frame:
-                    logging.info('Received no valid ack')
-                else:
-                    print 'Recv ack'
-                    logging.info('Received ack')
-
-    def _create_handshake(self):
-        return WebSocketHandshake(self._socket, self._options)
-
-    def _create_text_frame(self, payload):
-        encoded_payload = payload.encode('utf-8')
-        header = chr(_OPCODE_TEXT)
-        payload_length = len(encoded_payload)
-        if payload_length <= 125:
-            header += chr(payload_length)
-        elif payload_length < 1 << 16:
-            header += chr(126) + struct.pack('!H', payload_length)
-        elif payload_length < 1 << 63:
-            header += chr(127) + struct.pack('!Q', payload_length)
-        else:
-            raise Exception('Too long payload (%d byte)' % payload_length)
-        return header + encoded_payload
-
-    def _parse_frame_briefly(self, frame):
-        if len(frame) <= 1:
-            raise Exception('Incomplete %d octet frame' % len(frame))
-
-        first_byte = ord(frame[0])
-        if first_byte & 0xf != _OPCODE_TEXT:
-            raise Exception('Bad opcode %d' % (first_byte & 0xf))
-        elif first_byte & 0xf0:
-            raise Exception(
-                'Any of unsupported flag more/rsv1/rsv2/rsv3 is set')
-
-        second_byte = ord(frame[1])
-        if second_byte & 0x80:
-            raise Exception('Unsupported flag rsv4 is set')
-
-        payload_length = second_byte & 0x7f
-        if payload_length == 127:
-            if len(frame) < 2 + 8:
-                raise Exception('Incomplete length header')
-            payload_length = struct.unpack('!Q', frame[2:9])[0]
-            payload_pos = 10
-        elif payload_length == 126:
-            if len(frame) < 2 + 2:
-                raise Exception('Incomplete length header')
-            payload_length = struct.unpack('!H', frame[2:3])[0]
-            payload_pos = 4
-        else:
-            payload_pos = 2
-
-        if len(frame) < payload_pos + payload_length:
-            raise Exception('Incomplete payload')
-
-        payload = frame[payload_pos:payload_pos + payload_length]
-        return payload.decode('utf-8', 'replace')
-
-    def _do_closing_handshake(self):
-        self._do_closing_handshake_generic(chr(_OPCODE_CLOSE) + '\x00')
-
-    def _parse_frame_briefly_hixie75(self, frame):
-        if len(frame) <= 0:
-            raise Exception('Incomplete 0 octet frame')
-        elif frame[0] != '\x00':
-            raise Exception('Bad frame type %d' % ord(frame[0]))
-        else:
-            return frame[1:-1].decode('utf-8', 'replace')
-
-
-class EchoClientHybi00(EchoClient):
-    """Web Socket echo client using IETF HyBi 00 protocol."""
-
-    def _create_handshake(self):
-        return WebSocketHandshake(self._socket, self._options)
-
-    def _create_text_frame(self, payload):
-        encoded_payload = payload.encode('utf-8')
-        return ''.join(['\x00', encoded_payload, '\xff'])
-
-    def _parse_frame_briefly(self, frame):
-        return self._parse_frame_briefly_hixie75(frame)
-
-    def _do_closing_handshake(self):
-        self._do_closing_handshake_generic('\xff\x00')
-
-
-class EchoClientHixie75(EchoClient):
-    """Web Socket echo client using Hixie 75 protocol."""
-
-    def _create_handshake(self):
-        return  WebSocketHixie75Handshake(self._socket, self._options)
-
-    def _create_text_frame(self, payload):
-        encoded_payload = payload.encode('utf-8')
-        return ''.join(['\x00', encoded_payload, '\xff'])
-
-    def _parse_frame_briefly(self, frame):
-        return self._parse_frame_briefly_hixie75(frame)
-
-    def _do_closing_handshake(self):
-        pass
+        if self._options.message.split(',')[-1] == _GOODBYE_MESSAGE:
+            # requested server initiated closing handshake, so
+            # expecting closing handshake message from server.
+            logging.info('Wait for server-initiated closing handshake')
+            message = self._stream.receive_message()
+            if message is None:
+                print 'Recv close'
+                print 'Send ack'
+                logging.info(
+                    'Received closing handshake and sent ack')
+                return
+        print 'Send close'
+        self._stream.close_connection()
+        logging.info('Sent closing handshake')
+        print 'Recv ack'
+        logging.info('Received ack')
 
 
 def main():
@@ -725,9 +621,9 @@ def main():
     # Default port number depends on whether TLS is used.
     if options.server_port == _UNDEFINED_PORT:
         if options.use_tls:
-            options.server_port = _DEFAULT_SECURE_PORT
+            options.server_port = common.DEFAULT_WEB_SOCKET_SECURE_PORT
         else:
-            options.server_port = _DEFAULT_PORT
+            options.server_port = common.DEFAULT_WEB_SOCKET_PORT
 
     # optparse doesn't seem to handle non-ascii default values.
     # Set default message here.
@@ -735,11 +631,14 @@ def main():
         options.message = u'Hello,\u65e5\u672c'   # "Japan" in Japanese
 
     if options.protocol_version == 'hybi01':
-        EchoClient(options).run()
+        EchoClient(
+            options, Handshake, stream.Stream).run()
     elif options.protocol_version == 'hybi00':
-        EchoClientHybi00(options).run()
+        EchoClient(
+            options, Handshake, stream_hixie75.StreamHixie75).run()
     elif options.protocol_version == 'hixie75':
-        EchoClientHixie75(options).run()
+        EchoClient(
+            options, HandshakeHixie75, stream_hixie75.StreamHixie75).run()
     else:
         raise Exception(
             'Invalid protocol version flag: %s' % options.protocol_version)

@@ -50,9 +50,10 @@ except ImportError:
 import re
 import struct
 
-from mod_pywebsocket import msgutil
+from mod_pywebsocket import common
 from mod_pywebsocket import stream
 from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
 from mod_pywebsocket.handshake._base import validate_protocol
@@ -64,8 +65,6 @@ _MANDATORY_HEADERS = [
     ['Connection', 'Upgrade'],
 ]
 
-def _hexify(s):
-    return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
 
 class Handshaker(object):
     """This class performs Web Socket handshake."""
@@ -160,7 +159,7 @@ class Handshaker(object):
                     # Make this default when ready.
                     self._logger.debug('IETF HyBi 01 framing')
                     self._request.ws_stream = stream.Stream(self._request)
-                    self._request.ws_version = msgutil.VERSION_HYBI01
+                    self._request.ws_version = common.VERSION_HYBI01
                     return
             except ValueError, e:
                 raise HandshakeError(
@@ -168,7 +167,7 @@ class Handshaker(object):
 
         self._logger.debug('IETF Hixie 75 framing')
         self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
-        self._request.ws_version = msgutil.VERSION_HYBI00
+        self._request.ws_version = common.VERSION_HYBI00
 
     def _set_challenge_response(self):
         # 5.2 4-8.
@@ -176,9 +175,9 @@ class Handshaker(object):
         # 5.2 9. let /response/ be the MD5 finterprint of /challenge/
         self._request.ws_challenge_md5 = md5_hash(
             self._request.ws_challenge).digest()
-        self._logger.debug('challenge: %s' % _hexify(
+        self._logger.debug('challenge: %s' % util.hexify(
             self._request.ws_challenge))
-        self._logger.debug('response:  %s' % _hexify(
+        self._logger.debug('response:  %s' % util.hexify(
             self._request.ws_challenge_md5))
 
     def _get_key_value(self, key_field):

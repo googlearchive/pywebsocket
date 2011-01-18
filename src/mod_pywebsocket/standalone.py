@@ -80,6 +80,7 @@ try:
 except ImportError:
     pass
 
+from mod_pywebsocket import common
 from mod_pywebsocket import dispatch
 from mod_pywebsocket import handshake
 from mod_pywebsocket import memorizingfile
@@ -358,7 +359,7 @@ def _main():
                       default='',
                       help='server hostname to listen to')
     parser.add_option('-p', '--port', dest='port', type='int',
-                      default=handshake.DEFAULT_WEB_SOCKET_PORT,
+                      default=common.DEFAULT_WEB_SOCKET_PORT,
                       help='port to listen to')
     parser.add_option('-w', '--websock-handlers', '--websock_handlers',
                       dest='websock_handlers',

@@ -41,21 +41,8 @@ import Queue
 import struct
 import threading
 
+from mod_pywebsocket import common
 from mod_pywebsocket import util
-
-
-# Constants indicating WebSocket protocol version.
-VERSION_HYBI01  = 1
-VERSION_HYBI00  = 0
-VERSION_HIXIE75 = -1
-
-# Frame opcodes defined in the spec.
-OPCODE_CONTINUATION = 0x0
-OPCODE_CLOSE        = 0x1
-OPCODE_PING         = 0x2
-OPCODE_PONG         = 0x3
-OPCODE_TEXT         = 0x4
-OPCODE_BINARY       = 0x5
 
 
 # Exceptions
@@ -90,9 +77,9 @@ class UnsupportedFrameException(RuntimeError):
 
 
 def is_control_opcode(opcode):
-    return (opcode == OPCODE_CLOSE or
-            opcode == OPCODE_PING or
-            opcode == OPCODE_PONG)
+    return (opcode == common.OPCODE_CLOSE or
+            opcode == common.OPCODE_PING or
+            opcode == common.OPCODE_PONG)
 
 
 def read_better_exc(request, length):
@@ -255,7 +242,7 @@ def create_header(opcode, payload_length, more, rsv1, rsv2, rsv3, rsv4):
     return header
 
 
-def create_text_frame(message, opcode=OPCODE_TEXT, more=0):
+def create_text_frame(message, opcode=common.OPCODE_TEXT, more=0):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
@@ -274,9 +261,9 @@ class FragmentedTextFrameBuilder(object):
 
     def build(self, message, end):
         if self._started:
-            opcode = OPCODE_CONTINUATION
+            opcode = common.OPCODE_CONTINUATION
         else:
-            opcode = OPCODE_TEXT
+            opcode = common.OPCODE_TEXT
 
         if end:
             self._started = False

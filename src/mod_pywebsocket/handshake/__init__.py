@@ -42,10 +42,6 @@ import re
 
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import handshake
-from mod_pywebsocket.handshake._base import DEFAULT_WEB_SOCKET_PORT
-from mod_pywebsocket.handshake._base import DEFAULT_WEB_SOCKET_SECURE_PORT
-from mod_pywebsocket.handshake._base import WEB_SOCKET_SCHEME
-from mod_pywebsocket.handshake._base import WEB_SOCKET_SECURE_SCHEME
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import validate_protocol
 

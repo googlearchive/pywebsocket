@@ -118,4 +118,8 @@ def wrap_popen3_for_win(cygwin_path):
     os.popen3 = __wrap_popen3
 
 
+def hexify(s):
+    return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
+
+
 # vi:sts=4 sw=4 et

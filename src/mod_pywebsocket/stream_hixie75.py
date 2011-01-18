@@ -34,6 +34,7 @@
 
 import logging
 
+from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
 
 
@@ -106,7 +107,7 @@ class StreamHixie75(object):
                     _ = msgutil.receive_bytes(self._request, length)
                 # 5.3 3. 12. if /type/ is 0xFF and /length/ is 0, then set the
                 # /client terminated/ flag and abort these steps.
-                if self._request.ws_version is msgutil.VERSION_HIXIE75:
+                if self._request.ws_version is common.VERSION_HIXIE75:
                     continue
 
                 if frame_type == 0xFF and length == 0:
@@ -158,7 +159,7 @@ class StreamHixie75(object):
                 'Requested close_connection but server is already terminated')
             return
 
-        if self._request.ws_version is msgutil.VERSION_HIXIE75:
+        if self._request.ws_version is common.VERSION_HIXIE75:
             self._request.server_terminated = True
             self._logger.debug('Connection closed')
             return
@@ -171,7 +172,7 @@ class StreamHixie75(object):
         #
         # For now, we expect receiving closing handshake right after sending
         # out closing handshake, and if we couldn't receive non-handshake
-        # frame, we take it as ConnectionTerminatedException.
+        # frame, we take it as msgutil.ConnectionTerminatedException.
         message = self.receive_message()
         if message is not None:
             raise msgutil.ConnectionTerminatedException(

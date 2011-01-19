@@ -204,7 +204,7 @@ class Dispatcher(object):
         try:
             transfer_data_(request)
             if not request.server_terminated:
-                msgutil.close_connection(request)
+                request.ws_stream.close_connection()
         except msgutil.ConnectionTerminatedException, e:
             # Catch non-critical exceptions the handler didn't handle.
             self._logger.debug(str(e))

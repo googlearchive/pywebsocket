@@ -157,17 +157,17 @@ class Handshaker(object):
                     raise ValueError
                 if draft_int >= 1:
                     # Make this default when ready.
-                    self._logger.debug('IETF HyBi 01 framing')
-                    self._request.ws_stream = stream.Stream(self._request)
+                    self._logger.debug('IETF HyBi 01 protocol')
                     self._request.ws_version = common.VERSION_HYBI01
+                    self._request.ws_stream = stream.Stream(self._request)
                     return
             except ValueError, e:
                 raise HandshakeError(
                     'Illegal value for Sec-WebSocket-Draft: %s' % draft)
 
-        self._logger.debug('IETF Hixie 75 framing')
-        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
+        self._logger.debug('IETF HyBi 00 protocol')
         self._request.ws_version = common.VERSION_HYBI00
+        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
 
     def _set_challenge_response(self):
         # 5.2 4-8.

@@ -131,10 +131,9 @@ class Handshaker(object):
         self._request.ws_protocol = protocol
 
     def _set_protocol_version(self):
-        self._logger.debug('IETF Hixie 75 framing')
-        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
-        # None means Hixie 75 version protocol
+        self._logger.debug('IETF Hixie 75 protocol')
         self._request.ws_version = common.VERSION_HIXIE75
+        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
 
     def _send_handshake(self):
         self._request.connection.write(

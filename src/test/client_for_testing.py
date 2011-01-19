@@ -40,8 +40,6 @@ This code is far from robust, e.g., we cut corners in handshake.
 """
 
 
-import logging
-
 # Use md5 module in Python 2.4
 try:
     import hashlib
@@ -50,6 +48,7 @@ except ImportError:
     import md5
     md5_hash = md5.md5
 
+import logging
 import random
 import re
 import socket
@@ -132,6 +131,9 @@ class WebSocketHybi00Handshake(object):
     """WebSocket handshake processor for IETF HyBi 00 and later."""
 
     def __init__(self, options, draft_field):
+        self._logger = logging.getLogger(
+            'test.client_for_testing.WebSocketHybi00Handshake')
+
         self._options = options
         self._draft_field = draft_field
 
@@ -184,9 +186,8 @@ class WebSocketHybi00Handshake(object):
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
         self._socket.send(self._key3)
-        logging.debug('%s' % _hexify(self._key3))
 
-        logging.info('Sent handshake')
+        self._logger.info('Sent handshake')
 
         # 4.1 28. Read bytes from the server until either the connection closes,
         # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
@@ -260,20 +261,20 @@ class WebSocketHybi00Handshake(object):
         challenge += struct.pack('!I', self._number2)
         challenge += self._key3
 
-        logging.debug('num %d, %d, %s' % (
+        self._logger.debug('num %d, %d, %s' % (
             self._number1, self._number2,
             _hexify(self._key3)))
-        logging.debug('challenge: %s' % _hexify(challenge))
+        self._logger.debug('challenge: %s' % _hexify(challenge))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = md5_hash(challenge).digest()
-        logging.debug('expected : %s' % _hexify(expected))
+        self._logger.debug('expected : %s' % _hexify(expected))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
-        logging.debug('reply    : %s' % _hexify(reply))
+        self._logger.debug('reply    : %s' % _hexify(reply))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.
@@ -400,6 +401,9 @@ class WebSocketHixie75Handshake(object):
         _CONNECTION_HEADER)
 
     def __init__(self, options):
+        self._logger = logging.getLogger(
+            'test.client_for_testing.WebSocketHixie75Handshake')
+
         self._options = options
 
     def _skip_headers(self):
@@ -427,7 +431,7 @@ class WebSocketHixie75Handshake(object):
         self._socket.send(_origin_header(self._options.origin))
         self._socket.send('\r\n')
 
-        logging.info('Sent handshake')
+        self._logger.info('Sent handshake')
 
         for expected_char in WebSocketHixie75Handshake._EXPECTED_RESPONSE:
             received = _receive_bytes(self._socket, 1)
@@ -593,6 +597,9 @@ class Client(object):
     """Web Socket client."""
 
     def __init__(self, options, handshake, stream_class):
+        self._logger = logging.getLogger(
+            'test.client_for_testing.Client')
+
         self._options = options
         self._socket = None
 
@@ -612,7 +619,7 @@ class Client(object):
 
         self._stream = self._stream_class(self._socket)
 
-        logging.info('Connection established')
+        self._logger.info('Connection established')
 
     def send_message(self, message, end=True):
         self._stream.send_text(message, end)

@@ -36,6 +36,7 @@ import logging
 
 from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
+from mod_pywebsocket import util
 
 
 class StreamHixie75(object):
@@ -48,7 +49,7 @@ class StreamHixie75(object):
             request: mod_python request.
         """
 
-        self._logger = logging.getLogger('mod_pywebsocket.stream_hixie75')
+        self._logger = util.get_class_logger(self)
 
         self._request = request
         self._request.client_terminated = False

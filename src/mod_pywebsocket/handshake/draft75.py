@@ -42,6 +42,7 @@ import re
 
 from mod_pywebsocket import common
 from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
 from mod_pywebsocket.handshake._base import validate_protocol
@@ -89,7 +90,7 @@ class Handshaker(object):
         handshake.
         """
 
-        self._logger = logging.getLogger('mod_pywebsocket.draft75')
+        self._logger = util.get_class_logger(self)
 
         self._request = request
         self._dispatcher = dispatcher

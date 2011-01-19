@@ -33,6 +33,7 @@
 
 
 import StringIO
+import logging
 import os
 import re
 import traceback
@@ -120,6 +121,11 @@ def wrap_popen3_for_win(cygwin_path):
 
 def hexify(s):
     return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
+
+
+def get_class_logger(o):
+    return logging.getLogger(
+        '%s.%s' % (o.__class__.__module__, o.__class__.__name__))
 
 
 # vi:sts=4 sw=4 et

@@ -134,7 +134,7 @@ class Dispatcher(object):
                       scan time when root_dir contains many subdirectories.
         """
 
-        self._logger = logging.getLogger('mod_pywebsocket.dispatch')
+        self._logger = util.get_class_logger(self)
 
         self._handlers = {}
         self._source_warnings = []

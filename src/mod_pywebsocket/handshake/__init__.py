@@ -40,6 +40,7 @@ not suitable because they don't allow direct raw bytes writing/reading.
 import logging
 import re
 
+from mod_pywebsocket import util
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import handshake
 from mod_pywebsocket.handshake._base import HandshakeError
@@ -64,7 +65,7 @@ class Handshaker(object):
         handshake.
         """
 
-        self._logger = logging.getLogger('mod_pywebsocket.handshake')
+        self._logger = util.get_class_logger(self)
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict

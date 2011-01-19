@@ -97,7 +97,7 @@ def _format_host_header(host, port, secure):
 
 
 def _hexify(s):
-    return re.sub('.', lambda x: '%02x ' % ord(x.group(0)), s)
+    return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
 
 
 def _receive_bytes(socket, length):

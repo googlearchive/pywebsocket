@@ -35,6 +35,11 @@
 This module contains helper methods for performing handshake, frame
 sending/receiving as a WebSocket client.
 
+This is code for testing mod_pywebsocket. Keep this code independent from
+mod_pywebsocket. Don't import e.g. Stream class for generating frame for
+testing. Using util.hexify, etc. that are not related to protocol processing
+is allowed.
+
 Note:
 This code is far from robust, e.g., we cut corners in handshake.
 """
@@ -53,6 +58,8 @@ import random
 import re
 import socket
 import struct
+
+from mod_pywebsocket import util
 
 
 _DEFAULT_PORT = 80
@@ -95,10 +102,6 @@ def _format_host_header(host, port, secure):
     return 'Host: ' + hostport + '\r\n'
 
 
-def _hexify(s):
-    return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
-
-
 def _receive_bytes(socket, length):
     bytes = []
     while length > 0:
@@ -131,8 +134,7 @@ class WebSocketHybi00Handshake(object):
     """WebSocket handshake processor for IETF HyBi 00 and later."""
 
     def __init__(self, options, draft_field):
-        self._logger = logging.getLogger(
-            'test.client_for_testing.WebSocketHybi00Handshake')
+        self._logger = util.get_class_logger(self)
 
         self._options = options
         self._draft_field = draft_field
@@ -263,18 +265,18 @@ class WebSocketHybi00Handshake(object):
 
         self._logger.debug('num %d, %d, %s' % (
             self._number1, self._number2,
-            _hexify(self._key3)))
-        self._logger.debug('challenge: %s' % _hexify(challenge))
+            util.hexify(self._key3)))
+        self._logger.debug('challenge: %s' % util.hexify(challenge))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = md5_hash(challenge).digest()
-        self._logger.debug('expected : %s' % _hexify(expected))
+        self._logger.debug('expected : %s' % util.hexify(expected))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
-        self._logger.debug('reply    : %s' % _hexify(reply))
+        self._logger.debug('reply    : %s' % util.hexify(reply))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.
@@ -401,8 +403,7 @@ class WebSocketHixie75Handshake(object):
         _CONNECTION_HEADER)
 
     def __init__(self, options):
-        self._logger = logging.getLogger(
-            'test.client_for_testing.WebSocketHixie75Handshake')
+        self._logger = util.get_class_logger(self)
 
         self._options = options
 
@@ -597,8 +598,7 @@ class Client(object):
     """Web Socket client."""
 
     def __init__(self, options, handshake, stream_class):
-        self._logger = logging.getLogger(
-            'test.client_for_testing.Client')
+        self._logger = util.get_class_logger(self)
 
         self._options = options
         self._socket = None

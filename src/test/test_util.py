@@ -70,6 +70,10 @@ class UtilTest(unittest.TestCase):
         self.assertEqual(cygwin_perl + ' -wT', util.get_script_interp(
             os.path.join(_TEST_DATA_DIR, 'hello.pl'), cygwin_path))
 
+    def test_hexify(self):
+        self.assertEqual('61 7a 41 5a 30 39 20 09 0d 0a 00 ff ',
+                         util.hexify('azAZ09 \t\r\n\x00\xff'))
+
 
 if __name__ == '__main__':
     unittest.main()

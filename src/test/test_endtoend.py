@@ -71,6 +71,8 @@ def _echo_check_procedure_with_goodbye(client):
     client.assert_receive_close()
     client.send_close()
 
+    client.assert_connection_closed()
+
 
 class EndToEndTest(unittest.TestCase):
     def setUp(self):

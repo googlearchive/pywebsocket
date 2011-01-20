@@ -115,7 +115,7 @@ class EndToEndTest(unittest.TestCase):
         else:
             os.kill(pid, signal.SIGKILL)
 
-    def _run_hybi01_test(self, test_closure):
+    def _run_hybi01_test(self, test_function):
         try:
             server = self._run_server()
 
@@ -125,7 +125,7 @@ class EndToEndTest(unittest.TestCase):
 
             client = client_for_testing.create_client(self._options)
             try:
-                test_closure(client)
+                test_function(client)
             finally:
                 client.close_socket()
         finally:
@@ -137,7 +137,7 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_server_close(self):
         self._run_hybi01_test(_echo_check_procedure_with_goodbye)
 
-    def _run_hybi00_test(self, test_closure):
+    def _run_hybi00_test(self, test_function):
         try:
             server = self._run_server()
 
@@ -145,7 +145,7 @@ class EndToEndTest(unittest.TestCase):
 
             client = client_for_testing.create_client_hybi00(self._options)
             try:
-                test_closure(client)
+                test_function(client)
             finally:
                 client.close_socket()
         finally:
@@ -157,7 +157,7 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_server_close_hybi00(self):
         self._run_hybi00_test(_echo_check_procedure_with_goodbye)
 
-    def _run_hixie75_test(self, test_closure):
+    def _run_hixie75_test(self, test_function):
         try:
             server = self._run_server_allow_draft75()
 
@@ -165,23 +165,23 @@ class EndToEndTest(unittest.TestCase):
 
             client = client_for_testing.create_client_hixie75(self._options)
             try:
-                test_closure(client)
+                test_function(client)
             finally:
                 client.close_socket()
         finally:
             self._kill_process(server.pid)
 
     def test_echo_hixie75(self):
-        def test_closure(client):
+        def test_function(client):
             client.connect()
 
             client.send_message('test')
             client.assert_receive('test')
 
-        self._run_hixie75_test(test_closure)
+        self._run_hixie75_test(test_function)
 
     def test_echo_server_close_hixie75(self):
-        def test_closure(client):
+        def test_function(client):
             client.connect()
 
             client.send_message('test')
@@ -190,7 +190,7 @@ class EndToEndTest(unittest.TestCase):
             client.send_message(_GOODBYE_MESSAGE)
             client.assert_receive(_GOODBYE_MESSAGE)
 
-        self._run_hixie75_test(test_closure)
+        self._run_hixie75_test(test_function)
 
 
 # vi:sts=4 sw=4 et

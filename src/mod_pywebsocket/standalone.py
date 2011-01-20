@@ -90,6 +90,7 @@ from mod_pywebsocket import util
 _LOG_LEVELS = {
     'debug'    : logging.DEBUG,
     'info'     : logging.INFO,
+    'warning'  : logging.WARNING,
     'warn'     : logging.WARN,
     'error'    : logging.ERROR,
     'critical' : logging.CRITICAL
@@ -396,7 +397,8 @@ def _main():
                       default='', help='Log file.')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
-                      choices=['debug', 'info', 'warn', 'error', 'critical'],
+                      choices=['debug', 'info', 'warning', 'warn', 'error',
+                               'critical'],
                       help='Log level.')
     parser.add_option('--log-max', '--log_max', dest='log_max', type='int',
                       default=_DEFAULT_LOG_MAX_BYTES,

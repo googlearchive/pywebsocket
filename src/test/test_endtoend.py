@@ -33,6 +33,7 @@
 
 import client_for_testing
 import config  # to fix sys.path.
+import logging
 import os
 import signal
 import socket
@@ -95,18 +96,22 @@ class EndToEndTest(unittest.TestCase):
     def _run_python_command(self, commandline):
         return subprocess.Popen([sys.executable] + commandline, close_fds=True)
 
-    def _run_server(self):
-        return self._run_python_command(
-            [self.standalone_command,
-             '-p', str(self.test_port),
-             '-d', self.document_root])
+    def _run_server(self, allow_draft75=False):
+        args = [self.standalone_command,
+                '-p', str(self.test_port),
+                '-d', self.document_root]
 
-    def _run_server_allow_draft75(self):
-        return self._run_python_command(
-            [self.standalone_command,
-             '-p', str(self.test_port),
-             '-d', self.document_root,
-             '--allow-draft75'])
+        # Inherit the level set to the root logger by test runner.
+        root_logger = logging.getLogger()
+        log_level = root_logger.getEffectiveLevel()
+        if log_level != logging.NOTSET:
+            args.append('--log-level')
+            args.append(logging.getLevelName(log_level).lower())
+
+        if allow_draft75:
+            args.append('--allow-draft75')
+
+        return self._run_python_command(args)
 
     def _kill_process(self, pid):
         if sys.platform in ('win32', 'cygwin'):
@@ -116,9 +121,8 @@ class EndToEndTest(unittest.TestCase):
             os.kill(pid, signal.SIGKILL)
 
     def _run_hybi01_test(self, test_function):
+        server = self._run_server()
         try:
-            server = self._run_server()
-
             # TODO(tyoshino): add some logic to poll the server until it becomes
             # ready
             time.sleep(0.2)
@@ -138,9 +142,8 @@ class EndToEndTest(unittest.TestCase):
         self._run_hybi01_test(_echo_check_procedure_with_goodbye)
 
     def _run_hybi00_test(self, test_function):
+        server = self._run_server()
         try:
-            server = self._run_server()
-
             time.sleep(0.2)
 
             client = client_for_testing.create_client_hybi00(self._options)
@@ -158,9 +161,8 @@ class EndToEndTest(unittest.TestCase):
         self._run_hybi00_test(_echo_check_procedure_with_goodbye)
 
     def _run_hixie75_test(self, test_function):
+        server = self._run_server(allow_draft75=True)
         try:
-            server = self._run_server_allow_draft75()
-
             time.sleep(0.2)
 
             client = client_for_testing.create_client_hixie75(self._options)

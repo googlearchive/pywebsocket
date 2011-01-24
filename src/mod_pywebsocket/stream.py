@@ -260,11 +260,8 @@ class Stream(object):
     def _send_closing_handshake(self):
         self._request.server_terminated = True
 
-        # 5.3 the server may decide to terminate the WebSocket connection by
-        # running through the following steps:
-        # 1. send a 0xFF byte and a 0x00 byte to the client to indicate the
-        # start of the closing handshake.
-        msgutil.write_better_exc(self._request, chr(common.OPCODE_CLOSE) + '\x00')
+        frame = msgutil.create_close_frame('')
+        msgutil.write_better_exc(self._request, frame)
 
     def close_connection(self):
         """Closes a WebSocket connection."""
@@ -290,17 +287,13 @@ class Stream(object):
         # note: mod_python Connection (mp_conn) doesn't have close method.
 
     def send_ping(self, body=''):
-        frame = msgutil.create_header(
-            common.OPCODE_PING, len(body), 0, 0, 0, 0, 0)
-        frame += body
+        frame = msgutil.create_ping_frame(body)
         msgutil.write_better_exc(self._request, frame)
 
         self._ping_queue.append(body)
 
     def _send_pong(self, body):
-        frame = msgutil.create_header(
-            common.OPCODE_PONG, len(body), 0, 0, 0, 0, 0)
-        frame += body
+        frame = msgutil.create_pong_frame(body)
         msgutil.write_better_exc(self._request, frame)
 
 

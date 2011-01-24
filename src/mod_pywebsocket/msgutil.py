@@ -246,9 +246,8 @@ def create_text_frame(message, opcode=common.OPCODE_TEXT, more=0):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
-    frame = create_header(opcode, len(encoded_message), more, 0, 0, 0, 0)
-    frame += encoded_message
-    return frame
+    header = create_header(opcode, len(encoded_message), more, 0, 0, 0, 0)
+    return header + encoded_message
 
 
 class FragmentedTextFrameBuilder(object):
@@ -273,6 +272,21 @@ class FragmentedTextFrameBuilder(object):
             more = 1
 
         return create_text_frame(message, opcode, more)
+
+
+def create_ping_frame(body):
+    header = create_header(common.OPCODE_PING, len(body), 0, 0, 0, 0, 0)
+    return header + body
+
+
+def create_pong_frame(body):
+    header = create_header(common.OPCODE_PONG, len(body), 0, 0, 0, 0, 0)
+    return header + body
+
+
+def create_close_frame(body):
+    header = create_header(common.OPCODE_CLOSE, len(body), 0, 0, 0, 0, 0)
+    return header + body
 
 
 # Helper functions for Hixie75

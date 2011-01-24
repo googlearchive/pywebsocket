@@ -36,11 +36,11 @@ This suite is expected to be run under pywebsocket's src directory, i.e. the
 directory containing mod_pywebsocket, test, etc.
 
 To change loggin level, please specify --log-level option.
-    python test/run_test.py --log-level DEBUG
+    python test/run_test.py --log-level debug
 
 To pass any option to unittest module, please specify options after '--'. For
 example, run this for making the test runner verbose.
-    python test/run_test.py --log-level DEBUG -- -v
+    python test/run_test.py --log-level debug -- -v
 """
 
 
@@ -72,12 +72,12 @@ def _suite():
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
-    parser.add_option('--log-level', '--log_level', type='choice'
+    parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warning',
                       choices=['debug', 'info', 'warning', 'warn', 'error',
                                'critical'])
     options, args = parser.parse_args()
-    logging.basicConfig(level=logging.getLevelName(options.log_level))
+    logging.basicConfig(level=logging.getLevelName(options.log_level.upper()))
     unittest.main(defaultTest='_suite', argv=[sys.argv[0]] + args)
 
 

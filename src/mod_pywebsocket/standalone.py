@@ -87,15 +87,6 @@ from mod_pywebsocket import memorizingfile
 from mod_pywebsocket import util
 
 
-_LOG_LEVELS = {
-    'debug'    : logging.DEBUG,
-    'info'     : logging.INFO,
-    'warning'  : logging.WARNING,
-    'warn'     : logging.WARN,
-    'error'    : logging.ERROR,
-    'critical' : logging.CRITICAL
-}
-
 _DEFAULT_LOG_MAX_BYTES = 1024 * 256
 _DEFAULT_LOG_BACKUP_COUNT = 5
 
@@ -316,7 +307,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
 
 def _configure_logging(options):
     logger = logging.getLogger()
-    logger.setLevel(_LOG_LEVELS[options.log_level])
+    logger.setLevel(logging.getLevelName(options.log_level.upper()))
     if options.log_file:
         handler = logging.handlers.RotatingFileHandler(
                 options.log_file, 'a', options.log_max, options.log_count)

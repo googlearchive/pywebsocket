@@ -38,13 +38,11 @@ not suitable because they don't allow direct raw bytes writing/reading.
 
 
 import logging
-import re
 
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import handshake
 from mod_pywebsocket.handshake._base import HandshakeError
-from mod_pywebsocket.handshake._base import validate_protocol
 
 
 class Handshaker(object):

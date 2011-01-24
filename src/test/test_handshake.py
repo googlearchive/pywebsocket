@@ -37,6 +37,7 @@ import unittest
 
 import config  # This must be imported before mod_pywebsocket.
 from mod_pywebsocket import handshake
+from mod_pywebsocket.handshake._base import validate_protocol
 
 import mock
 
@@ -342,21 +343,21 @@ def _create_requests_with_lines(request_lines_set):
 
 class HandshakerTest(unittest.TestCase):
     def test_validate_protocol(self):
-        handshake.validate_protocol('sample')  # should succeed.
-        handshake.validate_protocol('Sample')  # should succeed.
-        handshake.validate_protocol('sample\x20protocol')  # should succeed.
-        handshake.validate_protocol('sample\x7eprotocol')  # should succeed.
+        validate_protocol('sample')  # should succeed.
+        validate_protocol('Sample')  # should succeed.
+        validate_protocol('sample\x20protocol')  # should succeed.
+        validate_protocol('sample\x7eprotocol')  # should succeed.
         self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
+                          validate_protocol,
                           '')
         self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
+                          validate_protocol,
                           'sample\x19protocol')
         self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
+                          validate_protocol,
                           'sample\x7fprotocol')
         self.assertRaises(handshake.HandshakeError,
-                          handshake.validate_protocol,
+                          validate_protocol,
                           # "Japan" in Japanese
                           u'\u65e5\u672c')
 

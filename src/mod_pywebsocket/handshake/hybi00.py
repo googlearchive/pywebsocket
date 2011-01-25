@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Web Socket handshaking.
+"""WebSocket initial handshake hander for HyBi 00 protocol.
 
 Note: request.connection.write/read are used in this module, even though
 mod_python document says that they should be used only in connection handlers.
@@ -36,8 +36,6 @@ Unfortunately, we have no other options. For example, request.write/read are
 not suitable because they don't allow direct raw bytes writing/reading.
 """
 
-
-import logging
 
 # Use md5 module in Python 2.4
 try:
@@ -47,6 +45,7 @@ except ImportError:
     import md5
     md5_hash = md5.md5
 
+import logging
 import re
 import struct
 
@@ -56,6 +55,8 @@ from mod_pywebsocket import stream_hixie75
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
+from mod_pywebsocket.handshake._base import check_header_lines
+from mod_pywebsocket.handshake._base import get_mandatory_header
 from mod_pywebsocket.handshake._base import validate_subprotocol
 
 
@@ -97,32 +98,15 @@ class Handshaker(object):
 
         # 5.1 Reading the client's opening handshake.
         # dispatcher sets it in self._request.
-        self._check_header_lines()
+        check_header_lines(self._request, _MANDATORY_HEADERS)
         self._set_resource()
         self._set_subprotocol()
         self._set_location()
         self._set_origin()
-        self._set_protocol_version()
         self._set_challenge_response()
+        self._set_protocol_version()
         self._dispatcher.do_extra_handshake(self._request)
         self._send_handshake()
-
-    def _check_header_lines(self):
-        # 5.1 1. The three character UTF-8 string "GET".
-        # 5.1 2. A UTF-8-encoded U+0020 SPACE character (0x20 byte).
-        if self._request.method != 'GET':
-            raise HandshakeError('Method is not GET')
-        # The expected field names, and the meaning of their corresponding
-        # values, are as follows.
-        #  |Upgrade| and |Connection|
-        for key, expected_value in _MANDATORY_HEADERS:
-            actual_value = self._request.headers_in.get(key)
-            if not actual_value:
-                raise HandshakeError('Header %s is not defined' % key)
-            if expected_value:
-                if actual_value != expected_value:
-                    raise HandshakeError('Illegal value for header %s: %s' %
-                                         (key, actual_value))
 
     def _set_resource(self):
         self._request.ws_resource = self._request.uri
@@ -181,9 +165,7 @@ class Handshaker(object):
             self._request.ws_challenge_md5))
 
     def _get_key_value(self, key_field):
-        key_value = self._request.headers_in.get(key_field)
-        if key_value is None:
-            raise HandshakeError('%s field not found' % key_field)
+        key_value = get_mandatory_header(self._request, key_field)
 
         # 5.2 4. let /key-number_n/ be the digits (characters in the range
         # U+0030 DIGIT ZERO (0) to U+0039 DIGIT NINE (9)) in /key_n/,

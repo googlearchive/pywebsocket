@@ -41,7 +41,7 @@ import logging
 
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake import draft75
-from mod_pywebsocket.handshake import handshake
+from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake._base import HandshakeError
 
 
@@ -67,7 +67,7 @@ class Handshaker(object):
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict
-        self._handshaker = handshake.Handshaker(request, dispatcher)
+        self._handshaker = hybi00.Handshaker(request, dispatcher)
         self._fallbackHandshaker = None
         if allowDraft75:
             self._fallbackHandshaker = draft75.Handshaker(

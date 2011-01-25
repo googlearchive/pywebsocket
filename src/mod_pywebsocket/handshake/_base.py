@@ -104,4 +104,27 @@ def build_location(request):
     return ''.join(location_parts)
 
 
+def get_mandatory_header(request, key, expected_value=None):
+    value = request.headers_in.get(key)
+    if value is None:
+        raise HandshakeError('Header %s is not defined' % key)
+    if expected_value is not None and expected_value != value:
+        raise HandshakeError(
+            'Illegal value for header %s: %s (expected: %s)' %
+            (key, value, expected_value))
+    return value
+
+
+def check_header_lines(request, mandatory_headers):
+    # 5.1 1. The three character UTF-8 string "GET".
+    # 5.1 2. A UTF-8-encoded U+0020 SPACE character (0x20 byte).
+    if request.method != 'GET':
+        raise HandshakeError('Method is not GET')
+    # The expected field names, and the meaning of their corresponding
+    # values, are as follows.
+    #  |Upgrade| and |Connection|
+    for key, expected_value in mandatory_headers:
+        get_mandatory_header(request, key, expected_value)
+
+
 # vi:sts=4 sw=4 et

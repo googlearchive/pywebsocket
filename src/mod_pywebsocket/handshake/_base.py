@@ -54,14 +54,23 @@ def get_default_port(is_secure):
         return common.DEFAULT_WEB_SOCKET_PORT
 
 
-def validate_protocol(protocol):
-    """Validate WebSocket-Protocol string."""
+def validate_subprotocol(subprotocol):
+    """Validate a value in subprotocol fields such as WebSocket-Protocol,
+    Sec-WebSocket-Protocol.
 
-    if not protocol:
-        raise HandshakeError('Invalid WebSocket-Protocol: empty')
-    for c in protocol:
+    See
+    - HyBi 04: Section 3.3. Valid WebSocket URLs
+      (The spec should be fixed. /protocols/ is not referred)
+    - HyBi 00: Section 4.1. Opening handshake
+    - Hixie 75: Section 4.1. Handshake
+    """
+
+    if not subprotocol:
+        raise HandshakeError('Invalid subprotocol name: empty')
+    for c in subprotocol:
         if not 0x20 <= ord(c) <= 0x7e:
-            raise HandshakeError('Illegal character in protocol: %r' % c)
+            raise HandshakeError(
+                'Illegal character in subprotocol name: %r' % c)
 
 
 def parse_host_header(request):

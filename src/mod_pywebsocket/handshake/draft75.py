@@ -45,7 +45,7 @@ from mod_pywebsocket import stream_hixie75
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
-from mod_pywebsocket.handshake._base import validate_protocol
+from mod_pywebsocket.handshake._base import validate_subprotocol
 
 
 _MANDATORY_HEADERS = [
@@ -110,7 +110,7 @@ class Handshaker(object):
         self._set_resource()
         self._set_origin()
         self._set_location()
-        self._set_protocol()
+        self._set_subprotocol()
         self._set_protocol_version()
         self._dispatcher.do_extra_handshake(self._request)
         self._send_handshake()
@@ -124,11 +124,11 @@ class Handshaker(object):
     def _set_location(self):
         self._request.ws_location = build_location(self._request)
 
-    def _set_protocol(self):
-        protocol = self._request.headers_in.get('WebSocket-Protocol')
-        if protocol is not None:
-            validate_protocol(protocol)
-        self._request.ws_protocol = protocol
+    def _set_subprotocol(self):
+        subprotocol = self._request.headers_in.get('WebSocket-Protocol')
+        if subprotocol is not None:
+            validate_subprotocol(subprotocol)
+        self._request.ws_protocol = subprotocol
 
     def _set_protocol_version(self):
         self._logger.debug('IETF Hixie 75 protocol')

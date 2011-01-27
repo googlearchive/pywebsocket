@@ -38,8 +38,8 @@ import unittest
 
 import config  # This must be imported before mod_pywebsocket.
 from mod_pywebsocket import msgutil
-from mod_pywebsocket import stream
-from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket.stream import Stream
+from mod_pywebsocket.stream import StreamHixie75
 
 import mock
 
@@ -47,7 +47,7 @@ import mock
 # We'll get data given as read_data on calling request.connection.read().
 def _create_request(read_data):
     req = mock.MockRequest(connection=mock.MockConn(read_data))
-    req.ws_stream = stream.Stream(req)
+    req.ws_stream = Stream(req)
     return req
 
 
@@ -55,19 +55,19 @@ def _create_request(read_data):
 # request.connection.written_data()
 def _create_blocking_request():
     req = mock.MockRequest(connection=mock.MockBlockingConn())
-    req.ws_stream = stream.Stream(req)
+    req.ws_stream = Stream(req)
     return req
 
 
 def _create_request_hixie75(read_data):
     req = mock.MockRequest(connection=mock.MockConn(read_data))
-    req.ws_stream = stream_hixie75.StreamHixie75(req)
+    req.ws_stream = StreamHixie75(req)
     return req
 
 
 def _create_blocking_request_hixie75():
     req = mock.MockRequest(connection=mock.MockBlockingConn())
-    req.ws_stream = stream_hixie75.StreamHixie75(req)
+    req.ws_stream = StreamHixie75(req)
     return req
 
 

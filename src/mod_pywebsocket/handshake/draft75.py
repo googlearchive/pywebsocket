@@ -41,7 +41,7 @@ import logging
 import re
 
 from mod_pywebsocket import common
-from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
@@ -133,7 +133,7 @@ class Handshaker(object):
     def _set_protocol_version(self):
         self._logger.debug('IETF Hixie 75 protocol')
         self._request.ws_version = common.VERSION_HIXIE75
-        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
+        self._request.ws_stream = StreamHixie75(self._request)
 
     def _send_handshake(self):
         self._request.connection.write(

@@ -36,7 +36,7 @@ import Queue
 import threading
 
 from mod_pywebsocket import common
-from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket.stream import StreamHixie75
 
 
 class _MockConnBase(object):
@@ -192,7 +192,7 @@ class MockRequest(object):
         # self.is_https_ needs to be accessible from tests.  To avoid name
         # conflict with self.is_https(), it is named as such.
         self.is_https_ = is_https
-        self.ws_stream = stream_hixie75.StreamHixie75(self)
+        self.ws_stream = StreamHixie75(self)
         self.ws_version = common.VERSION_HYBI00
 
     def is_https(self):

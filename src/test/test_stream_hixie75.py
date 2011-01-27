@@ -36,15 +36,14 @@
 import unittest
 
 from test_msgutil import _create_request_hixie75
-from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket.stream import StreamHixie75
 
 
 class StreamHixie75Test(unittest.TestCase):
     def test_payload_length(self):
         for length, bytes in ((0, '\x00'), (0x7f, '\x7f'), (0x80, '\x81\x00'),
                               (0x1234, '\x80\xa4\x34')):
-            test_stream = stream_hixie75.StreamHixie75(
-                _create_request_hixie75(bytes))
+            test_stream = StreamHixie75(_create_request_hixie75(bytes))
             self.assertEqual(
                 length, test_stream._read_payload_length_hixie75())
 

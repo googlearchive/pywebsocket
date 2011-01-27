@@ -50,8 +50,8 @@ import re
 import struct
 
 from mod_pywebsocket import common
-from mod_pywebsocket import stream
-from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket.stream import Stream
+from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
@@ -143,7 +143,7 @@ class Handshaker(object):
                     # Make this default when ready.
                     self._logger.debug('IETF HyBi 01 protocol')
                     self._request.ws_version = common.VERSION_HYBI01
-                    self._request.ws_stream = stream.Stream(self._request)
+                    self._request.ws_stream = Stream(self._request)
                     return
             except ValueError, e:
                 raise HandshakeError(
@@ -151,7 +151,7 @@ class Handshaker(object):
 
         self._logger.debug('IETF HyBi 00 protocol')
         self._request.ws_version = common.VERSION_HYBI00
-        self._request.ws_stream = stream_hixie75.StreamHixie75(self._request)
+        self._request.ws_stream = StreamHixie75(self._request)
 
     def _set_challenge_response(self):
         # 5.2 4-8.

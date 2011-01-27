@@ -1,4 +1,6 @@
-# Copyright 2010, Google Inc.
+#!/usr/bin/env python
+#
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,25 +30,23 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""This file exports public symbols.
-"""
+"""Tests for stream module."""
 
 
-from mod_pywebsocket._stream_base import BadOperationException
-from mod_pywebsocket._stream_base import ConnectionTerminatedException
-from mod_pywebsocket._stream_base import InvalidFrameException
-from mod_pywebsocket._stream_base import UnsupportedFrameException
-from mod_pywebsocket._stream_hixie75 import StreamHixie75
-from mod_pywebsocket._stream_hybi04 import Stream
+import unittest
 
-# These methods are intended to be used by WebSocket client developers to have
-# their implementations receive broken data in tests.
-from mod_pywebsocket._stream_hybi04 import create_close_frame
-from mod_pywebsocket._stream_hybi04 import create_header
-from mod_pywebsocket._stream_hybi04 import create_length_header
-from mod_pywebsocket._stream_hybi04 import create_ping_frame
-from mod_pywebsocket._stream_hybi04 import create_pong_frame
-from mod_pywebsocket._stream_hybi04 import create_text_frame
+from test_msgutil import _create_request_hixie75
+from mod_pywebsocket import stream_hixie75
+
+
+class StreamHixie75Test(unittest.TestCase):
+    def test_payload_length(self):
+        for length, bytes in ((0, '\x00'), (0x7f, '\x7f'), (0x80, '\x81\x00'),
+                              (0x1234, '\x80\xa4\x34')):
+            test_stream = stream_hixie75.StreamHixie75(
+                _create_request_hixie75(bytes))
+            self.assertEqual(
+                length, test_stream._read_payload_length_hixie75())
 
 
 # vi:sts=4 sw=4 et

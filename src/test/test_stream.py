@@ -1,4 +1,6 @@
-# Copyright 2010, Google Inc.
+#!/usr/bin/env python
+#
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,25 +30,40 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""This file exports public symbols.
-"""
+"""Tests for stream module."""
 
 
-from mod_pywebsocket._stream_base import BadOperationException
-from mod_pywebsocket._stream_base import ConnectionTerminatedException
-from mod_pywebsocket._stream_base import InvalidFrameException
-from mod_pywebsocket._stream_base import UnsupportedFrameException
-from mod_pywebsocket._stream_hixie75 import StreamHixie75
-from mod_pywebsocket._stream_hybi04 import Stream
+import unittest
 
-# These methods are intended to be used by WebSocket client developers to have
-# their implementations receive broken data in tests.
-from mod_pywebsocket._stream_hybi04 import create_close_frame
-from mod_pywebsocket._stream_hybi04 import create_header
-from mod_pywebsocket._stream_hybi04 import create_length_header
-from mod_pywebsocket._stream_hybi04 import create_ping_frame
-from mod_pywebsocket._stream_hybi04 import create_pong_frame
-from mod_pywebsocket._stream_hybi04 import create_text_frame
+from mod_pywebsocket import common
+from mod_pywebsocket import stream
+
+
+class StreamTest(unittest.TestCase):
+    def test_create_header(self):
+        # more, rsv1, ..., rsv4 are all true
+        header = stream.create_header(common.OPCODE_TEXT, 1, 1, 1, 1, 1, 1)
+        self.assertEqual('\xf4\x81', header)
+
+        # Maximum payload size
+        header = stream.create_header(
+            common.OPCODE_TEXT, (1 << 63) - 1, 0, 0, 0, 0, 0)
+        self.assertEqual('\x04\x7f\x7f\xff\xff\xff\xff\xff\xff\xff', header)
+
+        # Invalid opcode 0x10
+        self.assertRaises(ValueError,
+                          stream.create_header,
+                          0x10, 0, 0, 0, 0, 0, 0)
+
+        # Invalid value 0xf passed to more parameter
+        self.assertRaises(ValueError,
+                          stream.create_header,
+                          common.OPCODE_TEXT, 0, 0xf, 0, 0, 0, 0)
+
+        # Too long payload_length
+        self.assertRaises(ValueError,
+                          stream.create_header,
+                          common.OPCODE_TEXT, 1 << 63, 0, 0, 0, 0, 0)
 
 
 # vi:sts=4 sw=4 et

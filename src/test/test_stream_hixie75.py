@@ -48,4 +48,8 @@ class StreamHixie75Test(unittest.TestCase):
                 length, test_stream._read_payload_length_hixie75())
 
 
+if __name__ == '__main__':
+    unittest.main()
+
+
 # vi:sts=4 sw=4 et

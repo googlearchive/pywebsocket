@@ -195,4 +195,8 @@ class EndToEndTest(unittest.TestCase):
         self._run_hixie75_test(test_function)
 
 
+if __name__ == '__main__':
+    unittest.main()
+
+
 # vi:sts=4 sw=4 et

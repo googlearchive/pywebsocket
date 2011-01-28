@@ -66,4 +66,8 @@ class StreamTest(unittest.TestCase):
                           common.OPCODE_TEXT, 1 << 63, 0, 0, 0, 0, 0)
 
 
+if __name__ == '__main__':
+    unittest.main()
+
+
 # vi:sts=4 sw=4 et

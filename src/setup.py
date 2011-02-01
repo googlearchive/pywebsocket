@@ -50,7 +50,7 @@ setup(author='Yuzo Fujishima',
       long_description=(
               'mod_pywebsocket is an Apache HTTP Server extension for '
               'Web Socket (http://tools.ietf.org/html/'
-              'draft-hixie-thewebsocketprotocol). '
+              'draft-ietf-hybi-thewebsocketprotocol). '
               'See mod_pywebsocket/__init__.py for more detail.'),
       license='See COPYING',
       name=_PACKAGE_NAME,

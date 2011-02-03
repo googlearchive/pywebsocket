@@ -40,7 +40,9 @@ import unittest
 import config  # This must be imported before mod_pywebsocket.
 from mod_pywebsocket import util
 
+
 _TEST_DATA_DIR = os.path.join(os.path.split(__file__)[0], 'testdata')
+
 
 class UtilTest(unittest.TestCase):
     def test_get_stack_trace(self):
@@ -71,7 +73,7 @@ class UtilTest(unittest.TestCase):
             os.path.join(_TEST_DATA_DIR, 'hello.pl'), cygwin_path))
 
     def test_hexify(self):
-        self.assertEqual('61 7a 41 5a 30 39 20 09 0d 0a 00 ff ',
+        self.assertEqual('61 7a 41 5a 30 39 20 09 0d 0a 00 ff',
                          util.hexify('azAZ09 \t\r\n\x00\xff'))
 
 

@@ -120,7 +120,7 @@ def wrap_popen3_for_win(cygwin_path):
 
 
 def hexify(s):
-    return re.sub('(?s).', lambda x: '%02x ' % ord(x.group(0)), s)
+    return ' '.join(map(lambda x: '%02x' % ord(x), s))
 
 
 def get_class_logger(o):

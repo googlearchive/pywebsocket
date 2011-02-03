@@ -30,7 +30,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Standalone Web Socket server.
+"""Standalone WebSocket server.
 
 Use this server to run mod_pywebsocket without Apache HTTP Server.
 
@@ -45,8 +45,8 @@ Usage:
 
 <document_root> is the path to the root directory of HTML files.
 
-<websock_handlers> is the path to the root directory of Web Socket handlers.
-See __init__.py for details of <websock_handlers> and how to write Web Socket
+<websock_handlers> is the path to the root directory of WebSocket handlers.
+See __init__.py for details of <websock_handlers> and how to write WebSocket
 handlers. If this path is relative, <document_root> is used as the base.
 
 <scan_dir> is a path under the root directory. If specified, only the handlers
@@ -175,7 +175,7 @@ class _StandaloneRequest(object):
 
 
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
-    """HTTPServer specialized for Web Socket."""
+    """HTTPServer specialized for WebSocket."""
 
     SocketServer.ThreadingMixIn.daemon_threads = True
     SocketServer.TCPServer.allow_reuse_address = True
@@ -209,7 +209,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 
 
 class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
-    """CGIHTTPRequestHandler specialized for Web Socket."""
+    """CGIHTTPRequestHandler specialized for WebSocket."""
 
     def setup(self):
         """Override SocketServer.StreamRequestHandler.setup."""
@@ -356,17 +356,17 @@ def _main():
     parser.add_option('-w', '--websock-handlers', '--websock_handlers',
                       dest='websock_handlers',
                       default='.',
-                      help='Web Socket handlers root directory.')
+                      help='WebSocket handlers root directory.')
     parser.add_option('-m', '--websock-handlers-map-file',
                       '--websock_handlers_map_file',
                       dest='websock_handlers_map_file',
                       default=None,
-                      help=('Web Socket handlers map file. '
+                      help=('WebSocket handlers map file. '
                             'Each line consists of alias_resource_path and '
                             'existing_resource_path, separated by spaces.'))
     parser.add_option('-s', '--scan-dir', '--scan_dir', dest='scan_dir',
                       default=None,
-                      help=('Web Socket handlers scan directory. '
+                      help=('WebSocket handlers scan directory. '
                             'Must be a directory under websock_handlers.'))
     parser.add_option('-d', '--document-root', '--document_root',
                       dest='document_root', default='.',

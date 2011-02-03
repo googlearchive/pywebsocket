@@ -74,7 +74,7 @@ def send_message(request, message, end=True):
 
 
 def receive_message(request):
-    """Receive a Web Socket frame and return its payload as unicode string.
+    """Receive a WebSocket frame and return its payload as unicode string.
 
     Args:
         request: mod_python request.

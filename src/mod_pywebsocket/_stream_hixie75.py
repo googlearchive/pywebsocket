@@ -149,7 +149,7 @@ class StreamHixie75(StreamBase):
             else:
                 # The payload is delimited with \xff.
                 bytes = self._read_until('\xff')
-                # The Web Socket protocol section 4.4 specifies that invalid
+                # The WebSocket protocol section 4.4 specifies that invalid
                 # characters must be replaced with U+fffd REPLACEMENT
                 # CHARACTER.
                 message = bytes.decode('utf-8', 'replace')

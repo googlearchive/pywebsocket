@@ -30,7 +30,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Web Socket client utility for testing.
+"""WebSocket client utility for testing.
 
 This module contains helper methods for performing handshake, frame
 sending/receiving as a WebSocket client.
@@ -148,7 +148,7 @@ class WebSocketHybi00Handshake(object):
         self._draft_field = draft_field
 
     def handshake(self, socket):
-        """Handshake Web Socket.
+        """Handshake WebSocket.
 
         Raises:
             Exception: handshake failed.
@@ -603,7 +603,7 @@ class ClientOptions(object):
 
 
 class Client(object):
-    """Web Socket client."""
+    """WebSocket client."""
 
     def __init__(self, options, handshake, stream_class):
         self._logger = util.get_class_logger(self)

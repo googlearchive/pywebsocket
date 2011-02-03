@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Web Socket handshaking defined in draft-hixie-thewebsocketprotocol-75.
+"""WebSocket handshaking defined in draft-hixie-thewebsocketprotocol-75.
 
 Note: request.connection.write/read are used in this module, even though
 mod_python document says that they should be used only in connection handlers.
@@ -74,7 +74,7 @@ _SIXTH_AND_LATER = re.compile(
 
 
 class Handshaker(object):
-    """This class performs Web Socket handshake."""
+    """This class performs WebSocket handshake."""
 
     def __init__(self, request, dispatcher, strict=False):
         """Construct an instance.
@@ -97,7 +97,7 @@ class Handshaker(object):
         self._strict = strict
 
     def do_handshake(self):
-        """Perform Web Socket Handshake.
+        """Perform WebSocket Handshake.
 
         On _request, we set
             ws_resource, ws_origin, ws_location, ws_protocol

@@ -68,7 +68,7 @@ _MANDATORY_HEADERS = [
 
 
 class Handshaker(object):
-    """This class performs Web Socket handshake."""
+    """This class performs WebSocket handshake."""
 
     def __init__(self, request, dispatcher):
         """Construct an instance.
@@ -87,7 +87,7 @@ class Handshaker(object):
         self._dispatcher = dispatcher
 
     def do_handshake(self):
-        """Perform Web Socket Handshake.
+        """Perform WebSocket Handshake.
 
         On _request, we set
             ws_resource, ws_protocol, ws_location, ws_origin, ws_challenge,

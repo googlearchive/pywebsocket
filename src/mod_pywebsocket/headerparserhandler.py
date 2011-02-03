@@ -31,7 +31,7 @@
 """PythonHeaderParserHandler for mod_pywebsocket.
 
 Apache HTTP Server and mod_python must be configured such that this
-function is called to handle Web Socket request.
+function is called to handle WebSocket request.
 """
 
 import logging

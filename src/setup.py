@@ -46,10 +46,10 @@ if sys.version < '2.3':
 
 setup(author='Yuzo Fujishima',
       author_email='yuzo@chromium.org',
-      description='Web Socket extension for Apache HTTP Server.',
+      description='WebSocket extension for Apache HTTP Server.',
       long_description=(
               'mod_pywebsocket is an Apache HTTP Server extension for '
-              'Web Socket (http://tools.ietf.org/html/'
+              'WebSocket (http://tools.ietf.org/html/'
               'draft-ietf-hybi-thewebsocketprotocol). '
               'See mod_pywebsocket/__init__.py for more detail.'),
       license='See COPYING',

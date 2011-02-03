@@ -313,7 +313,7 @@ class Stream(StreamBase):
                     message = bytes
 
             if self._original_opcode == common.OPCODE_TEXT:
-                # The Web Socket protocol section 4.4 specifies that invalid
+                # The WebSocket protocol section 4.4 specifies that invalid
                 # characters must be replaced with U+fffd REPLACEMENT
                 # CHARACTER.
                 return message.decode('utf-8', 'replace')

@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Web Socket handshaking.
+"""WebSocket handshaking.
 
 Note: request.connection.write/read are used in this module, even though
 mod_python document says that they should be used only in connection handlers.
@@ -46,7 +46,7 @@ from mod_pywebsocket.handshake._base import HandshakeError
 
 
 class Handshaker(object):
-    """This class performs Web Socket handshake."""
+    """This class performs WebSocket handshake."""
 
     def __init__(self, request, dispatcher, allowDraft75=False, strict=False):
         """Construct an instance.
@@ -74,7 +74,7 @@ class Handshaker(object):
                 request, dispatcher, strict)
 
     def do_handshake(self):
-        """Perform Web Socket Handshake."""
+        """Perform WebSocket Handshake."""
 
         try:
             self._handshaker.do_handshake()

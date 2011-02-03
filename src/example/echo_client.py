@@ -159,14 +159,14 @@ class _TLSSocket(object):
 
 
 class Handshake(object):
-    """Web Socket handshake for IETF HyBi 00 or later."""
+    """WebSocket handshake for IETF HyBi 00 or later."""
 
     def __init__(self, socket, options):
         self._socket = socket
         self._options = options
 
     def handshake(self):
-        """Handshake Web Socket.
+        """Handshake WebSocket.
 
         Raises:
             Exception: handshake failed.
@@ -425,7 +425,7 @@ class Handshake(object):
 
 
 class HandshakeHixie75(object):
-    """Web Socket Hixie 75 handshake."""
+    """WebSocket Hixie 75 handshake."""
 
     _EXPECTED_RESPONSE = (
         'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
@@ -491,7 +491,7 @@ class ClientRequest(object):
 
 
 class EchoClient(object):
-    """Web Socket echo client."""
+    """WebSocket echo client."""
 
     def __init__(self, options, handshake_class, stream_class):
         self._options = options

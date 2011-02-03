@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Dispatch Web Socket request.
+"""Dispatch WebSocket request.
 """
 
 
@@ -47,7 +47,7 @@ _TRANSFER_DATA_HANDLER_NAME = 'web_socket_transfer_data'
 
 
 class DispatchError(Exception):
-    """Exception in dispatching Web Socket request."""
+    """Exception in dispatching WebSocket request."""
 
     pass
 
@@ -84,7 +84,7 @@ def _path_to_resource_converter(base_dir):
 
 
 def _source_file_paths(directory):
-    """Yield Web Socket Handler source file names in the given directory."""
+    """Yield WebSocket Handler source file names in the given directory."""
 
     for root, unused_dirs, files in os.walk(directory):
         for base in files:
@@ -116,7 +116,7 @@ def _extract_handler(dic, name):
 
 
 class Dispatcher(object):
-    """Dispatches Web Socket requests.
+    """Dispatches WebSocket requests.
 
     This class maintains a map from resource name to handlers.
     """
@@ -169,7 +169,7 @@ class Dispatcher(object):
         return self._source_warnings
 
     def do_extra_handshake(self, request):
-        """Do extra checking in Web Socket handshake.
+        """Do extra checking in WebSocket handshake.
 
         Select a handler based on request.uri and call its
         web_socket_do_extra_handshake function.
@@ -190,7 +190,7 @@ class Dispatcher(object):
             raise
 
     def transfer_data(self, request):
-        """Let a handler transfer_data with a Web Socket client.
+        """Let a handler transfer_data with a WebSocket client.
 
         Select a handler based on request.ws_resource and call its
         web_socket_transfer_data function.

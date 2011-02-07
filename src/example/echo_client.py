@@ -80,8 +80,8 @@ import struct
 import sys
 
 from mod_pywebsocket import common
-from mod_pywebsocket import stream
-from mod_pywebsocket import stream_hixie75
+from mod_pywebsocket.stream import Stream
+from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket import util
 
 
@@ -632,13 +632,13 @@ def main():
 
     if options.protocol_version == 'hybi01':
         EchoClient(
-            options, Handshake, stream.Stream).run()
+            options, Handshake, Stream).run()
     elif options.protocol_version == 'hybi00':
         EchoClient(
-            options, Handshake, stream_hixie75.StreamHixie75).run()
+            options, Handshake, StreamHixie75).run()
     elif options.protocol_version == 'hixie75':
         EchoClient(
-            options, HandshakeHixie75, stream_hixie75.StreamHixie75).run()
+            options, HandshakeHixie75, StreamHixie75).run()
     else:
         raise Exception(
             'Invalid protocol version flag: %s' % options.protocol_version)

@@ -67,8 +67,8 @@ _DEFAULT_SECURE_PORT = 443
 
 # Opcodes introduced in IETF HyBi 01 for the new framing format
 _OPCODE_CONTINUATION = 0x0
-_OPCODE_CLOSE        = 0x1
-_OPCODE_TEXT         = 0x4
+_OPCODE_CLOSE = 0x1
+_OPCODE_TEXT = 0x4
 
 # Strings used for handshake
 _UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'

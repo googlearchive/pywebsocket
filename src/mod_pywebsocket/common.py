@@ -29,8 +29,8 @@
 
 
 # Constants indicating WebSocket protocol version.
-VERSION_HYBI01  = 1
-VERSION_HYBI00  = 0
+VERSION_HYBI01 = 1
+VERSION_HYBI00 = 0
 VERSION_HIXIE75 = -1
 
 # Port numbers
@@ -43,8 +43,8 @@ WEB_SOCKET_SECURE_SCHEME = 'wss'
 
 # Frame opcodes defined in the spec.
 OPCODE_CONTINUATION = 0x0
-OPCODE_CLOSE        = 0x1
-OPCODE_PING         = 0x2
-OPCODE_PONG         = 0x3
-OPCODE_TEXT         = 0x4
-OPCODE_BINARY       = 0x5
+OPCODE_CLOSE = 0x1
+OPCODE_PING = 0x2
+OPCODE_PONG = 0x3
+OPCODE_TEXT = 0x4
+OPCODE_BINARY = 0x5

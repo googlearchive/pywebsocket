@@ -33,14 +33,13 @@
 """Tests for dispatch module."""
 
 
-
 import os
 import unittest
 
-import config  # This must be imported before mod_pywebsocket.
-from mod_pywebsocket import dispatch
+import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
-import mock
+from mod_pywebsocket import dispatch
+from test import mock
 
 
 _TEST_HANDLERS_DIR = os.path.join(

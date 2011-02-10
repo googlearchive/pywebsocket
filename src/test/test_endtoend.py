@@ -29,10 +29,10 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+
 """Test for end-to-end."""
 
-import client_for_testing
-import config  # to fix sys.path.
+
 import logging
 import os
 import signal
@@ -41,6 +41,10 @@ import subprocess
 import sys
 import time
 import unittest
+
+import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
+
+from test import client_for_testing
 
 
 # Special message that tells the echo server to start closing handshake

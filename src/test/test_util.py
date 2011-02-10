@@ -37,7 +37,8 @@ import os
 import sys
 import unittest
 
-import config  # This must be imported before mod_pywebsocket.
+import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
+
 from mod_pywebsocket import util
 
 

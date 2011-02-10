@@ -35,12 +35,12 @@
 
 import unittest
 
-import config  # This must be imported before mod_pywebsocket.
+import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
+
 from mod_pywebsocket import handshake
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import validate_subprotocol
-
-import mock
+from test import mock
 
 
 _GOOD_REQUEST = (

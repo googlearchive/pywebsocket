@@ -36,12 +36,12 @@
 import Queue
 import unittest
 
-import config  # This must be imported before mod_pywebsocket.
+import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
+
 from mod_pywebsocket import msgutil
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
-
-import mock
+from test import mock
 
 
 # We'll get data given as read_data on calling request.connection.read().

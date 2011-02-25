@@ -132,6 +132,8 @@ def headerparserhandler(request):
     except dispatch.DispatchError, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
         return apache.DECLINED
+    # Set assbackwards to suppress response header generation by Apache.
+    request.assbackwards = 1
     return apache.DONE  # Return DONE such that no other handlers are invoked.
 
 

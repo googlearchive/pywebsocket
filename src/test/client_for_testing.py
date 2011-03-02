@@ -646,13 +646,13 @@ class Client(object):
 
     def assert_connection_closed(self):
         try:
-            _ = _receive_bytes(self._socket, 1)
+            read_data = _receive_bytes(self._socket, 1)
         except Exception, e:
             if str(e) != 'connection closed unexpectedly':
                 raise
             return
 
-        raise Exception('Connection is not closed')
+        raise Exception('Connection is not closed (Read: %r)' % read_data)
 
 
 def create_client(options):

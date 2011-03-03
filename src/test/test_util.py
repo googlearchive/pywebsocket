@@ -78,6 +78,31 @@ class UtilTest(unittest.TestCase):
                          util.hexify('azAZ09 \t\r\n\x00\xff'))
 
 
+class RepeatedXorMaskerTest(unittest.TestCase):
+    def test_mask(self):
+        # Sample input e6,97,a5 is U+65e5 in UTF-8
+        masker = util.RepeatedXorMasker('\xff\xff\xff')
+        result = masker.mask('\xe6\x97\xa5')
+        self.assertEqual('\x19\x68\x5a', result)
+
+        masker = util.RepeatedXorMasker('\x00\x00\x00')
+        result = masker.mask('\xe6\x97\xa5')
+        self.assertEqual('\xe6\x97\xa5', result)
+
+        masker = util.RepeatedXorMasker('\xe6\x97\xa5')
+        result = masker.mask('\xe6\x97\xa5')
+        self.assertEqual('\x00\x00\x00', result)
+
+    def test_mask_twice(self):
+        masker = util.RepeatedXorMasker('\x00\x7f\xff')
+        # mask[0], mask[1], ... will be used.
+        result = masker.mask('\x00\x00\x00\x00\x00')
+        self.assertEqual('\x00\x7f\xff\x00\x7f', result)
+        # mask[2], mask[0], ... will be used for the next call.
+        result = masker.mask('\x00\x00\x00\x00\x00')
+        self.assertEqual('\xff\x00\x7f\xff\x00', result)
+
+
 if __name__ == '__main__':
     unittest.main()
 

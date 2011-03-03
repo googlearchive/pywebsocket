@@ -124,7 +124,7 @@ class EndToEndTest(unittest.TestCase):
         else:
             os.kill(pid, signal.SIGKILL)
 
-    def _run_hybi01_test(self, test_function):
+    def _run_hybi04_test(self, test_function):
         server = self._run_server()
         try:
             # TODO(tyoshino): add some logic to poll the server until it becomes
@@ -139,11 +139,31 @@ class EndToEndTest(unittest.TestCase):
         finally:
             self._kill_process(server.pid)
 
+    def _run_hybi04_deflate_test(self, test_function):
+        server = self._run_server()
+        try:
+            time.sleep(0.2)
+
+            self._options.use_deflate = True
+            client = client_for_testing.create_client(self._options)
+            try:
+                test_function(client)
+            finally:
+                client.close_socket()
+        finally:
+            self._kill_process(server.pid)
+
     def test_echo(self):
-        self._run_hybi01_test(_echo_check_procedure)
+        self._run_hybi04_test(_echo_check_procedure)
 
     def test_echo_server_close(self):
-        self._run_hybi01_test(_echo_check_procedure_with_goodbye)
+        self._run_hybi04_test(_echo_check_procedure_with_goodbye)
+
+    def test_echo_deflate(self):
+        self._run_hybi04_deflate_test(_echo_check_procedure)
+
+    def test_echo_deflate_server_close(self):
+        self._run_hybi04_deflate_test(_echo_check_procedure_with_goodbye)
 
     def _run_hybi00_test(self, test_function):
         server = self._run_server()

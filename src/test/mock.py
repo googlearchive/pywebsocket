@@ -194,6 +194,7 @@ class MockRequest(object):
         self.is_https_ = is_https
         self.ws_stream = StreamHixie75(self)
         self.ws_version = common.VERSION_HYBI00
+        self.ws_deflate = False
 
     def is_https(self):
         """Return whether this request is over SSL."""

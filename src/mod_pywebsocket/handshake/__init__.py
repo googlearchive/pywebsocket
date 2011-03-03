@@ -42,6 +42,7 @@ import logging
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
+from mod_pywebsocket.handshake import hybi04
 from mod_pywebsocket.handshake._base import HandshakeError
 
 
@@ -64,27 +65,37 @@ class Handshaker(object):
         """
 
         self._logger = util.get_class_logger(self)
+
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict
-        self._handshaker = hybi00.Handshaker(request, dispatcher)
-        self._fallbackHandshaker = None
+        self._hybi04Handshaker = hybi04.Handshaker(request, dispatcher)
+        self._hybi00Handshaker = hybi00.Handshaker(request, dispatcher)
+        self._hixie75Handshaker = None
         if allowDraft75:
-            self._fallbackHandshaker = draft75.Handshaker(
+            self._hixie75Handshaker = draft75.Handshaker(
                 request, dispatcher, strict)
 
     def do_handshake(self):
         """Perform WebSocket Handshake."""
 
-        try:
-            self._handshaker.do_handshake()
-        except HandshakeError, e:
-            self._logger.error('Handshake error: %s' % e)
-            if self._fallbackHandshaker:
-                self._logger.warning('fallback to old protocol')
-                self._fallbackHandshaker.do_handshake()
-                return
-            raise e
+        self._logger.debug(
+            'Opening handshake headers: %s' % self._request.headers_in)
 
+        handshakers = [
+            ('HyBi 04', self._hybi04Handshaker),
+            ('HyBi 00', self._hybi00Handshaker),
+            ('Hixie 75', self._hixie75Handshaker)]
+        last_error = HandshakeError('No handshaker available')
+        for name, handshaker in handshakers:
+            if handshaker:
+                self._logger.info('Trying %s protocol' % name)
+                try:
+                    handshaker.do_handshake()
+                    return
+                except HandshakeError, e:
+                    self._logger.info('%s handshake failed: %s' % (name, e))
+                    last_error = e
+        raise last_error
 
 # vi:sts=4 sw=4 et

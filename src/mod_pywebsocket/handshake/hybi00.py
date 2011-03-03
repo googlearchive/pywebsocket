@@ -37,14 +37,6 @@ not suitable because they don't allow direct raw bytes writing/reading.
 """
 
 
-# Use md5 module in Python 2.4
-try:
-    import hashlib
-    md5_hash = hashlib.md5
-except ImportError:
-    import md5
-    md5_hash = md5.md5
-
 import logging
 import re
 import struct
@@ -137,14 +129,16 @@ class Handshaker(object):
         if draft is not None:
             try:
                 draft_int = int(draft)
-                if draft_int < 0:
+
+                # Draft value 2 is used by HyBi 02 and 03 which we no longer
+                # support. draft >= 3 and <= 1 are never defined in the spec.
+                # 0 might be used to mean HyBi 00 by somebody. 1 might be used
+                # to mean HyBi 01 by somebody but we no longer support it.
+
+                if draft_int == 1 or draft_int == 2:
+                    raise HandshakeError('HyBi 01-03 are not supported')
+                elif draft_int != 0:
                     raise ValueError
-                if draft_int >= 1:
-                    # Make this default when ready.
-                    self._logger.debug('IETF HyBi 01 protocol')
-                    self._request.ws_version = common.VERSION_HYBI01
-                    self._request.ws_stream = Stream(self._request)
-                    return
             except ValueError, e:
                 raise HandshakeError(
                     'Illegal value for Sec-WebSocket-Draft: %s' % draft)
@@ -157,7 +151,7 @@ class Handshaker(object):
         # 5.2 4-8.
         self._request.ws_challenge = self._get_challenge()
         # 5.2 9. let /response/ be the MD5 finterprint of /challenge/
-        self._request.ws_challenge_md5 = md5_hash(
+        self._request.ws_challenge_md5 = util.md5_hash(
             self._request.ws_challenge).digest()
         self._logger.debug('challenge: %s' % util.hexify(
             self._request.ws_challenge))

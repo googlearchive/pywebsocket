@@ -79,7 +79,7 @@ def create_length_header(length, rsv4):
     return header
 
 
-def create_header(opcode, payload_length, more, rsv1, rsv2, rsv3, rsv4):
+def create_header(opcode, payload_length, fin, rsv1, rsv2, rsv3, rsv4):
     """Creates a frame header.
 
     Raises:
@@ -92,12 +92,12 @@ def create_header(opcode, payload_length, more, rsv1, rsv2, rsv3, rsv4):
     if payload_length < 0 or 1 << 63 <= payload_length:
         raise ValueError('payload_length out of range')
 
-    if (more | rsv1 | rsv2 | rsv3 | rsv4) & ~1:
-        raise ValueError('Reserved bit parameter must be 0 or 1')
+    if (fin | rsv1 | rsv2 | rsv3 | rsv4) & ~1:
+        raise ValueError('FIN bit and Reserved bit parameter must be 0 or 1')
 
     header = ''
 
-    first_byte = (more << 7
+    first_byte = (fin << 7
                   | rsv1 << 6 | rsv2 << 5 | rsv3 << 4
                   | opcode)
     header += chr(first_byte)
@@ -106,11 +106,11 @@ def create_header(opcode, payload_length, more, rsv1, rsv2, rsv3, rsv4):
     return header
 
 
-def create_text_frame(message, opcode=common.OPCODE_TEXT, more=0):
+def create_text_frame(message, opcode=common.OPCODE_TEXT, fin=1):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
-    header = create_header(opcode, len(encoded_message), more, 0, 0, 0, 0)
+    header = create_header(opcode, len(encoded_message), fin, 0, 0, 0, 0)
     return header + encoded_message
 
 
@@ -130,26 +130,26 @@ class FragmentedTextFrameBuilder(object):
 
         if end:
             self._started = False
-            more = 0
+            fin = 1
         else:
             self._started = True
-            more = 1
+            fin = 0
 
-        return create_text_frame(message, opcode, more)
+        return create_text_frame(message, opcode, fin)
 
 
 def create_ping_frame(body):
-    header = create_header(common.OPCODE_PING, len(body), 0, 0, 0, 0, 0)
+    header = create_header(common.OPCODE_PING, len(body), 1, 0, 0, 0, 0)
     return header + body
 
 
 def create_pong_frame(body):
-    header = create_header(common.OPCODE_PONG, len(body), 0, 0, 0, 0, 0)
+    header = create_header(common.OPCODE_PONG, len(body), 1, 0, 0, 0, 0)
     return header + body
 
 
 def create_close_frame(body):
-    header = create_header(common.OPCODE_CLOSE, len(body), 0, 0, 0, 0, 0)
+    header = create_header(common.OPCODE_CLOSE, len(body), 1, 0, 0, 0, 0)
     return header + body
 
 
@@ -166,6 +166,10 @@ class Stream(StreamBase):
         StreamBase.__init__(self, request)
 
         self._logger = util.get_class_logger(self)
+
+        if self._request.ws_deflate:
+            self._logger.debug('Deflated stream')
+            self._request = util.DeflateRequest(self._request)
 
         self._request.client_terminated = False
         self._request.server_terminated = False
@@ -188,10 +192,16 @@ class Stream(StreamBase):
                 string.
             InvalidFrameException: when the frame contains invalid data.
         """
-        received = self.receive_bytes(2)
+
+        masking_nonce = self.receive_bytes(4)
+        frame_key = util.sha1_hash(
+            masking_nonce + self._request.ws_masking_key).digest()
+        masker = util.RepeatedXorMasker(frame_key)
+
+        received = masker.mask(self.receive_bytes(2))
 
         first_byte = ord(received[0])
-        more = first_byte >> 7 & 1
+        fin = first_byte >> 7 & 1
         rsv1 = first_byte >> 6 & 1
         rsv2 = first_byte >> 5 & 1
         rsv3 = first_byte >> 4 & 1
@@ -202,20 +212,20 @@ class Stream(StreamBase):
         payload_length = second_byte & 0x7f
 
         if payload_length == 127:
-            extended_payload_length = self.receive_bytes(8)
+            extended_payload_length = masker.mask(self.receive_bytes(8))
             payload_length = struct.unpack(
                 '!Q', extended_payload_length)[0]
             if payload_length > 0x7FFFFFFFFFFFFFFF:
                 raise InvalidFrameException(
                     'Extended payload length >= 2^63')
         elif payload_length == 126:
-            extended_payload_length = self.receive_bytes(2)
+            extended_payload_length = masker.mask(self.receive_bytes(2))
             payload_length = struct.unpack(
                 '!H', extended_payload_length)[0]
 
-        bytes = self.receive_bytes(payload_length)
+        bytes = masker.mask(self.receive_bytes(payload_length))
 
-        return opcode, bytes, more, rsv1, rsv2, rsv3, rsv4
+        return opcode, bytes, fin, rsv1, rsv2, rsv3, rsv4
 
     def send_message(self, message, end=True):
         """Send message.
@@ -260,7 +270,7 @@ class Stream(StreamBase):
             # mp_conn.read will block if no bytes are available.
             # Timeout is controlled by TimeOut directive of Apache.
 
-            opcode, bytes, more, rsv1, rsv2, rsv3, rsv4 = self._receive_frame()
+            opcode, bytes, fin, rsv1, rsv2, rsv3, rsv4 = self._receive_frame()
             if rsv1 or rsv2 or rsv3 or rsv4:
                 raise UnsupportedFrameException(
                     'Unsupported flag is set (rsv = %d%d%d%d)' %
@@ -268,36 +278,40 @@ class Stream(StreamBase):
 
             if opcode == common.OPCODE_CONTINUATION:
                 if not self._received_fragments:
-                    if more:
-                        raise InvalidFrameException(
-                            'Received an intermediate frame but '
-                            'fragmentation not started')
-                    else:
+                    if fin:
                         raise InvalidFrameException(
                             'Received a termination frame but fragmentation '
                             'not started')
+                    else:
+                        raise InvalidFrameException(
+                            'Received an intermediate frame but '
+                            'fragmentation not started')
 
-                if more:
-                    # Intermediate frame
-                    self._received_fragments.append(bytes)
-                    continue
-                else:
+                if fin:
                     # End of fragmentation frame
                     self._received_fragments.append(bytes)
                     message = ''.join(self._received_fragments)
                     self._received_fragments = []
+                else:
+                    # Intermediate frame
+                    self._received_fragments.append(bytes)
+                    continue
             else:
                 if self._received_fragments:
-                    if more:
-                        raise InvalidFrameException(
-                            'New fragmentation started without terminating '
-                            'existing fragmentation')
-                    else:
+                    if fin:
                         raise InvalidFrameException(
                             'Received an unfragmented frame without '
                             'terminating existing fragmentation')
+                    else:
+                        raise InvalidFrameException(
+                            'New fragmentation started without terminating '
+                            'existing fragmentation')
 
-                if more:
+                if fin:
+                    # Unfragmented frame
+                    self._original_opcode = opcode
+                    message = bytes
+                else:
                     # Start of fragmentation frame
 
                     if is_control_opcode(opcode):
@@ -307,10 +321,6 @@ class Stream(StreamBase):
                     self._original_opcode = opcode
                     self._received_fragments.append(bytes)
                     continue
-                else:
-                    # Unfragmented frame
-                    self._original_opcode = opcode
-                    message = bytes
 
             if self._original_opcode == common.OPCODE_TEXT:
                 # The WebSocket protocol section 4.4 specifies that invalid

@@ -45,15 +45,10 @@ This code is far from robust, e.g., we cut corners in handshake.
 """
 
 
-# Use md5 module in Python 2.4
-try:
-    import hashlib
-    md5_hash = hashlib.md5
-except ImportError:
-    import md5
-    md5_hash = md5.md5
-
+import base64
+import errno
 import logging
+import os
 import random
 import re
 import socket
@@ -71,12 +66,20 @@ _OPCODE_CLOSE = 0x1
 _OPCODE_TEXT = 0x4
 
 # Strings used for handshake
-_UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
+_UPGRADE_HEADER = 'Upgrade: websocket\r\n'
+_UPGRADE_HEADER_HIXIE75 = 'Upgrade: WebSocket\r\n'
 _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
+
+_WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
+_WEBSOCKET_MASKING_UUID = '61AC5F19-FBBA-4540-B96F-6561F1AB40A8'
 
 
 def _method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
+
+
+def _sec_origin_header(origin):
+    return 'Sec-WebSocket-Origin: %s\r\n' % origin.lower()
 
 
 def _origin_header(origin):
@@ -102,6 +105,7 @@ def _format_host_header(host, port, secure):
     return 'Host: ' + hostport + '\r\n'
 
 
+# TODO(tyoshino): Define a base class and move these shared methods to that.
 def _receive_bytes(socket, length):
     bytes = []
     while length > 0:
@@ -121,6 +125,83 @@ def _send_bytes(socket, bytes):
         pos += nbytes
 
 
+# TODO(tyoshino): Now HyBi 04 diverts these methods. We should move to HTTP
+# parser. For HyBi 00 and Hixie 75, pack these methods as some parser class.
+def _read_fields(socket):
+    # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
+    fields = {}
+    while True:
+        # 4.1 33. let /name/ and /value/ be empty byte arrays
+        name = ''
+        value = ''
+        # 4.1 34. read /name/
+        name = _read_name(socket)
+        if name is None:
+            break
+        # 4.1 35. read spaces
+        # TODO(tyoshino): Skip only one space as described in the spec.
+        ch = _skip_spaces(socket)
+        # 4.1 36. read /value/
+        value = _read_value(socket, ch)
+        # 4.1 37. read a byte from the server
+        ch = _receive_bytes(socket, 1)
+        if ch != '\n':  # 0x0A
+            raise Exception('expected LF after line: %s: %s' % (
+                name, value))
+        # 4.1 38. append an entry to the /fields/ list that has the name
+        # given by the string obtained by interpreting the /name/ byte
+        # array as a UTF-8 stream and the value given by the string
+        # obtained by interpreting the /value/ byte array as a UTF-8 byte
+        # stream.
+        fields.setdefault(name, []).append(value)
+        # 4.1 39. return to the "Field" step above
+    return fields
+
+
+def _read_name(socket):
+    # 4.1 33. let /name/ be empty byte arrays
+    name = ''
+    while True:
+        # 4.1 34. read a byte from the server
+        ch = _receive_bytes(socket, 1)
+        if ch == '\r':  # 0x0D
+            return None
+        elif ch == '\n':  # 0x0A
+            raise Exception(
+                'unexpected LF when reading header name (%r)' % name)
+        elif ch == ':':  # 0x3A
+            return name
+        elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
+            ch = chr(ord(ch) + 0x20)
+            name += ch
+        else:
+            name += ch
+
+
+def _skip_spaces(socket):
+    # 4.1 35. read a byte from the server
+    while True:
+        ch = _receive_bytes(socket, 1)
+        if ch == ' ':  # 0x20
+            continue
+        return ch
+
+
+def _read_value(socket, ch):
+    # 4.1 33. let /value/ be empty byte arrays
+    value = ''
+    # 4.1 36. read a byte from server.
+    while True:
+        if ch == '\r':  # 0x0D
+            return value
+        elif ch == '\n':  # 0x0A
+            raise Exception(
+                'unexpected LF when reading header value (%r)' % value)
+        else:
+            value += ch
+        ch = _receive_bytes(socket, 1)
+
+
 class _TLSSocket(object):
     """Wrapper for a TLS connection."""
 
@@ -138,8 +219,197 @@ class _TLSSocket(object):
         pass
 
 
+class WebSocketHybi04Handshake(object):
+    """WebSocket handshake processor for IETF HyBi 04."""
+
+    def __init__(self, options):
+        self._logger = util.get_class_logger(self)
+
+        self._options = options
+
+    def handshake(self, socket):
+        """Handshake WebSocket.
+
+        Raises:
+            Exception: handshake failed.
+        """
+
+        self._socket = socket
+
+        self._socket.send(_method_line(self._options.resource))
+
+        fields = []
+        fields.append(_UPGRADE_HEADER)
+        fields.append(_CONNECTION_HEADER)
+
+        fields.append(_format_host_header(
+            self._options.server_host,
+            self._options.server_port,
+            self._options.use_tls))
+
+        fields.append(_sec_origin_header(self._options.origin))
+
+        original_key = os.urandom(16)
+        key = base64.b64encode(original_key)
+        self._logger.debug('client nonce : %s (%s)' %
+                           (key, util.hexify(original_key)))
+        fields.append('Sec-WebSocket-Key: %s\r\n' % key)
+
+        fields.append('Sec-WebSocket-Version: 4\r\n')
+
+        # Setting up extensions.
+        extensions = []
+
+        deflate_accepted = False
+        if self._options.use_deflate:
+            extensions.append('deflate-stream')
+
+        if len(extensions) > 0:
+            fields.append('Sec-WebSocket-Extensions: %s\r\n' %
+                          ', '.join(extensions))
+
+        self._logger.debug('Opening handshake headers: %r' % fields)
+
+        for field in fields:
+            self._socket.send(field)
+        self._socket.send('\r\n')
+
+        self._logger.info('Sent opening handshake')
+
+        field = ''
+        while True:
+            ch = _receive_bytes(self._socket, 1)
+            field += ch
+            if ch == '\n':
+                break
+        if len(field) < 7 or not field.endswith('\r\n'):
+            raise Exception('wrong status line: %s' % field)
+        m = re.match('[^ ]* ([^ ]*) .*', field)
+        if m is None:
+            raise Exception('no code found in: %s' % field)
+        code = m.group(1)
+        if not re.match('[0-9][0-9][0-9]', code):
+            raise Exception('wrong code %s in: %s' % (code, field))
+        if code != '101':
+            raise Exception('unexpected code in: %s' % field)
+        fields = _read_fields(self._socket)
+        ch = _receive_bytes(self._socket, 1)
+        if ch != '\n':  # 0x0A
+            raise Exception('expected LF after line: %s: %s' % (name, value))
+
+        self._logger.debug('Opening handshake response headers: %r' % fields)
+
+        # Check /fields/
+        if len(fields['upgrade']) != 1:
+            raise Exception(
+                'Multiple Upgrade headers found: %s' % fields['upgrade'])
+        if len(fields['connection']) != 1:
+            raise Exception(
+                'Multiple Connection headers found: %s' % fields['connection'])
+        if fields['upgrade'][0] != 'websocket':
+            raise Exception(
+                'Unexpected Upgrade header value: %s' % fields['upgrade'][0])
+        if fields['connection'][0].lower() != 'upgrade':
+            raise Exception(
+                'Unexpected Connection header value: %s' %
+                fields['connection'][0])
+
+        if len(fields['sec-websocket-nonce']) != 1:
+            raise Exception(
+                'Multiple Sec-WebSocket-Nonce headers found: %s' %
+                fields['sec-websocket-nonce'])
+
+        if len(fields['sec-websocket-accept']) != 1:
+            raise Exception(
+                'Multiple Sec-WebSocket-Accept headers found: %s' %
+                fields['sec-websocket-accept'])
+
+        nonce = fields['sec-websocket-nonce'][0]
+
+        # Validate
+        try:
+            decoded_nonce = base64.b64decode(nonce)
+        except TypeError, e:
+            raise HandshakeError(
+                'Illegal value for header Sec-WebSocket-Nonce: ' + nonce)
+
+        if len(decoded_nonce) != 16:
+            raise HandshakeError(
+                'Decoded value of Sec-WebSocket-Nonce is not 16-byte long')
+
+        self._logger.debug('server nonce : %s (%s)' %
+                           (nonce, util.hexify(decoded_nonce)))
+
+        accept = fields['sec-websocket-accept'][0]
+
+        # Validate
+        try:
+            decoded_accept = base64.b64decode(accept)
+        except TypeError, e:
+            raise HandshakeError(
+                'Illegal value for header Sec-WebSocket-Accept: ' + accept)
+
+        if len(decoded_accept) != 20:
+            raise HandshakeError(
+                'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
+
+        self._logger.debug('accept : %s (%s)' %
+                           (accept, util.hexify(decoded_accept)))
+
+        original_expected_accept = util.sha1_hash(
+            key + _WEBSOCKET_ACCEPT_UUID).digest()
+        expected_accept = base64.b64encode(original_expected_accept)
+
+        self._logger.debug('expected accept : %s (%s)' %
+                           (expected_accept,
+                            util.hexify(original_expected_accept)))
+
+        if accept != expected_accept:
+            raise Exception(
+                'Invalid Sec-WebSocket-Accept header: %s (expected: %s)' %
+                (accept, expected_accept))
+
+        self._masking_key = util.sha1_hash(
+            key + nonce + _WEBSOCKET_MASKING_UUID).digest()
+        self._logger.debug('masking-key  : %s' %
+                           util.hexify(self._masking_key))
+
+        server_extensions_header = fields.get('sec-websocket-extensions')
+        if (server_extensions_header is None or
+            len(server_extensions_header) != 1):
+            accepted_extensions = []
+        else:
+            accepted_extensions = server_extensions_header[0].split(',')
+            # TODO(tyoshino): Follow the ABNF in the spec.
+            accepted_extensions = [s.strip() for s in accepted_extensions]
+
+        # Scan accepted extension list to check if there is any unrecognized
+        # extensions or extensions we didn't request in it. Then, for
+        # extensions we request, parse them and store parameters. They will be
+        # used later by each extension. For now, only deflate_accepted is
+        # created.
+        for extension in accepted_extensions:
+            if extension == '':
+                continue
+            elif extension == 'deflate-stream':
+                if not self._options.use_deflate:
+                    raise Exception(
+                        'deflate-stream extension which we didn\'t request '
+                        'found in handshake response')
+                else:
+                    deflate_accepted = True
+            else:
+                raise Exception(
+                    'Received unrecognized extension: %s' % extension)
+
+        # Let all extensions check the response for extension request. For now,
+        # just let deflate-stream check if it's accepted.
+        if self._options.use_deflate and not deflate_accepted:
+            raise Exception('deflate-stream extension not accepted')
+
+
 class WebSocketHybi00Handshake(object):
-    """WebSocket handshake processor for IETF HyBi 00 and later."""
+    """WebSocket handshake processor for IETF HyBi 00."""
 
     def __init__(self, options, draft_field):
         self._logger = util.get_class_logger(self)
@@ -161,7 +431,7 @@ class WebSocketHybi00Handshake(object):
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
-        fields.append(_UPGRADE_HEADER)
+        fields.append(_UPGRADE_HEADER_HIXIE75)
         # 4.1 8. Add the string "Connection: Upgrade" to /fields/.
         fields.append(_CONNECTION_HEADER)
         # 4.1 9-12. Add Host: field to /fields/.
@@ -197,7 +467,7 @@ class WebSocketHybi00Handshake(object):
         # 4.1 27. send /key3/ to the server.
         _send_bytes(self._socket, self._key3)
 
-        self._logger.info('Sent handshake')
+        self._logger.info('Sent opening handshake')
 
         # 4.1 28. Read bytes from the server until either the connection closes,
         # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
@@ -231,7 +501,7 @@ class WebSocketHybi00Handshake(object):
         if code != '101':
             raise Exception('unexpected code in: %s' % field)
         # 4.1 32-39. read fields into /fields/
-        fields = self._read_fields()
+        fields = _read_fields(self._socket)
         # 4.1 40. _Fields processing_
         # read a byte from server
         ch = _receive_bytes(self._socket, 1)
@@ -239,28 +509,34 @@ class WebSocketHybi00Handshake(object):
             raise Exception('expected LF after line: %s: %s' % (name, value))
         # 4.1 41. check /fields/
         if len(fields['upgrade']) != 1:
-            raise Exception('not one ugprade: %s' % fields['upgrade'])
+            raise Exception(
+                'Multiple Upgrade headers found: %s' % fields['upgrade'])
         if len(fields['connection']) != 1:
-            raise Exception('not one connection: %s' % fields['connection'])
+            raise Exception(
+                'Multiple Connection headers found: %s' % fields['connection'])
         if len(fields['sec-websocket-origin']) != 1:
-            raise Exception('not one sec-websocket-origin: %s' %
-                            fields['sec-sebsocket-origin'])
+            raise Exception(
+                'Multiple Sec-WebSocket-Origin headers found: %s' %
+                fields['sec-sebsocket-origin'])
         if len(fields['sec-websocket-location']) != 1:
-            raise Exception('not one sec-websocket-location: %s' %
-                            fields['sec-sebsocket-location'])
+            raise Exception(
+                'Multiple Sec-WebSocket-Location headers found: %s' %
+                fields['sec-sebsocket-location'])
         # TODO(ukai): protocol
         # if the entry's name is "upgrade"
         #  if the value is not exactly equal to the string "WebSocket",
         #  then fail the WebSocket connection and abort these steps.
         if fields['upgrade'][0] != 'WebSocket':
-            raise Exception('unexpected upgrade: %s' % fields['upgrade'][0])
+            raise Exception(
+                'Unexpected Upgrade header value: %s' % fields['upgrade'][0])
         # if the entry's name is "connection"
         #  if the value, converted to ASCII lowercase, is not exactly equal
         #  to the string "upgrade", then fail the WebSocket connection and
         #  abort these steps.
         if fields['connection'][0].lower() != 'upgrade':
-            raise Exception('unexpected connection: %s' %
-                            fields['connection'][0])
+            raise Exception(
+                'Unexpected Connection header value: %s' %
+                fields['connection'][0])
         # TODO(ukai): check origin, location, cookie, ..
 
         # 4.1 42. let /challenge/ be the concatenation of /number_1/,
@@ -278,7 +554,7 @@ class WebSocketHybi00Handshake(object):
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
-        expected = md5_hash(challenge).digest()
+        expected = util.md5_hash(challenge).digest()
         self._logger.debug('expected : %s' % util.hexify(expected))
 
         # 4.1 44. read sixteen bytes from the server.
@@ -330,84 +606,13 @@ class WebSocketHybi00Handshake(object):
         # equivalently, a random 64 bit integer encoded in a big-endian order).
         return ''.join([chr(random.randint(0, 255)) for _ in xrange(8)])
 
-    def _read_fields(self):
-        # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
-        fields = {}
-        while True:  # "Field"
-            # 4.1 33. let /name/ and /value/ be empty byte arrays
-            name = ''
-            value = ''
-            # 4.1 34. read /name/
-            name = self._read_name()
-            if name is None:
-                break
-            # 4.1 35. read spaces
-            # TODO(tyoshino): Skip only one space as described in the spec.
-            ch = self._skip_spaces()
-            # 4.1 36. read /value/
-            value = self._read_value(ch)
-            # 4.1 37. read a byte from the server
-            ch = _receive_bytes(self._socket, 1)
-            if ch != '\n':  # 0x0A
-                raise Exception('expected LF after line: %s: %s' % (
-                    name, value))
-            # 4.1 38. append an entry to the /fields/ list that has the name
-            # given by the string obtained by interpreting the /name/ byte
-            # array as a UTF-8 stream and the value given by the string
-            # obtained by interpreting the /value/ byte array as a UTF-8 byte
-            # stream.
-            fields.setdefault(name, []).append(value)
-            # 4.1 39. return to the "Field" step above
-        return fields
-
-    def _read_name(self):
-        # 4.1 33. let /name/ be empty byte arrays
-        name = ''
-        while True:
-            # 4.1 34. read a byte from the server
-            ch = _receive_bytes(self._socket, 1)
-            if ch == '\r':  # 0x0D
-                return None
-            elif ch == '\n':  # 0x0A
-                raise Exception(
-                    'unexpected LF when reading header name (%r)' % name)
-            elif ch == ':':  # 0x3A
-                return name
-            elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
-                ch = chr(ord(ch) + 0x20)
-                name += ch
-            else:
-                name += ch
-
-    def _skip_spaces(self):
-        # 4.1 35. read a byte from the server
-        while True:
-            ch = _receive_bytes(self._socket, 1)
-            if ch == ' ':  # 0x20
-                continue
-            return ch
-
-    def _read_value(self, ch):
-        # 4.1 33. let /value/ be empty byte arrays
-        value = ''
-        # 4.1 36. read a byte from server.
-        while True:
-            if ch == '\r':  # 0x0D
-                return value
-            elif ch == '\n':  # 0x0A
-                raise Exception(
-                    'unexpected LF when reading header value (%r)' % value)
-            else:
-                value += ch
-            ch = _receive_bytes(self._socket, 1)
-
 
 class WebSocketHixie75Handshake(object):
     """WebSocket handshake processor for IETF Hixie 75."""
 
     _EXPECTED_RESPONSE = (
         'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
-        _UPGRADE_HEADER +
+        _UPGRADE_HEADER_HIXIE75 +
         _CONNECTION_HEADER)
 
     def __init__(self, options):
@@ -431,7 +636,7 @@ class WebSocketHixie75Handshake(object):
         self._socket = socket
 
         _send_bytes(self._socket, _method_line(self._options.resource))
-        _send_bytes(self._socket, _UPGRADE_HEADER)
+        _send_bytes(self._socket, _UPGRADE_HEADER_HIXIE75)
         _send_bytes(self._socket, _CONNECTION_HEADER)
         _send_bytes(self._socket, _format_host_header(
             self._options.server_host,
@@ -440,7 +645,7 @@ class WebSocketHixie75Handshake(object):
         _send_bytes(self._socket, _origin_header(self._options.origin))
         _send_bytes(self._socket, '\r\n')
 
-        self._logger.info('Sent handshake')
+        self._logger.info('Sent opening handshake')
 
         for expected_char in WebSocketHixie75Handshake._EXPECTED_RESPONSE:
             received = _receive_bytes(self._socket, 1)
@@ -451,30 +656,49 @@ class WebSocketHixie75Handshake(object):
 
 
 class WebSocketStream(object):
-    """WebSocket frame processor for IETF HyBi 00 or later."""
+    """WebSocket frame processor for IETF HyBi 04."""
 
-    _CLOSE_FRAME = chr(_OPCODE_CLOSE) + '\x00'
+    _CLOSE_FRAME = chr(1 << 7 | _OPCODE_CLOSE) + '\x00'
 
-    def __init__(self, socket):
-        self._socket = socket
+    def __init__(self, socket, handshake):
+        self._handshake = handshake
+        if self._handshake._options.use_deflate:
+            self._socket = util.DeflateSocket(socket)
+        else:
+            self._socket = socket
 
         self._fragmented = False
+
+    def _mask_hybi04(self, s):
+        # TODO(tyoshino): os.urandom does open/read/close for every call. If
+        # performance matters, change this to some library call that generates
+        # cryptographically secure pseudo random number sequence.
+        masking_nonce = os.urandom(4)
+        frame_key = util.sha1_hash(
+            masking_nonce + self._handshake._masking_key).digest()
+        result = [masking_nonce]
+        count = 0
+        for c in s:
+            result.append(chr(ord(c) ^ ord(frame_key[count])))
+            count = (count + 1) % len(frame_key)
+        return ''.join(result)
 
     def send_text(self, payload, end=True):
         encoded_payload = payload.encode('utf-8')
 
         if self._fragmented:
-            first_byte = _OPCODE_CONTINUATION
+            opcode = _OPCODE_CONTINUATION
         else:
-            first_byte = _OPCODE_TEXT
+            opcode = _OPCODE_TEXT
 
         if end:
             self._fragmented = False
+            fin = 1
         else:
             self._fragmented = True
-            first_byte |= 0x80
+            fin = 0
 
-        header = chr(first_byte)
+        header = chr(fin << 7 | opcode)
         payload_length = len(encoded_payload)
         if payload_length <= 125:
             header += chr(payload_length)
@@ -484,14 +708,14 @@ class WebSocketStream(object):
             header += chr(127) + struct.pack('!Q', payload_length)
         else:
             raise Exception('Too long payload (%d byte)' % payload_length)
-        _send_bytes(self._socket, header + encoded_payload)
+        _send_bytes(self._socket, self._mask_hybi04(header + encoded_payload))
 
-    def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, more=0,
+    def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
                             rsv1=0, rsv2=0, rsv3=0, rsv4=0):
         received = _receive_bytes(self._socket, 2)
 
         first_byte = ord(received[0])
-        actual_more = first_byte >> 7 & 1
+        actual_fin = first_byte >> 7 & 1
         actual_rsv1 = first_byte >> 6 & 1
         actual_rsv2 = first_byte >> 5 & 1
         actual_rsv3 = first_byte >> 4 & 1
@@ -502,10 +726,10 @@ class WebSocketStream(object):
                 'Unexpected opcode : %d (expected) vs %d (actual)' %
                 (opcode, actual_opcode))
 
-        if actual_more != more:
+        if actual_fin != fin:
             raise Exception(
-                'Unexpected more : %d (expected) vs %d (actual)' %
-                (more, actual_more))
+                'Unexpected fin : %d (expected) vs %d (actual)' %
+                (fin, actual_fin))
 
         second_byte = ord(received[1])
         actual_rsv4 = second_byte >> 7 & 1
@@ -540,10 +764,10 @@ class WebSocketStream(object):
         if payload != received:
             raise Exception(
                 'Unexpected payload : %r (expected) vs %r (actual)' %
-                (payload, data))
+                (payload, received))
 
     def send_close(self):
-        _send_bytes(self._socket, self._CLOSE_FRAME)
+        _send_bytes(self._socket, self._mask_hybi04(self._CLOSE_FRAME))
 
     def assert_receive_close(self):
         closing = _receive_bytes(self._socket, len(self._CLOSE_FRAME))
@@ -556,7 +780,7 @@ class WebSocketStreamHixie75(object):
 
     _CLOSE_FRAME = '\xff\x00'
 
-    def __init__(self, socket):
+    def __init__(self, socket, unused_handshake):
         self._socket = socket
 
     def send_text(self, payload, unused_end):
@@ -600,6 +824,7 @@ class ClientOptions(object):
         self.server_port = -1
         self.socket_timeout = 1000
         self.use_tls = False
+        self.use_deflate = False
 
 
 class Client(object):
@@ -625,7 +850,7 @@ class Client(object):
 
         self._handshake.handshake(self._socket)
 
-        self._stream = self._stream_class(self._socket)
+        self._stream = self._stream_class(self._socket, self._handshake)
 
         self._logger.info('Connection established')
 
@@ -647,6 +872,22 @@ class Client(object):
     def assert_connection_closed(self):
         try:
             read_data = _receive_bytes(self._socket, 1)
+        except socket.error, e:
+            # recv on normally closed socket returns None. However, when
+            # deflate is enabled, end-of-block symbol or uncompressed block for
+            # sync follows octets containing closing handshake. If we close the
+            # socket without recv-ing, the TCP protocol stack sends out RST.
+            # This except block deals with such cases.
+            #
+            # In Python 2.4, socket.error doesn't have errno field. We cannot
+            # use it.
+            try:
+                error_number, message = e
+            except:
+                raise e
+            if error_number != errno.ECONNRESET:
+                raise
+            return
         except Exception, e:
             if str(e) != 'connection closed unexpectedly':
                 raise
@@ -657,7 +898,7 @@ class Client(object):
 
 def create_client(options):
     return Client(
-        options, WebSocketHybi00Handshake(options, '1'), WebSocketStream)
+        options, WebSocketHybi04Handshake(options), WebSocketStream)
 
 
 def create_client_hybi00(options):

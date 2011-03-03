@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+#
 # Copyright 2011, Google Inc.
 # All rights reserved.
 #
@@ -28,27 +30,43 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-# Constants indicating WebSocket protocol version.
-VERSION_HYBI04 = 4
-VERSION_HYBI00 = 0
-VERSION_HIXIE75 = -1
+"""Tests for _stream_hybi04 module."""
 
-# Port numbers
-DEFAULT_WEB_SOCKET_PORT = 80
-DEFAULT_WEB_SOCKET_SECURE_PORT = 443
 
-# Schemes
-WEB_SOCKET_SCHEME = 'ws'
-WEB_SOCKET_SECURE_SCHEME = 'wss'
+import unittest
 
-# Frame opcodes defined in the spec.
-OPCODE_CONTINUATION = 0x0
-OPCODE_CLOSE = 0x1
-OPCODE_PING = 0x2
-OPCODE_PONG = 0x3
-OPCODE_TEXT = 0x4
-OPCODE_BINARY = 0x5
+import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
-# UUIDs used by HyBi 04 opening handshake and frame masking.
-WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
-WEBSOCKET_MASKING_UUID = '61AC5F19-FBBA-4540-B96F-6561F1AB40A8'
+from mod_pywebsocket.util import RepeatedXorMasker
+
+
+class RepeatedXorMaskerTest(unittest.TestCase):
+    def test_mask(self):
+        # Sample input e6,97,a5 is U+65e5 in UTF-8
+        masker = RepeatedXorMasker('\xff\xff\xff')
+        result = masker.mask('\xe6\x97\xa5')
+        self.assertEqual('\x19\x68\x5a', result)
+
+        masker = RepeatedXorMasker('\x00\x00\x00')
+        result = masker.mask('\xe6\x97\xa5')
+        self.assertEqual('\xe6\x97\xa5', result)
+
+        masker = RepeatedXorMasker('\xe6\x97\xa5')
+        result = masker.mask('\xe6\x97\xa5')
+        self.assertEqual('\x00\x00\x00', result)
+
+    def test_mask_twice(self):
+        masker = RepeatedXorMasker('\x00\x7f\xff')
+        # mask[0], mask[1], ... will be used.
+        result = masker.mask('\x00\x00\x00\x00\x00')
+        self.assertEqual('\x00\x7f\xff\x00\x7f', result)
+        # mask[2], mask[0], ... will be used for the next call.
+        result = masker.mask('\x00\x00\x00\x00\x00')
+        self.assertEqual('\xff\x00\x7f\xff\x00', result)
+
+
+if __name__ == '__main__':
+    unittest.main()
+
+
+# vi:sts=4 sw=4 et

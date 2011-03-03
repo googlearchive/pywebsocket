@@ -28,13 +28,16 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""WebSocket handshaking.
-
-Note: request.connection.write/read are used in this module, even though
-mod_python document says that they should be used only in connection handlers.
-Unfortunately, we have no other options. For example, request.write/read are
-not suitable because they don't allow direct raw bytes writing/reading.
+"""Common functions and exceptions used by WebSocket opening handshake
+processors.
 """
+
+
+# Note: request.connection.write/read are used in this module, even though
+# mod_python document says that they should be used only in connection
+# handlers. Unfortunately, we have no other options. For example,
+# request.write/read are not suitable because they don't allow direct raw bytes
+# writing/reading.
 
 
 from mod_pywebsocket import common

@@ -49,13 +49,10 @@ from test import mock
 
 # We use one fixed nonce for testing instead of cryptographically secure PRNG.
 _MASKING_NONCE = 'ABCD'
-# A sample masking key for testing.
-_MASKING_KEY = '01234567890123456789'
 
 
-def _mask_hybi04(frame):
-    frame_key = map(
-        ord, util.sha1_hash(_MASKING_NONCE + _MASKING_KEY).digest())
+def _mask_hybi06(frame):
+    frame_key = map(ord, _MASKING_NONCE)
     frame_key_len = len(frame_key)
     result = array.array('B')
     result.fromstring(frame)
@@ -70,11 +67,10 @@ def _mask_hybi04(frame):
 def _create_request(*frames):
     read_data = []
     for frame in frames:
-        read_data.append(_mask_hybi04(frame))
+        read_data.append(_mask_hybi06(frame))
 
     req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
-    req.ws_version = common.VERSION_HYBI04
-    req.ws_masking_key = _MASKING_KEY
+    req.ws_version = common.VERSION_HYBI06
     req.ws_stream = Stream(req)
     return req
 
@@ -83,8 +79,7 @@ def _create_request(*frames):
 # request.connection.written_data()
 def _create_blocking_request():
     req = mock.MockRequest(connection=mock.MockBlockingConn())
-    req.ws_version = common.VERSION_HYBI04
-    req.ws_masking_key = _MASKING_KEY
+    req.ws_version = common.VERSION_HYBI06
     req.ws_stream = Stream(req)
     return req
 
@@ -349,7 +344,7 @@ class MessageReceiverTest(unittest.TestCase):
 
         self.assertEqual(None, receiver.receive_nowait())
 
-        request.connection.put_bytes(_mask_hybi04('\x84\x06Hello!'))
+        request.connection.put_bytes(_mask_hybi06('\x84\x06Hello!'))
         self.assertEqual('Hello!', receiver.receive())
 
     def test_onmessage(self):
@@ -360,7 +355,7 @@ class MessageReceiverTest(unittest.TestCase):
         request = _create_blocking_request()
         receiver = msgutil.MessageReceiver(request, onmessage_handler)
 
-        request.connection.put_bytes(_mask_hybi04('\x84\x06Hello!'))
+        request.connection.put_bytes(_mask_hybi06('\x84\x06Hello!'))
         self.assertEqual('Hello!', onmessage_queue.get())
 
 

@@ -54,8 +54,8 @@ from mod_pywebsocket.handshake._base import validate_subprotocol
 
 _MANDATORY_HEADERS = [
     # key, expected value or None
-    ['Upgrade', 'WebSocket'],
-    ['Connection', 'Upgrade'],
+    [common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE_HIXIE75],
+    [common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE],
 ]
 
 
@@ -105,14 +105,15 @@ class Handshaker(object):
 
     def _set_subprotocol(self):
         # |Sec-WebSocket-Protocol|
-        subprotocol = self._request.headers_in.get('Sec-WebSocket-Protocol')
+        subprotocol = self._request.headers_in.get(
+            common.SEC_WEBSOCKET_PROTOCOL_HEADER)
         if subprotocol is not None:
             validate_subprotocol(subprotocol)
         self._request.ws_protocol = subprotocol
 
     def _set_location(self):
         # |Host|
-        host = self._request.headers_in.get('Host')
+        host = self._request.headers_in.get(common.HOST_HEADER)
         if host is not None:
             self._request.ws_location = build_location(self._request)
         # TODO(ukai): check host is this host.
@@ -202,18 +203,22 @@ class Handshaker(object):
         self._request.connection.write(
                 'HTTP/1.1 101 WebSocket Protocol Handshake\r\n')
         # 5.2 11. send the following fields to the client.
-        self._request.connection.write('Upgrade: WebSocket\r\n')
-        self._request.connection.write('Connection: Upgrade\r\n')
-        self._request.connection.write('Sec-WebSocket-Location: ')
-        self._request.connection.write(self._request.ws_location)
-        self._request.connection.write('\r\n')
-        self._request.connection.write('Sec-WebSocket-Origin: ')
-        self._request.connection.write(self._request.ws_origin)
-        self._request.connection.write('\r\n')
+        self._request.connection.write(
+            '%s: %s\r\n' %
+            (common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE_HIXIE75))
+        self._request.connection.write(
+            '%s: %s\r\n' %
+            (common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
+        self._request.connection.write(
+            'Sec-WebSocket-Location: %s\r\n' % self._request.ws_location)
+        self._request.connection.write(
+            '%s: %s\r\n' %
+            (common.SEC_WEBSOCKET_ORIGIN_HEADER, self._request.ws_origin))
         if self._request.ws_protocol:
-            self._request.connection.write('Sec-WebSocket-Protocol: ')
-            self._request.connection.write(self._request.ws_protocol)
-            self._request.connection.write('\r\n')
+            self._request.connection.write(
+                '%s: %s\r\n' %
+                (common.SEC_WEBSOCKET_PROTOCOL_HEADER,
+                 self._request.ws_protocol))
         # 5.2 12. send two bytes 0x0D 0x0A.
         self._request.connection.write('\r\n')
         # 5.2 13. send /response/

@@ -71,7 +71,6 @@ _UPGRADE_HEADER_HIXIE75 = 'Upgrade: WebSocket\r\n'
 _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 
 _WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
-_WEBSOCKET_MASKING_UUID = '61AC5F19-FBBA-4540-B96F-6561F1AB40A8'
 
 
 def _method_line(resource):
@@ -125,7 +124,7 @@ def _send_bytes(socket, bytes):
         pos += nbytes
 
 
-# TODO(tyoshino): Now HyBi 04 diverts these methods. We should move to HTTP
+# TODO(tyoshino): Now HyBi 06 diverts these methods. We should move to HTTP
 # parser. For HyBi 00 and Hixie 75, pack these methods as some parser class.
 def _read_fields(socket):
     # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
@@ -219,8 +218,8 @@ class _TLSSocket(object):
         pass
 
 
-class WebSocketHybi04Handshake(object):
-    """WebSocket handshake processor for IETF HyBi 04."""
+class WebSocketHybi06Handshake(object):
+    """WebSocket handshake processor for IETF HyBi 06."""
 
     def __init__(self, options):
         self._logger = util.get_class_logger(self)
@@ -255,7 +254,7 @@ class WebSocketHybi04Handshake(object):
                            (key, util.hexify(original_key)))
         fields.append('Sec-WebSocket-Key: %s\r\n' % key)
 
-        fields.append('Sec-WebSocket-Version: 4\r\n')
+        fields.append('Sec-WebSocket-Version: 6\r\n')
 
         # Setting up extensions.
         extensions = []
@@ -314,31 +313,10 @@ class WebSocketHybi04Handshake(object):
                 'Unexpected Connection header value: %s' %
                 fields['connection'][0])
 
-        if len(fields['sec-websocket-nonce']) != 1:
-            raise Exception(
-                'Multiple Sec-WebSocket-Nonce headers found: %s' %
-                fields['sec-websocket-nonce'])
-
         if len(fields['sec-websocket-accept']) != 1:
             raise Exception(
                 'Multiple Sec-WebSocket-Accept headers found: %s' %
                 fields['sec-websocket-accept'])
-
-        nonce = fields['sec-websocket-nonce'][0]
-
-        # Validate
-        try:
-            decoded_nonce = base64.b64decode(nonce)
-        except TypeError, e:
-            raise HandshakeError(
-                'Illegal value for header Sec-WebSocket-Nonce: ' + nonce)
-
-        if len(decoded_nonce) != 16:
-            raise HandshakeError(
-                'Decoded value of Sec-WebSocket-Nonce is not 16-byte long')
-
-        self._logger.debug('server nonce : %s (%s)' %
-                           (nonce, util.hexify(decoded_nonce)))
 
         accept = fields['sec-websocket-accept'][0]
 
@@ -368,11 +346,6 @@ class WebSocketHybi04Handshake(object):
             raise Exception(
                 'Invalid Sec-WebSocket-Accept header: %s (expected: %s)' %
                 (accept, expected_accept))
-
-        self._masking_key = util.sha1_hash(
-            key + nonce + _WEBSOCKET_MASKING_UUID).digest()
-        self._logger.debug('masking-key  : %s' %
-                           util.hexify(self._masking_key))
 
         server_extensions_header = fields.get('sec-websocket-extensions')
         if (server_extensions_header is None or
@@ -656,7 +629,7 @@ class WebSocketHixie75Handshake(object):
 
 
 class WebSocketStream(object):
-    """WebSocket frame processor for IETF HyBi 04."""
+    """WebSocket frame processor for IETF HyBi 06."""
 
     _CLOSE_FRAME = chr(1 << 7 | _OPCODE_CLOSE) + '\x00'
 
@@ -669,18 +642,16 @@ class WebSocketStream(object):
 
         self._fragmented = False
 
-    def _mask_hybi04(self, s):
+    def _mask_hybi06(self, s):
         # TODO(tyoshino): os.urandom does open/read/close for every call. If
         # performance matters, change this to some library call that generates
         # cryptographically secure pseudo random number sequence.
         masking_nonce = os.urandom(4)
-        frame_key = util.sha1_hash(
-            masking_nonce + self._handshake._masking_key).digest()
         result = [masking_nonce]
         count = 0
         for c in s:
-            result.append(chr(ord(c) ^ ord(frame_key[count])))
-            count = (count + 1) % len(frame_key)
+            result.append(chr(ord(c) ^ ord(masking_nonce[count])))
+            count = (count + 1) % len(masking_nonce)
         return ''.join(result)
 
     def send_text(self, payload, end=True):
@@ -708,7 +679,7 @@ class WebSocketStream(object):
             header += chr(127) + struct.pack('!Q', payload_length)
         else:
             raise Exception('Too long payload (%d byte)' % payload_length)
-        _send_bytes(self._socket, self._mask_hybi04(header + encoded_payload))
+        _send_bytes(self._socket, self._mask_hybi06(header + encoded_payload))
 
     def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
                             rsv1=0, rsv2=0, rsv3=0, rsv4=0):
@@ -767,7 +738,7 @@ class WebSocketStream(object):
                 (payload, received))
 
     def send_close(self):
-        _send_bytes(self._socket, self._mask_hybi04(self._CLOSE_FRAME))
+        _send_bytes(self._socket, self._mask_hybi06(self._CLOSE_FRAME))
 
     def assert_receive_close(self):
         closing = _receive_bytes(self._socket, len(self._CLOSE_FRAME))
@@ -898,7 +869,7 @@ class Client(object):
 
 def create_client(options):
     return Client(
-        options, WebSocketHybi04Handshake(options), WebSocketStream)
+        options, WebSocketHybi06Handshake(options), WebSocketStream)
 
 
 def create_client_hybi00(options):

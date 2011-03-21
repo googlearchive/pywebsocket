@@ -29,7 +29,7 @@
 
 
 # Constants indicating WebSocket protocol version.
-VERSION_HYBI04 = 4
+VERSION_HYBI06 = 6
 VERSION_HYBI00 = 0
 VERSION_HIXIE75 = -1
 
@@ -49,6 +49,19 @@ OPCODE_PONG = 0x3
 OPCODE_TEXT = 0x4
 OPCODE_BINARY = 0x5
 
-# UUIDs used by HyBi 04 opening handshake and frame masking.
+# UUIDs used by HyBi 06 opening handshake and frame masking.
 WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
-WEBSOCKET_MASKING_UUID = '61AC5F19-FBBA-4540-B96F-6561F1AB40A8'
+
+# Opening handshake header names and expected values.
+UPGRADE_HEADER = 'Upgrade'
+WEBSOCKET_UPGRADE_TYPE = 'websocket'
+WEBSOCKET_UPGRADE_TYPE_HIXIE75 = 'WebSocket'
+CONNECTION_HEADER = 'Connection'
+UPGRADE_CONNECTION_TYPE = 'Upgrade'
+HOST_HEADER = 'Host'
+SEC_WEBSOCKET_ORIGIN_HEADER = 'Sec-WebSocket-Origin'
+SEC_WEBSOCKET_KEY_HEADER = 'Sec-WebSocket-Key'
+SEC_WEBSOCKET_ACCEPT_HEADER = 'Sec-WebSocket-Accept'
+SEC_WEBSOCKET_VERSION_HEADER = 'Sec-WebSocket-Version'
+SEC_WEBSOCKET_PROTOCOL_HEADER = 'Sec-WebSocket-Protocol'
+SEC_WEBSOCKET_EXTENSIONS_HEADER = 'Sec-WebSocket-Extensions'

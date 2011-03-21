@@ -28,12 +28,9 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""WebSocket handshaking.
-
-Note: request.connection.write/read are used in this module, even though
-mod_python document says that they should be used only in connection handlers.
-Unfortunately, we have no other options. For example, request.write/read are
-not suitable because they don't allow direct raw bytes writing/reading.
+"""WebSocket opening handshake processor. This class try to apply available
+opening handshake processors for each protocol version until a connection is
+successfully established.
 """
 
 
@@ -42,7 +39,7 @@ import logging
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
-from mod_pywebsocket.handshake import hybi04
+from mod_pywebsocket.handshake import hybi06
 from mod_pywebsocket.handshake._base import HandshakeError
 
 
@@ -69,7 +66,7 @@ class Handshaker(object):
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict
-        self._hybi04Handshaker = hybi04.Handshaker(request, dispatcher)
+        self._hybi06Handshaker = hybi06.Handshaker(request, dispatcher)
         self._hybi00Handshaker = hybi00.Handshaker(request, dispatcher)
         self._hixie75Handshaker = None
         if allowDraft75:
@@ -83,7 +80,7 @@ class Handshaker(object):
             'Opening handshake headers: %s' % self._request.headers_in)
 
         handshakers = [
-            ('HyBi 04', self._hybi04Handshaker),
+            ('HyBi 06', self._hybi06Handshaker),
             ('HyBi 00', self._hybi00Handshaker),
             ('Hixie 75', self._hixie75Handshaker)]
         last_error = HandshakeError('No handshaker available')

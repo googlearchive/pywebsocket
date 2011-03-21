@@ -57,13 +57,13 @@ def get_default_port(is_secure):
         return common.DEFAULT_WEB_SOCKET_PORT
 
 
+# TODO(tyoshino): Have stricter validator for HyBi 06.
 def validate_subprotocol(subprotocol):
     """Validate a value in subprotocol fields such as WebSocket-Protocol,
     Sec-WebSocket-Protocol.
 
     See
-    - HyBi 04: Section 3.3. Valid WebSocket URLs
-      (The spec should be fixed. /protocols/ is not referred)
+    - HyBi 06: Section 5.1.
     - HyBi 00: Section 4.1. Opening handshake
     - Hixie 75: Section 4.1. Handshake
     """

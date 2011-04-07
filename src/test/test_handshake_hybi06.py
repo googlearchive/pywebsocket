@@ -78,8 +78,11 @@ def _create_handshaker(request):
 class Hybi06HandshakerTest(unittest.TestCase):
     def test_do_handshake(self):
         request = _create_request(_create_good_request_def())
-        handshaker = _create_handshaker(request)
+        dispatcher = mock.MockDispatcher()
+        handshaker = Handshaker(request, dispatcher)
         handshaker.do_handshake()
+
+        self.assertTrue(dispatcher.do_extra_handshake_called)
 
         EXPECTED_RESPONSE = (
             'HTTP/1.1 101 Switching Protocols\r\n'

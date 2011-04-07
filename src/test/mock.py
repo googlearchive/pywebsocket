@@ -204,8 +204,11 @@ class MockRequest(object):
 class MockDispatcher(object):
     """Mock for dispatch.Dispatcher."""
 
+    def __init__(self):
+        self.do_extra_handshake_called = False
+
     def do_extra_handshake(self, conn_context):
-        pass
+        self.do_extra_handshake_called = True
 
     def transfer_data(self, conn_context):
         pass

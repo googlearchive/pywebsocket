@@ -90,11 +90,13 @@ class Handshaker(object):
         self._logger.debug('server accept : %s (%s)' %
                            (accept, util.hexify(original_accept)))
 
-        self._send_handshake(accept)
-
         self._logger.debug('IETF HyBi 06 protocol')
         self._request.ws_version = common.VERSION_HYBI06
         self._request.ws_stream = stream.Stream(self._request)
+
+        self._dispatcher.do_extra_handshake(self._request)
+
+        self._send_handshake(accept)
 
     def _get_origin(self):
         origin = self._request.headers_in.get(

@@ -96,6 +96,22 @@ class Handshaker(object):
 
         self._dispatcher.do_extra_handshake(self._request)
 
+        if self._request.ws_requested_protocols is not None:
+            if self._request.ws_protocol is None:
+                raise HandshakeError(
+                    'do_extra_handshake must choose one subprotocol from '
+                    'ws_requested_protocols and set it to ws_protocol')
+
+            # TODO(tyoshino): Validate selected subprotocol value.
+
+            self._logger.debug(
+                'protocol accepted  : %r', self._request.ws_protocol)
+        else:
+            if self._request.ws_protocol is not None:
+                raise handshakeError(
+                    'ws_protocol must be None when the client didn\'t request '
+                    'any subprotocol')
+
         self._send_handshake(accept)
 
     def _get_origin(self):
@@ -108,26 +124,22 @@ class Handshaker(object):
             self._request, common.SEC_WEBSOCKET_VERSION_HEADER, '6')
 
     def _set_protocol(self):
+        self._request.ws_protocol = None
+
         protocol_header = self._request.headers_in.get(
             common.SEC_WEBSOCKET_PROTOCOL_HEADER)
 
         if not protocol_header:
-            self._request.ws_protocol = None
+            self._request.ws_requested_protocols = None
             return
 
+        # TODO(tyoshino): Validate the header value.
+
         requested_protocols = protocol_header.split(',')
-        # TODO(tyoshino): Follow the ABNF in the spec.
-        requested_protocols = [s.strip() for s in requested_protocols]
-
-        self._request.ws_protocol = ''
-
-        # TODO(tyoshino): Add subprotocol processing code. For now, we reject
-        # any subprotocol by leaving self._request.ws_protocol empty. We need
-        # some framework to register available subprotocols.
+        self._request.ws_requested_protocols = [
+            s.strip() for s in requested_protocols]
 
         self._logger.debug('protocols requested : %r', requested_protocols)
-        self._logger.debug(
-            'protocol accepted  : %r', self._request.ws_protocol)
 
     def _set_extensions(self):
         self._request.ws_deflate = False

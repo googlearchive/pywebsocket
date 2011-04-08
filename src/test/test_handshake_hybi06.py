@@ -75,6 +75,18 @@ def _create_handshaker(request):
     return handshaker
 
 
+class TestDispatcher(object):
+    """A dispacher for testing. This dispatcher sets the first subprotocol
+    of requested ones to ws_protocol.
+    """
+
+    def do_extra_handshake(self, conn_context):
+        conn_context.ws_protocol = conn_context.ws_requested_protocols[0]
+
+    def transfer_data(self, conn_context):
+        pass
+
+
 class Hybi06HandshakerTest(unittest.TestCase):
     def test_do_handshake(self):
         request = _create_request(_create_good_request_def())
@@ -102,7 +114,7 @@ class Hybi06HandshakerTest(unittest.TestCase):
         request_def.headers['Sec-WebSocket-Protocol'] = 'chat, superchat'
 
         request = _create_request(request_def)
-        handshaker = _create_handshaker(request)
+        handshaker = Handshaker(request, TestDispatcher())
         handshaker.do_handshake()
 
         EXPECTED_RESPONSE = (
@@ -110,10 +122,19 @@ class Hybi06HandshakerTest(unittest.TestCase):
             'Upgrade: websocket\r\n'
             'Connection: Upgrade\r\n'
             'Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n'
-            'Sec-WebSocket-Protocol:\x20\r\n\r\n')
+            'Sec-WebSocket-Protocol: chat\r\n\r\n')
 
         self.assertEqual(EXPECTED_RESPONSE, request.connection.written_data())
-        self.assertEqual('', request.ws_protocol)
+        self.assertEqual('chat', request.ws_protocol)
+
+    def test_do_handshake_with_protocol_no_protocol_selection(self):
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Protocol'] = 'chat, superchat'
+
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        # ws_protocol is not set. HandshakeError must be raised.
+        self.assertRaises(HandshakeError, handshaker.do_handshake)
 
     def test_do_handshake_with_extensions(self):
         request_def = _create_good_request_def()

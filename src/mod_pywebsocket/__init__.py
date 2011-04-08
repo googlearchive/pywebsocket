@@ -103,8 +103,34 @@ where:
 
 web_socket_do_extra_handshake is called during the handshake after the
 headers are successfully parsed and WebSocket properties (ws_location,
-ws_origin, ws_protocol, and ws_resource) are added to request. A handler
+ws_origin, and ws_resource) are added to request. A handler
 can reject the request by raising an exception.
+
+A request object has the following properties that you can use during the extra
+handshake (web_socket_do_extra_handshake):
+- ws_resource
+- ws_origin
+- ws_version
+- ws_location (Hixie 75 and HyBi 00 only)
+- ws_extensions (Hybi 06 and later)
+- ws_deflate (HyBi 06 and later)
+- ws_protocol
+- ws_requested_protocols (HyBi 06 and later)
+
+The last two are a bit tricky.
+
+For HyBi 06 and later, ws_protocol is always set to None when
+web_socket_do_extra_handshake is called. If ws_requested_protocols is not
+None, you must choose one subprotocol from this list and set it to ws_protocol.
+
+For Hixie 75 and HyBi 00, when web_socket_do_extra_handshake is called,
+ws_protocol is set to the value given by the client in Sec-WebSocket-Protocol
+(WebSocket-Protocol for Hixie 75) header or None if such header was not found
+in the opening handshake request. Finish extra handshake with ws_protocol
+untouched to accept the request subprotocol. Then, Sec-WebSocket-Protocol
+(or WebSocket-Protocol) header will be sent to the client in response with the
+same value as requested. Raise an exception in web_socket_do_extra_handshake to
+reject the requested subprotocol.
 
 web_socket_transfer_data is called after the handshake completed
 successfully. A handler can receive/send messages from/to the client

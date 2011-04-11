@@ -75,13 +75,29 @@ def _create_handshaker(request):
     return handshaker
 
 
-class TestDispatcher(object):
+class SubprotocolChoosingDispatcher(object):
     """A dispacher for testing. This dispatcher sets the first subprotocol
     of requested ones to ws_protocol.
     """
 
     def do_extra_handshake(self, conn_context):
         conn_context.ws_protocol = conn_context.ws_requested_protocols[0]
+
+    def transfer_data(self, conn_context):
+        pass
+
+
+class HandshakeAbortedException(Exception):
+    pass
+
+
+class AbortingDispatcher(object):
+    """A dispacher for testing. This dispatcher raises an exception in
+    do_extra_handshake to reject the request.
+    """
+
+    def do_extra_handshake(self, conn_context):
+        raise HandshakeAbortedException('An exception to reject the request')
 
     def transfer_data(self, conn_context):
         pass
@@ -109,12 +125,20 @@ class Hybi06HandshakerTest(unittest.TestCase):
         self.assertEqual(None, request.ws_extensions)
         self.assertEqual(common.VERSION_HYBI06, request.ws_version)
 
+    def test_aborting_handshake(self):
+        handshaker = Handshaker(
+            _create_request(_create_good_request_def()),
+            AbortingDispatcher())
+        # do_extra_handshake raises an exception. Check that it's not caught by
+        # do_handshake.
+        self.assertRaises(HandshakeAbortedException, handshaker.do_handshake)
+
     def test_do_handshake_with_protocol(self):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Protocol'] = 'chat, superchat'
 
         request = _create_request(request_def)
-        handshaker = Handshaker(request, TestDispatcher())
+        handshaker = Handshaker(request, SubprotocolChoosingDispatcher())
         handshaker.do_handshake()
 
         EXPECTED_RESPONSE = (

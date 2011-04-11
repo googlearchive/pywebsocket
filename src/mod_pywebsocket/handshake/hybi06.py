@@ -54,6 +54,18 @@ _MANDATORY_HEADERS = [
 _BASE64_REGEX = re.compile('^[+/0-9A-Za-z]*=*$')
 
 
+def compute_accept(key):
+    """Computes value for the Sec-WebSocket-Accept header from value of the
+    Sec-WebSocket-Key header.
+    """
+
+    accept_binary = util.sha1_hash(
+        key + common.WEBSOCKET_ACCEPT_UUID).digest()
+    accept = base64.b64encode(accept_binary)
+
+    return (accept, accept_binary)
+
+
 class Handshaker(object):
     """This class performs WebSocket handshake."""
 
@@ -84,11 +96,9 @@ class Handshaker(object):
         self._set_extensions()
 
         key = self._get_key()
-        original_accept = util.sha1_hash(
-            key + common.WEBSOCKET_ACCEPT_UUID).digest()
-        accept = base64.b64encode(original_accept)
+        (accept, accept_binary) = compute_accept(key)
         self._logger.debug('server accept : %s (%s)' %
-                           (accept, util.hexify(original_accept)))
+                           (accept, util.hexify(accept_binary)))
 
         self._logger.debug('IETF HyBi 06 protocol')
         self._request.ws_version = common.VERSION_HYBI06

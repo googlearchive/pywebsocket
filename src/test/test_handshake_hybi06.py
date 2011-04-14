@@ -76,12 +76,21 @@ def _create_handshaker(request):
 
 
 class SubprotocolChoosingDispatcher(object):
-    """A dispacher for testing. This dispatcher sets the first subprotocol
-    of requested ones to ws_protocol.
+    """A dispacher for testing. This dispatcher sets the i-th subprotocol
+    of requested ones to ws_protocol where i is given on construction as index
+    argument. If index is negative, default_value will be set to ws_protocol.
     """
 
+    def __init__(self, index, default_value=None):
+        self.index = index
+        self.default_value = default_value
+
     def do_extra_handshake(self, conn_context):
-        conn_context.ws_protocol = conn_context.ws_requested_protocols[0]
+        if self.index >= 0:
+            conn_context.ws_protocol = conn_context.ws_requested_protocols[
+                self.index]
+        else:
+            conn_context.ws_protocol = self.default_value
 
     def transfer_data(self, conn_context):
         pass
@@ -138,7 +147,7 @@ class Hybi06HandshakerTest(unittest.TestCase):
         request_def.headers['Sec-WebSocket-Protocol'] = 'chat, superchat'
 
         request = _create_request(request_def)
-        handshaker = Handshaker(request, SubprotocolChoosingDispatcher())
+        handshaker = Handshaker(request, SubprotocolChoosingDispatcher(0))
         handshaker.do_handshake()
 
         EXPECTED_RESPONSE = (
@@ -150,6 +159,15 @@ class Hybi06HandshakerTest(unittest.TestCase):
 
         self.assertEqual(EXPECTED_RESPONSE, request.connection.written_data())
         self.assertEqual('chat', request.ws_protocol)
+
+    def test_do_handshake_protocol_not_in_request_but_in_response(self):
+        request_def = _create_good_request_def()
+        request = _create_request(request_def)
+        handshaker = Handshaker(
+            request, SubprotocolChoosingDispatcher(-1, 'foobar'))
+        # No request has been made but ws_protocol is set. HandshakeError must
+        # be raised.
+        self.assertRaises(HandshakeError, handshaker.do_handshake)
 
     def test_do_handshake_with_protocol_no_protocol_selection(self):
         request_def = _create_good_request_def()

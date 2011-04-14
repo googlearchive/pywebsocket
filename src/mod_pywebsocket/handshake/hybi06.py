@@ -118,7 +118,7 @@ class Handshaker(object):
                 'protocol accepted  : %r', self._request.ws_protocol)
         else:
             if self._request.ws_protocol is not None:
-                raise handshakeError(
+                raise HandshakeError(
                     'ws_protocol must be None when the client didn\'t request '
                     'any subprotocol')
 

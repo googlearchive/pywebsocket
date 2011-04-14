@@ -298,6 +298,12 @@ class MessageTest(unittest.TestCase):
                           msgutil.receive_message,
                           request)
 
+    def test_ping_with_too_long_payload(self):
+        request = _create_request('\x82\x7e\x01\x00' + 'a' * 256)
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
+
 
 class MessageTestHixie75(unittest.TestCase):
     # Tests for StreamHixie75

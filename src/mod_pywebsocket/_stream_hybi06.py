@@ -315,6 +315,11 @@ class Stream(StreamBase):
                     # Unfragmented frame
                     self._original_opcode = opcode
                     message = bytes
+
+                    if is_control_opcode(opcode) and len(message) > 125:
+                        raise InvalidFrameException(
+                            'Application data size of control frames must be '
+                            '125 bytes or less')
                 else:
                     # Start of fragmentation frame
 
@@ -411,12 +416,20 @@ class Stream(StreamBase):
         # note: mod_python Connection (mp_conn) doesn't have close method.
 
     def send_ping(self, body=''):
+        if len(body) > 125:
+            raise ValueError(
+                'Application data size of control frames must be 125 bytes or '
+                'less')
         frame = create_ping_frame(body)
         self._write(frame)
 
         self._ping_queue.append(body)
 
     def _send_pong(self, body):
+        if len(body) > 125:
+            raise ValueError(
+                'Application data size of control frames must be 125 bytes or '
+                'less')
         frame = create_pong_frame(body)
         self._write(frame)
 

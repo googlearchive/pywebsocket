@@ -240,14 +240,13 @@ class DeflateSocket(object):
         self._logger.debug('Received: %r' % data)
         return data
 
+    def sendall(self, bytes):
+        self.send(bytes)
+
     def send(self, bytes):
         compressed_bytes = self._compress.compress(bytes)
         compressed_bytes += self._compress.flush(zlib.Z_SYNC_FLUSH)
-        pos = 0
-        size = len(compressed_bytes)
-        while pos < size:
-            nbytes = self._socket.send(compressed_bytes[pos:])
-            pos += nbytes
+        self._socket.sendall(compressed_bytes)
         self._logger.debug('Wrote: %r' % bytes)
         self._logger.debug('Wrote compressed: %r' % compressed_bytes)
         return len(bytes)

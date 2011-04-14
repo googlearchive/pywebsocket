@@ -116,14 +116,6 @@ def _receive_bytes(socket, length):
     return ''.join(bytes)
 
 
-def _send_bytes(socket, bytes):
-    pos = 0
-    size = len(bytes)
-    while pos < size:
-        nbytes = socket.send(bytes[pos:])
-        pos += nbytes
-
-
 # TODO(tyoshino): Now HyBi 06 diverts these methods. We should move to HTTP
 # parser. For HyBi 00 and Hixie 75, pack these methods as some parser class.
 def _read_fields(socket):
@@ -235,7 +227,7 @@ class WebSocketHybi06Handshake(object):
 
         self._socket = socket
 
-        self._socket.send(_method_line(self._options.resource))
+        self._socket.sendall(_method_line(self._options.resource))
 
         fields = []
         fields.append(_UPGRADE_HEADER)
@@ -270,8 +262,8 @@ class WebSocketHybi06Handshake(object):
         self._logger.debug('Opening handshake headers: %r' % fields)
 
         for field in fields:
-            self._socket.send(field)
-        self._socket.send('\r\n')
+            self._socket.sendall(field)
+        self._socket.sendall('\r\n')
 
         self._logger.info('Sent opening handshake')
 
@@ -400,7 +392,7 @@ class WebSocketHybi00Handshake(object):
         self._socket = socket
 
         # 4.1 5. send request line.
-        _send_bytes(self._socket, _method_line(self._options.resource))
+        self._socket.sendall(_method_line(self._options.resource))
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
@@ -430,15 +422,15 @@ class WebSocketHybi00Handshake(object):
         # RETURN U+000A LINE FEED character pair (CRLF).
         random.shuffle(fields)
         for field in fields:
-            _send_bytes(self._socket, field)
+            self._socket.sendall(field)
         # 4.1 25. send a UTF-8-encoded U+000D CARRIAGE RETURN U+000A LINE FEED
         # character pair (CRLF).
-        _send_bytes(self._socket, '\r\n')
+        self._socket.sendall('\r\n')
         # 4.1 26. let /key3/ be a string consisting of eight random bytes (or
         # equivalently, a random 64 bit integer encoded in a big-endian order).
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
-        _send_bytes(self._socket, self._key3)
+        self._socket.sendall(self._key3)
 
         self._logger.info('Sent opening handshake')
 
@@ -608,15 +600,15 @@ class WebSocketHixie75Handshake(object):
     def handshake(self, socket):
         self._socket = socket
 
-        _send_bytes(self._socket, _method_line(self._options.resource))
-        _send_bytes(self._socket, _UPGRADE_HEADER_HIXIE75)
-        _send_bytes(self._socket, _CONNECTION_HEADER)
-        _send_bytes(self._socket, _format_host_header(
+        self._socket.sendall(_method_line(self._options.resource))
+        self._socket.sendall(_UPGRADE_HEADER_HIXIE75)
+        self._socket.sendall(_CONNECTION_HEADER)
+        self._socket.sendall(_format_host_header(
             self._options.server_host,
             self._options.server_port,
             self._options.use_tls))
-        _send_bytes(self._socket, _origin_header(self._options.origin))
-        _send_bytes(self._socket, '\r\n')
+        self._socket.sendall(_origin_header(self._options.origin))
+        self._socket.sendall('\r\n')
 
         self._logger.info('Sent opening handshake')
 
@@ -679,7 +671,7 @@ class WebSocketStream(object):
             header += chr(127) + struct.pack('!Q', payload_length)
         else:
             raise Exception('Too long payload (%d byte)' % payload_length)
-        _send_bytes(self._socket, self._mask_hybi06(header + encoded_payload))
+        self._socket.sendall(self._mask_hybi06(header + encoded_payload))
 
     def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
                             rsv1=0, rsv2=0, rsv3=0, rsv4=0):
@@ -738,7 +730,7 @@ class WebSocketStream(object):
                 (payload, received))
 
     def send_close(self):
-        _send_bytes(self._socket, self._mask_hybi06(self._CLOSE_FRAME))
+        self._socket.sendall(self._mask_hybi06(self._CLOSE_FRAME))
 
     def assert_receive_close(self):
         closing = _receive_bytes(self._socket, len(self._CLOSE_FRAME))
@@ -757,7 +749,7 @@ class WebSocketStreamHixie75(object):
     def send_text(self, payload, unused_end):
         encoded_payload = payload.encode('utf-8')
         frame = ''.join(['\x00', encoded_payload, '\xff'])
-        _send_bytes(self._socket, frame)
+        self._socket.sendall(frame)
 
     def assert_receive_text(self, payload):
         received = _receive_bytes(self._socket, 1)
@@ -779,7 +771,7 @@ class WebSocketStreamHixie75(object):
                 (payload, received[0:-1]))
 
     def send_close(self):
-        _send_bytes(self._socket, self._CLOSE_FRAME)
+        self._socket.sendall(self._CLOSE_FRAME)
 
     def assert_receive_close(self):
         closing = _receive_bytes(self._socket, len(self._CLOSE_FRAME))

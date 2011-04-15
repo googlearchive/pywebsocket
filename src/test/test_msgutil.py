@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -35,6 +35,7 @@
 
 import array
 import Queue
+import struct
 import unittest
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
@@ -234,6 +235,13 @@ class MessageTest(unittest.TestCase):
         self.assertRaises(msgutil.UnsupportedFrameException,
                           msgutil.receive_message, request)
         self.assertEqual('World!', msgutil.receive_message(request))
+
+    def test_receive_close(self):
+        request = _create_request(
+            '\x81\x0a' + struct.pack('!H', 1000) + 'Good bye')
+        self.assertEqual(None, msgutil.receive_message(request))
+        self.assertEqual(1000, request.ws_close_code)
+        self.assertEqual('Good bye', request.ws_close_reason)
 
     def test_send_ping(self):
         request = _create_request('')

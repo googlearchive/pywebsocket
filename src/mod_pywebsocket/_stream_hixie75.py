@@ -1,4 +1,4 @@
-# Copyright 2010, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -170,7 +170,7 @@ class StreamHixie75(StreamBase):
         # start of the closing handshake.
         self._write('\xff\x00')
 
-    def close_connection(self):
+    def close_connection(self, unused_code='', unused_reason=''):
         """Closes a WebSocket connection.
 
         Raises:

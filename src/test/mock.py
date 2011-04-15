@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -193,6 +193,8 @@ class MockRequest(object):
         # conflict with self.is_https(), it is named as such.
         self.is_https_ = is_https
         self.ws_stream = StreamHixie75(self)
+        self.ws_close_code = None
+        self.ws_close_reason = None
         self.ws_version = common.VERSION_HYBI00
         self.ws_deflate = False
 

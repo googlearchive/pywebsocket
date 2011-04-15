@@ -165,6 +165,29 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_deflate_server_close(self):
         self._run_hybi06_deflate_test(_echo_check_procedure_with_goodbye)
 
+    def test_close_on_protocol_error(self):
+        def test_function(client):
+            client.connect()
+
+            # Intermediate frame without any preceding start of fragmentation
+            # frame.
+            client.send_frame_of_arbitrary_bytes('\x00\x00')
+            client.assert_receive_close(
+                client_for_testing.STATUS_PROTOCOL_ERROR)
+
+        self._run_hybi06_test(test_function)
+
+    def test_close_on_unsupported_frame(self):
+        def test_function(client):
+            client.connect()
+
+            # Text frame with RSV3 bit raised.
+            client.send_frame_of_arbitrary_bytes('\x94\x00')
+            client.assert_receive_close(
+                client_for_testing.STATUS_UNSUPPORTED)
+
+        self._run_hybi06_test(test_function)
+
     def _run_hybi00_test(self, test_function):
         server = self._run_server()
         try:

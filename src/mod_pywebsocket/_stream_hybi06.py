@@ -339,6 +339,22 @@ class Stream(StreamBase):
             elif self._original_opcode == common.OPCODE_CLOSE:
                 self._request.client_terminated = True
 
+                # Status code is optional. We can have status reason only if we
+                # have status code. Status reason can be empty string. So,
+                # allowed cases are
+                # - no application data: no code no reason
+                # - 2 octet of application data: has code but no reason
+                # - 3 or more octet of application data: both code and reason
+                if len(message) == 1:
+                    raise InvalidFrameException(
+                        'If a close frame has status code, the length of '
+                        'status code must be 2 octet')
+                elif len(message) >= 2:
+                    self._request.ws_close_code = struct.unpack(
+                        '!H', message[0:2])[0]
+                    self._request.ws_close_reason = message[2:].decode(
+                        'utf-8', 'replace')
+
                 if self._request.server_terminated:
                     self._logger.debug(
                         'Received ack for server-initiated closing '
@@ -348,7 +364,7 @@ class Stream(StreamBase):
                 self._logger.debug(
                     'Received client-initiated closing handshake')
 
-                self._send_closing_handshake()
+                self._send_closing_handshake(common.STATUS_NORMAL, '')
                 self._logger.debug(
                     'Sent ack for client-initiated closing handshake')
                 return None
@@ -386,13 +402,24 @@ class Stream(StreamBase):
                 raise UnsupportedFrameException(
                     'opcode %d is not supported' % self._original_opcode)
 
-    def _send_closing_handshake(self):
+    def _send_closing_handshake(self, code, reason):
+        if code >= (1 << 16) or code < 0:
+            raise BadOperationException('Status code is out of range')
+
+        encoded_reason = reason.encode('utf-8')
+        if len(encoded_reason) + 2 > 125:
+            raise BadOperationException(
+                'Application data size of close frames must be 125 bytes or '
+                'less')
+
+        frame = create_close_frame(
+            struct.pack('!H', code) + encoded_reason)
+
         self._request.server_terminated = True
 
-        frame = create_close_frame('')
         self._write(frame)
 
-    def close_connection(self):
+    def close_connection(self, code=common.STATUS_NORMAL, reason=''):
         """Closes a WebSocket connection."""
 
         if self._request.server_terminated:
@@ -400,8 +427,16 @@ class Stream(StreamBase):
                 'Requested close_connection but server is already terminated')
             return
 
-        self._send_closing_handshake()
+        self._send_closing_handshake(code, reason)
         self._logger.debug('Sent server-initiated closing handshake')
+
+        if (code == common.STATUS_GOING_AWAY or
+            code == common.STATUS_PROTOCOL_ERROR):
+            # It doesn't make sense to wait for a close frame if the reason is
+            # protocol error or that the server is going away. For some of other
+            # reasons, it might not make sense to wait for a close frame, but
+            # it's not clear, yet.
+            return
 
         # TODO(ukai): 2. wait until the /client terminated/ flag has been set,
         # or until a server-defined timeout expires.

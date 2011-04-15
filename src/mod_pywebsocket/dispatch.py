@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -36,6 +36,7 @@ import logging
 import os
 import re
 
+from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
 from mod_pywebsocket import util
 
@@ -205,11 +206,19 @@ class Dispatcher(object):
             transfer_data_(request)
             if not request.server_terminated:
                 request.ws_stream.close_connection()
-        except msgutil.ConnectionTerminatedException, e:
-            # Catch non-critical exceptions the handler didn't handle.
+        # Catch non-critical exceptions the handler didn't handle.
+        except msgutil.BadOperationException, e:
             self._logger.debug(str(e))
+            request.ws_stream.close_connection(common.STATUS_GOING_AWAY)
+        except msgutil.InvalidFrameException, e:
+            # InvalidFrameException must be caught before
+            # ConnectionTerminatedException that catches InvalidFrameException.
+            self._logger.debug(str(e))
+            request.ws_stream.close_connection(common.STATUS_PROTOCOL_ERROR)
         except msgutil.UnsupportedFrameException, e:
-            # Catch non-critical exceptions the handler didn't handle.
+            self._logger.debug(str(e))
+            request.ws_stream.close_connection(common.STATUS_UNSUPPORTED)
+        except msgutil.ConnectionTerminatedException, e:
             self._logger.debug(str(e))
         except Exception, e:
             util.prepend_message_to_exception(

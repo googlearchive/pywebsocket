@@ -104,6 +104,9 @@ class Handshaker(object):
         self._request.ws_version = common.VERSION_HYBI06
         self._request.ws_stream = stream.Stream(self._request)
 
+        self._request.ws_close_code = None
+        self._request.ws_close_reason = None
+
         self._dispatcher.do_extra_handshake(self._request)
 
         if self._request.ws_requested_protocols is not None:

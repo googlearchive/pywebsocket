@@ -72,6 +72,12 @@ _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 
 _WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
+# Status codes
+STATUS_NORMAL = 1000
+STATUS_GOING_AWAY = 1001
+STATUS_PROTOCOL_ERROR = 1002
+STATUS_UNSUPPORTED = 1003
+
 
 def _method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
@@ -623,8 +629,6 @@ class WebSocketHixie75Handshake(object):
 class WebSocketStream(object):
     """WebSocket frame processor for IETF HyBi 06."""
 
-    _CLOSE_FRAME = chr(1 << 7 | _OPCODE_CLOSE) + '\x00'
-
     def __init__(self, socket, handshake):
         self._handshake = handshake
         if self._handshake._options.use_deflate:
@@ -645,6 +649,9 @@ class WebSocketStream(object):
             result.append(chr(ord(c) ^ ord(masking_nonce[count])))
             count = (count + 1) % len(masking_nonce)
         return ''.join(result)
+
+    def send_frame_of_arbitrary_bytes(self, bytes):
+        self._socket.sendall(self._mask_hybi06(bytes))
 
     def send_text(self, payload, end=True):
         encoded_payload = payload.encode('utf-8')
@@ -729,13 +736,27 @@ class WebSocketStream(object):
                 'Unexpected payload : %r (expected) vs %r (actual)' %
                 (payload, received))
 
-    def send_close(self):
-        self._socket.sendall(self._mask_hybi06(self._CLOSE_FRAME))
+    def _build_close_frame(self, code, reason):
+        frame = chr(1 << 7 | _OPCODE_CLOSE)
+        if code is not None:
+            body = struct.pack('!H', code) + reason.encode('utf-8')
+            frame += chr(len(body)) + body
+        else:
+            # Just append RSV4 of 0 and payload length header of 0.
+            frame += '\x00'
+        return frame
 
-    def assert_receive_close(self):
-        closing = _receive_bytes(self._socket, len(self._CLOSE_FRAME))
-        if closing != self._CLOSE_FRAME:
-            raise Exception('Didn\'t receive closing handshake')
+    def send_close(self):
+        self._socket.sendall(
+            self._mask_hybi06(self._build_close_frame(STATUS_NORMAL, '')))
+
+    def assert_receive_close(self, code, reason):
+        expected_frame = self._build_close_frame(code, reason)
+        actual_frame = _receive_bytes(self._socket, len(expected_frame))
+        if actual_frame != expected_frame:
+            raise Exception(
+                'Unexpected close frame : %r (expected) vs %r (actual)' %
+                (expected_frame, actual_frame))
 
 
 class WebSocketStreamHixie75(object):
@@ -745,6 +766,9 @@ class WebSocketStreamHixie75(object):
 
     def __init__(self, socket, unused_handshake):
         self._socket = socket
+
+    def send_frame_of_arbitrary_bytes(self, bytes):
+        self._socket.sendall(bytes)
 
     def send_text(self, payload, unused_end):
         encoded_payload = payload.encode('utf-8')
@@ -773,7 +797,7 @@ class WebSocketStreamHixie75(object):
     def send_close(self):
         self._socket.sendall(self._CLOSE_FRAME)
 
-    def assert_receive_close(self):
+    def assert_receive_close(self, unused_code, unused_reason):
         closing = _receive_bytes(self._socket, len(self._CLOSE_FRAME))
         if closing != self._CLOSE_FRAME:
             raise Exception('Didn\'t receive closing handshake')
@@ -817,6 +841,9 @@ class Client(object):
 
         self._logger.info('Connection established')
 
+    def send_frame_of_arbitrary_bytes(self, bytes):
+        self._stream.send_frame_of_arbitrary_bytes(bytes)
+
     def send_message(self, message, end=True):
         self._stream.send_text(message, end)
 
@@ -826,8 +853,8 @@ class Client(object):
     def send_close(self):
         self._stream.send_close()
 
-    def assert_receive_close(self):
-        self._stream.assert_receive_close()
+    def assert_receive_close(self, code=STATUS_NORMAL, reason=''):
+        self._stream.assert_receive_close(code, reason)
 
     def close_socket(self):
         self._socket.close()

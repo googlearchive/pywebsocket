@@ -76,14 +76,6 @@ from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket import util
 
 
-_LOG_LEVELS = {
-    'debug'    : logging.DEBUG,
-    'info'     : logging.INFO,
-    'warn'     : logging.WARN,
-    'error'    : logging.ERROR,
-    'critical' : logging.CRITICAL
-}
-
 _TIMEOUT_SEC = 10
 _UNDEFINED_PORT = -1
 
@@ -604,7 +596,7 @@ def main():
     (options, unused_args) = parser.parse_args()
 
     logger = logging.getLogger()
-    logger.setLevel(_LOG_LEVELS[options.log_level])
+    logger.setLevel(logging.getLevelName(options.log_level.upper()))
 
     if options.draft75:
         options.protocol_version = 'hixie75'

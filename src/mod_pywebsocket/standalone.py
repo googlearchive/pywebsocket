@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -212,13 +212,18 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
     """CGIHTTPRequestHandler specialized for WebSocket."""
 
     def setup(self):
-        """Override SocketServer.StreamRequestHandler.setup."""
+        """Override SocketServer.StreamRequestHandler.setup to wrap rfile with
+        MemorizingFile.
+        """
 
-        self.connection = self.request
+        # Call superclass's setup to prepare rfile, wfile, etc. See setup
+        # definition on the root class SocketServer.StreamRequestHandler to
+        # understand what this does.
+        CGIHTTPServer.CGIHTTPRequestHandler.setup(self)
+
         self.rfile = memorizingfile.MemorizingFile(
-                socket._fileobject(self.request, 'rb', self.rbufsize),
-                max_memorized_lines=_MAX_MEMORIZED_LINES)
-        self.wfile = socket._fileobject(self.request, 'wb', self.wbufsize)
+            self.rfile,
+            max_memorized_lines=_MAX_MEMORIZED_LINES)
 
     def __init__(self, *args, **keywords):
         self._request = _StandaloneRequest(

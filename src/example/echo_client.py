@@ -86,7 +86,7 @@ _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 _GOODBYE_MESSAGE = 'Goodbye'
 
 
-def _method_line(resource):
+def _build_method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
 
 
@@ -141,21 +141,24 @@ class _TLSSocket(object):
         pass
 
 
-class Handshake(object):
-    """WebSocket handshake for IETF HyBi 00 or later."""
+class ClientHandshakeProcessorHybi00(object):
+    """WebSocket opening handshake processor for
+    draft-ietf-hybi-thewebsocketprotocol-00 (equivalent to
+    draft-hixie-thewebsocketprotocol-76).
+    """
 
     def __init__(self, socket, options):
         self._socket = socket
         self._options = options
 
     def handshake(self):
-        """Handshake WebSocket.
+        """Performs opening handshake on the specified socket.
 
         Raises:
             Exception: handshake failed.
         """
         # 4.1 5. send request line.
-        self._socket.sendall(_method_line(self._options.resource))
+        self._socket.sendall(_build_method_line(self._options.resource))
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
@@ -244,7 +247,7 @@ class Handshake(object):
             raise Exception('expected LF after line: %s: %s' % (name, value))
         # 4.1 41. check /fields/
         if len(fields['upgrade']) != 1:
-            raise Exception('not one ugprade: %s' % fields['upgrade'])
+            raise Exception('not one upgrade: %s' % fields['upgrade'])
         if len(fields['connection']) != 1:
             raise Exception('not one connection: %s' % fields['connection'])
         if len(fields['sec-websocket-origin']) != 1:
@@ -407,8 +410,10 @@ class Handshake(object):
             ch = _receive_bytes(self._socket, 1)
 
 
-class HandshakeHixie75(object):
-    """WebSocket Hixie 75 handshake."""
+class ClientHandshakeProcessorHixie75(object):
+    """WebSocket opening handshake processor for
+    draft-hixie-thewebsocketprotocol-75.
+    """
 
     _EXPECTED_RESPONSE = (
         'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
@@ -432,7 +437,13 @@ class HandshakeHixie75(object):
                 pos = 0
 
     def handshake(self):
-        self._socket.sendall(_method_line(self._options.resource))
+        """Performs opening handshake on the specified socket.
+
+        Raises:
+            Exception: handshake failed.
+        """
+
+        self._socket.sendall(_build_method_line(self._options.resource))
         self._socket.sendall(_UPGRADE_HEADER)
         self._socket.sendall(_CONNECTION_HEADER)
         self._socket.sendall(_format_host_header(
@@ -444,7 +455,7 @@ class HandshakeHixie75(object):
 
         logging.info('Sent handshake')
 
-        for expected_char in HandshakeHixie75._EXPECTED_RESPONSE:
+        for expected_char in ClientHandshakeProcessorHixie75._EXPECTED_RESPONSE:
             received = _receive_bytes(self._socket, 1)
             if expected_char != received:
                 raise Exception('Handshake failure')
@@ -615,13 +626,13 @@ def main():
 
     if options.protocol_version == 'hybi01':
         EchoClient(
-            options, Handshake, Stream).run()
+            options, ClientHandshakeProcessorHybi00, Stream).run()
     elif options.protocol_version == 'hybi00':
         EchoClient(
-            options, Handshake, StreamHixie75).run()
+            options, ClientHandshakeProcessorHybi00, StreamHixie75).run()
     elif options.protocol_version == 'hixie75':
         EchoClient(
-            options, HandshakeHixie75, StreamHixie75).run()
+            options, ClientHandshakeProcessorHixie75, StreamHixie75).run()
     else:
         raise Exception(
             'Invalid protocol version flag: %s' % options.protocol_version)

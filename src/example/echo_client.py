@@ -155,7 +155,7 @@ class Handshake(object):
             Exception: handshake failed.
         """
         # 4.1 5. send request line.
-        self._socket.send(_method_line(self._options.resource))
+        self._socket.sendall(_method_line(self._options.resource))
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
@@ -191,15 +191,15 @@ class Handshake(object):
         # RETURN U+000A LINE FEED character pair (CRLF).
         random.shuffle(fields)
         for field in fields:
-            self._socket.send(field)
+            self._socket.sendall(field)
         # 4.1 25. send a UTF-8-encoded U+000D CARRIAGE RETURN U+000A LINE FEED
         # character pair (CRLF).
-        self._socket.send('\r\n')
+        self._socket.sendall('\r\n')
         # 4.1 26. let /key3/ be a string consisting of eight random bytes (or
         # equivalently, a random 64 bit integer encoded in a big-endian order).
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
-        self._socket.send(self._key3)
+        self._socket.sendall(self._key3)
         logging.debug('key3     : %s' % util.hexify(self._key3))
 
         logging.info('Sent handshake')
@@ -432,15 +432,15 @@ class HandshakeHixie75(object):
                 pos = 0
 
     def handshake(self):
-        self._socket.send(_method_line(self._options.resource))
-        self._socket.send(_UPGRADE_HEADER)
-        self._socket.send(_CONNECTION_HEADER)
-        self._socket.send(_format_host_header(
+        self._socket.sendall(_method_line(self._options.resource))
+        self._socket.sendall(_UPGRADE_HEADER)
+        self._socket.sendall(_CONNECTION_HEADER)
+        self._socket.sendall(_format_host_header(
             self._options.server_host,
             self._options.server_port,
             self._options.use_tls))
-        self._socket.send(_origin_header(self._options.origin))
-        self._socket.send('\r\n')
+        self._socket.sendall(_origin_header(self._options.origin))
+        self._socket.sendall('\r\n')
 
         logging.info('Sent handshake')
 
@@ -462,7 +462,7 @@ class ClientConnection(object):
         self._socket = socket
 
     def write(self, data):
-        self._socket.send(data)
+        self._socket.sendall(data)
 
     def read(self, n):
         return self._socket.recv(n)

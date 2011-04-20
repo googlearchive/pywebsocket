@@ -28,13 +28,14 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""WebSocket initial handshake hander for HyBi 00 protocol.
+"""WebSocket initial handshake hander for HyBi 00 protocol."""
 
-Note: request.connection.write/read are used in this module, even though
-mod_python document says that they should be used only in connection handlers.
-Unfortunately, we have no other options. For example, request.write/read are
-not suitable because they don't allow direct raw bytes writing/reading.
-"""
+
+# Note: request.connection.write/read are used in this module, even though
+# mod_python document says that they should be used only in connection
+# handlers. Unfortunately, we have no other options. For example,
+# request.write/read are not suitable because they don't allow direct raw bytes
+# writing/reading.
 
 
 import logging

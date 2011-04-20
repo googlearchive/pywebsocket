@@ -28,13 +28,13 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""WebSocket handshaking defined in draft-hixie-thewebsocketprotocol-75.
+"""WebSocket handshaking defined in draft-hixie-thewebsocketprotocol-75."""
 
-Note: request.connection.write/read are used in this module, even though
-mod_python document says that they should be used only in connection handlers.
-Unfortunately, we have no other options. For example, request.write/read are
-not suitable because they don't allow direct raw bytes writing/reading.
-"""
+
+# Note: request.connection.write is used in this module, even though mod_python
+# document says that it should be used only in connection handlers.
+# Unfortunately, we have no other options. For example, request.write is not
+# suitable because it doesn't allow direct raw bytes writing.
 
 
 import logging

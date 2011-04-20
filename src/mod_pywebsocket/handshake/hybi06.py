@@ -38,7 +38,7 @@ import os
 import re
 
 from mod_pywebsocket import common
-from mod_pywebsocket import stream
+from mod_pywebsocket.stream import Stream
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import check_header_lines
@@ -102,7 +102,7 @@ class Handshaker(object):
 
         self._logger.debug('IETF HyBi 06 protocol')
         self._request.ws_version = common.VERSION_HYBI06
-        self._request.ws_stream = stream.Stream(self._request)
+        self._request.ws_stream = Stream(self._request)
 
         self._request.ws_close_code = None
         self._request.ws_close_reason = None

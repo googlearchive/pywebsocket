@@ -59,28 +59,29 @@ class DispatcherTest(unittest.TestCase):
                          dispatch._normalize_path('abc'))
 
     def test_converter(self):
-        converter = dispatch._path_to_resource_converter('/a/b')
+        converter = dispatch._create_path_to_resource_converter('/a/b')
         self.assertEqual('/h', converter('/a/b/h_wsh.py'))
         self.assertEqual('/c/h', converter('/a/b/c/h_wsh.py'))
         self.assertEqual(None, converter('/a/b/h.py'))
         self.assertEqual(None, converter('a/b/h_wsh.py'))
 
-        converter = dispatch._path_to_resource_converter('a/b')
+        converter = dispatch._create_path_to_resource_converter('a/b')
         self.assertEqual('/h', converter('a/b/h_wsh.py'))
 
-        converter = dispatch._path_to_resource_converter('/a/b///')
+        converter = dispatch._create_path_to_resource_converter('/a/b///')
         self.assertEqual('/h', converter('/a/b/h_wsh.py'))
         self.assertEqual('/h', converter('/a/b/../b/h_wsh.py'))
 
-        converter = dispatch._path_to_resource_converter('/a/../a/b/../b/')
+        converter = dispatch._create_path_to_resource_converter(
+            '/a/../a/b/../b/')
         self.assertEqual('/h', converter('/a/b/h_wsh.py'))
 
-        converter = dispatch._path_to_resource_converter(r'\a\b')
+        converter = dispatch._create_path_to_resource_converter(r'\a\b')
         self.assertEqual('/h', converter(r'\a\b\h_wsh.py'))
         self.assertEqual('/h', converter(r'/a/b/h_wsh.py'))
 
-    def test_source_file_paths(self):
-        paths = list(dispatch._source_file_paths(_TEST_HANDLERS_DIR))
+    def test_enumerate_handler_file_paths(self):
+        paths = list(dispatch._enumerate_handler_file_paths(_TEST_HANDLERS_DIR))
         paths.sort()
         self.assertEqual(7, len(paths))
         expected_paths = [
@@ -98,11 +99,14 @@ class DispatcherTest(unittest.TestCase):
         for expected, actual in zip(expected_paths, paths):
             self.assertEqual(expected, actual)
 
-    def test_source(self):
-        self.assertRaises(dispatch.DispatchError, dispatch._source, '')
-        self.assertRaises(dispatch.DispatchError, dispatch._source, 'def')
-        self.assertRaises(dispatch.DispatchError, dispatch._source, '1/0')
-        self.failUnless(dispatch._source(
+    def test_source_handler_file(self):
+        self.assertRaises(
+            dispatch.DispatchError, dispatch._source_handler_file, '')
+        self.assertRaises(
+            dispatch.DispatchError, dispatch._source_handler_file, 'def')
+        self.assertRaises(
+            dispatch.DispatchError, dispatch._source_handler_file, '1/0')
+        self.failUnless(dispatch._source_handler_file(
                 'def web_socket_do_extra_handshake(request):pass\n'
                 'def web_socket_transfer_data(request):pass\n'))
 
@@ -201,27 +205,31 @@ class DispatcherTest(unittest.TestCase):
 
     def test_scan_dir(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
-        self.assertEqual(3, len(disp._handlers))
-        self.failUnless(disp._handlers.has_key('/origin_check'))
-        self.failUnless(disp._handlers.has_key('/sub/exception_in_transfer'))
-        self.failUnless(disp._handlers.has_key('/sub/plain'))
+        self.assertEqual(3, len(disp._handler_suite_map))
+        self.failUnless(disp._handler_suite_map.has_key('/origin_check'))
+        self.failUnless(
+            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
+        self.failUnless(disp._handler_suite_map.has_key('/sub/plain'))
 
     def test_scan_sub_dir(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, _TEST_HANDLERS_SUB_DIR)
-        self.assertEqual(2, len(disp._handlers))
-        self.failIf(disp._handlers.has_key('/origin_check'))
-        self.failUnless(disp._handlers.has_key('/sub/exception_in_transfer'))
-        self.failUnless(disp._handlers.has_key('/sub/plain'))
+        self.assertEqual(2, len(disp._handler_suite_map))
+        self.failIf(disp._handler_suite_map.has_key('/origin_check'))
+        self.failUnless(
+            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
+        self.failUnless(disp._handler_suite_map.has_key('/sub/plain'))
 
     def test_scan_sub_dir_as_root(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_SUB_DIR,
                                    _TEST_HANDLERS_SUB_DIR)
-        self.assertEqual(2, len(disp._handlers))
-        self.failIf(disp._handlers.has_key('/origin_check'))
-        self.failIf(disp._handlers.has_key('/sub/exception_in_transfer'))
-        self.failIf(disp._handlers.has_key('/sub/plain'))
-        self.failUnless(disp._handlers.has_key('/exception_in_transfer'))
-        self.failUnless(disp._handlers.has_key('/plain'))
+        self.assertEqual(2, len(disp._handler_suite_map))
+        self.failIf(disp._handler_suite_map.has_key('/origin_check'))
+        self.failIf(
+            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
+        self.failIf(disp._handler_suite_map.has_key('/sub/plain'))
+        self.failUnless(
+            disp._handler_suite_map.has_key('/exception_in_transfer'))
+        self.failUnless(disp._handler_suite_map.has_key('/plain'))
 
     def test_scan_dir_must_under_root(self):
         dispatch.Dispatcher('a/b', 'a/b/c')  # OK
@@ -232,11 +240,12 @@ class DispatcherTest(unittest.TestCase):
     def test_resource_path_alias(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
         disp.add_resource_path_alias('/', '/origin_check')
-        self.assertEqual(4, len(disp._handlers))
-        self.failUnless(disp._handlers.has_key('/origin_check'))
-        self.failUnless(disp._handlers.has_key('/sub/exception_in_transfer'))
-        self.failUnless(disp._handlers.has_key('/sub/plain'))
-        self.failUnless(disp._handlers.has_key('/'))
+        self.assertEqual(4, len(disp._handler_suite_map))
+        self.failUnless(disp._handler_suite_map.has_key('/origin_check'))
+        self.failUnless(
+            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
+        self.failUnless(disp._handler_suite_map.has_key('/sub/plain'))
+        self.failUnless(disp._handler_suite_map.has_key('/'))
         self.assertRaises(dispatch.DispatchError,
                           disp.add_resource_path_alias, '/alias', '/not-exist')
 

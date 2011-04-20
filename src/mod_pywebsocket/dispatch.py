@@ -70,10 +70,12 @@ def _normalize_path(path):
     return path
 
 
-def _path_to_resource_converter(base_dir):
+def _create_path_to_resource_converter(base_dir):
     base_dir = _normalize_path(base_dir)
+
     base_len = len(base_dir)
     suffix_len = len(_SOURCE_SUFFIX)
+
     def converter(path):
         if not path.endswith(_SOURCE_SUFFIX):
             return None
@@ -81,11 +83,14 @@ def _path_to_resource_converter(base_dir):
         if not path.startswith(base_dir):
             return None
         return path[base_len:-suffix_len]
+
     return converter
 
 
-def _source_file_paths(directory):
-    """Yield WebSocket Handler source file names in the given directory."""
+def _enumerate_handler_file_paths(directory):
+    """Returns a generator that enumerates WebSocket Handler source file names
+    in the given directory.
+    """
 
     for root, unused_dirs, files in os.walk(directory):
         for base in files:
@@ -94,20 +99,38 @@ def _source_file_paths(directory):
                 yield path
 
 
-def _source(source_str):
-    """Source a handler definition string."""
+class _HandlerSuite(object):
+    """A handler suite holder class."""
+
+    def __init__(self, do_extra_handshake, transfer_data):
+        self.do_extra_handshake = do_extra_handshake
+        self.transfer_data = transfer_data
+
+
+def _source_handler_file(handler_definition):
+    """Source a handler definition string.
+
+    Args:
+        handler_definition: a string containing Python statements that define
+                            handler functions.
+    """
 
     global_dic = {}
     try:
-        exec source_str in global_dic
+        exec handler_definition in global_dic
     except Exception:
         raise DispatchError('Error in sourcing handler:' +
                             util.get_stack_trace())
-    return (_extract_handler(global_dic, _DO_EXTRA_HANDSHAKE_HANDLER_NAME),
-            _extract_handler(global_dic, _TRANSFER_DATA_HANDLER_NAME))
+    return _HandlerSuite(
+        _extract_handler(global_dic, _DO_EXTRA_HANDSHAKE_HANDLER_NAME),
+        _extract_handler(global_dic, _TRANSFER_DATA_HANDLER_NAME))
 
 
 def _extract_handler(dic, name):
+    """Extracts a callable with the specified name from the given dictionary
+    dic.
+    """
+
     if name not in dic:
         raise DispatchError('%s is not defined.' % name)
     handler = dic[name]
@@ -137,7 +160,7 @@ class Dispatcher(object):
 
         self._logger = util.get_class_logger(self)
 
-        self._handlers = {}
+        self._handler_suite_map = {}
         self._source_warnings = []
         if scan_dir is None:
             scan_dir = root_dir
@@ -145,7 +168,7 @@ class Dispatcher(object):
                 os.path.realpath(root_dir)):
             raise DispatchError('scan_dir:%s must be a directory under '
                                 'root_dir:%s.' % (scan_dir, root_dir))
-        self._source_files_in_dir(root_dir, scan_dir)
+        self._source_handler_files_in_dir(root_dir, scan_dir)
 
     def add_resource_path_alias(self,
                                 alias_resource_path, existing_resource_path):
@@ -159,8 +182,8 @@ class Dispatcher(object):
             existing_resource_path: existing resource path
         """
         try:
-            handler = self._handlers[existing_resource_path]
-            self._handlers[alias_resource_path] = handler
+            handler_suite = self._handler_suite_map[existing_resource_path]
+            self._handler_suite_map[alias_resource_path] = handler_suite
         except KeyError:
             raise DispatchError('No handler for: %r' % existing_resource_path)
 
@@ -179,7 +202,8 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        do_extra_handshake_, unused_transfer_data = self._get_handlers(request)
+        do_extra_handshake_ = self._get_handler_suite(
+            request).do_extra_handshake
         try:
             do_extra_handshake_(request)
         except Exception, e:
@@ -200,7 +224,7 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        unused_do_extra_handshake, transfer_data_ = self._get_handlers(request)
+        transfer_data_ = self._get_handler_suite(request).transfer_data
         # TODO(tyoshino): Terminate underlying TCP connection if possible.
         try:
             transfer_data_(request)
@@ -227,29 +251,31 @@ class Dispatcher(object):
                 e)
             raise
 
-    def _get_handlers(self, request):
-        """Retrieve handlers for the given request."""
+    def _get_handler_suite(self, request):
+        """Retrieves two handlers (one for extra handshake processing, and one
+        for data transfer) for the given request as a HandlerSuite object.
+        """
 
         try:
             ws_resource_path = request.ws_resource.split('?', 1)[0]
-            return self._handlers[ws_resource_path]
+            return self._handler_suite_map[ws_resource_path]
         except KeyError:
             raise DispatchError('No handler for: %r' % request.ws_resource)
 
-    def _source_files_in_dir(self, root_dir, scan_dir):
+    def _source_handler_files_in_dir(self, root_dir, scan_dir):
         """Source all the handler source files in the scan_dir directory.
 
         The resource path is determined relative to root_dir.
         """
 
-        to_resource = _path_to_resource_converter(root_dir)
-        for path in _source_file_paths(scan_dir):
+        convert = _create_path_to_resource_converter(root_dir)
+        for path in _enumerate_handler_file_paths(scan_dir):
             try:
-                handlers = _source(open(path).read())
+                handler_suite = _source_handler_file(open(path).read())
             except DispatchError, e:
                 self._source_warnings.append('%s: %s' % (path, e))
                 continue
-            self._handlers[to_resource(path)] = handlers
+            self._handler_suite_map[convert(path)] = handler_suite
 
 
 # vi:sts=4 sw=4 et

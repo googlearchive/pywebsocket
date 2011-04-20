@@ -146,7 +146,7 @@ class Handshaker(object):
 
         self._logger.debug('IETF HyBi 00 protocol')
         self._request.ws_version = common.VERSION_HYBI00
-        self._request.ws_stream = StreamHixie75(self._request)
+        self._request.ws_stream = StreamHixie75(self._request, True)
 
     def _set_challenge_response(self):
         # 5.2 4-8.
@@ -189,8 +189,8 @@ class Handshaker(object):
 
     def _get_challenge(self):
         # 5.2 4-7.
-        key1 = self._get_key_value('Sec-Websocket-Key1')
-        key2 = self._get_key_value('Sec-Websocket-Key2')
+        key1 = self._get_key_value('Sec-WebSocket-Key1')
+        key2 = self._get_key_value('Sec-WebSocket-Key2')
         # 5.2 8. let /challenge/ be the concatenation of /part_1/,
         challenge = ''
         challenge += struct.pack('!I', key1)  # network byteorder int

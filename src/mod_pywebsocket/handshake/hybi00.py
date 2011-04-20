@@ -42,7 +42,6 @@ import re
 import struct
 
 from mod_pywebsocket import common
-from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError

@@ -72,8 +72,23 @@ function connect() {
   socket.onerror = function () {
     addToLog('Error');
   };
-  socket.onclose = function () {
-    addToLog('Closed');
+  socket.onclose = function (event) {
+    var logMessage = 'Closed (';
+    if ((arguments.length == 1) && ('CloseEvent' in window) &&
+        (event instanceof CloseEvent)) {
+      logMessage += 'wasClean = ' + event.wasClean;
+      // code and reason are present only for
+      // draft-ietf-hybi-thewebsocketprotocol-06 and later
+      if ('code' in event) {
+        logMessage += ', code = ' + event.code;
+      }
+      if ('reason' in event) {
+        logMessage += ', reason = ' + event.reason;
+      }
+    } else {
+      logMessage += 'CloseEvent is not available';
+    }
+    addToLog(logMessage + ')');
   };
 
   addToLog('Connect ' + addressBox.value);
@@ -92,6 +107,10 @@ function init() {
   messageBox = document.getElementById('message');
 
   addressBox.value = defaultAddress;
+
+  if (!('WebSocket' in window)) {
+    addToLog('WebSocket is not available');
+  }
 }
 </script>
 </head>

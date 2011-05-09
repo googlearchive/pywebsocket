@@ -218,31 +218,29 @@ class Handshaker(object):
 
         return key
 
+    def _sendall(self, data):
+        self._request.connection.write(data)
+
+    def _send_header(self, name, value):
+        self._sendall('%s: %s\r\n' % (name, value))
+
     def _send_handshake(self, accept):
-        self._request.connection.write(
-            'HTTP/1.1 101 Switching Protocols\r\n')
-        self._request.connection.write(
-            '%s: %s\r\n' %
-            (common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE))
-        self._request.connection.write(
-            '%s: %s\r\n' %
-            (common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
-        self._request.connection.write(
-            '%s: %s\r\n' %
-            (common.SEC_WEBSOCKET_ACCEPT_HEADER, accept))
+        self._sendall('HTTP/1.1 101 Switching Protocols\r\n')
+        self._send_header(common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE)
+        self._send_header(
+            common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE)
+        self._send_header(common.SEC_WEBSOCKET_ACCEPT_HEADER, accept)
         # TODO(tyoshino): Encode value of protocol and extensions if any
         # special character that we have to encode by some manner.
         if self._request.ws_protocol is not None:
-            self._request.connection.write(
-                '%s: %s\r\n' %
-                (common.SEC_WEBSOCKET_PROTOCOL_HEADER,
-                 self._request.ws_protocol))
+            self._send_header(
+                common.SEC_WEBSOCKET_PROTOCOL_HEADER,
+                self._request.ws_protocol)
         if self._request.ws_extensions is not None:
-            self._request.connection.write(
-                '%s: %s\r\n' %
-                (common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
-                 ', '.join(self._request.ws_extensions)))
-        self._request.connection.write('\r\n')
+            self._send_header(
+                common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
+                ', '.join(self._request.ws_extensions))
+        self._sendall('\r\n')
 
 
 # vi:sts=4 sw=4 et

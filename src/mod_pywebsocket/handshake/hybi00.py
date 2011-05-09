@@ -198,31 +198,31 @@ class Handshaker(object):
         challenge += self._request.connection.read(8)
         return challenge
 
+    def _sendall(self, data):
+        self._request.connection.write(data)
+
+    def _send_header(self, name, value):
+        self._sendall('%s: %s\r\n' % (name, value))
+
     def _send_handshake(self):
         # 5.2 10. send the following line.
-        self._request.connection.write(
-                'HTTP/1.1 101 WebSocket Protocol Handshake\r\n')
+        self._sendall('HTTP/1.1 101 WebSocket Protocol Handshake\r\n')
         # 5.2 11. send the following fields to the client.
-        self._request.connection.write(
-            '%s: %s\r\n' %
-            (common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE_HIXIE75))
-        self._request.connection.write(
-            '%s: %s\r\n' %
-            (common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
-        self._request.connection.write(
-            'Sec-WebSocket-Location: %s\r\n' % self._request.ws_location)
-        self._request.connection.write(
-            '%s: %s\r\n' %
-            (common.SEC_WEBSOCKET_ORIGIN_HEADER, self._request.ws_origin))
+        self._send_header(
+            common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE_HIXIE75)
+        self._send_header(
+            common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE)
+        self._send_header('Sec-WebSocket-Location', self._request.ws_location)
+        self._send_header(
+            common.SEC_WEBSOCKET_ORIGIN_HEADER, self._request.ws_origin)
         if self._request.ws_protocol:
-            self._request.connection.write(
-                '%s: %s\r\n' %
-                (common.SEC_WEBSOCKET_PROTOCOL_HEADER,
-                 self._request.ws_protocol))
+            self._send_header(
+                common.SEC_WEBSOCKET_PROTOCOL_HEADER,
+                self._request.ws_protocol)
         # 5.2 12. send two bytes 0x0D 0x0A.
-        self._request.connection.write('\r\n')
+        self._sendall('\r\n')
         # 5.2 13. send /response/
-        self._request.connection.write(self._request.ws_challenge_md5)
+        self._sendall(self._request.ws_challenge_md5)
 
 
 # vi:sts=4 sw=4 et

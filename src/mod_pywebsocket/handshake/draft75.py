@@ -135,22 +135,19 @@ class Handshaker(object):
         self._request.ws_version = common.VERSION_HIXIE75
         self._request.ws_stream = StreamHixie75(self._request)
 
+    def _sendall(self, data):
+        self._request.connection.write(data)
+
     def _send_handshake(self):
-        self._request.connection.write(
-                'HTTP/1.1 101 Web Socket Protocol Handshake\r\n')
-        self._request.connection.write('Upgrade: WebSocket\r\n')
-        self._request.connection.write('Connection: Upgrade\r\n')
-        self._request.connection.write('WebSocket-Origin: ')
-        self._request.connection.write(self._request.ws_origin)
-        self._request.connection.write('\r\n')
-        self._request.connection.write('WebSocket-Location: ')
-        self._request.connection.write(self._request.ws_location)
-        self._request.connection.write('\r\n')
+        self._sendall('HTTP/1.1 101 Web Socket Protocol Handshake\r\n')
+        self._sendall('Upgrade: WebSocket\r\n')
+        self._sendall('Connection: Upgrade\r\n')
+        self._sendall('WebSocket-Origin: %s\r\n' % self._request.ws_origin)
+        self._sendall('WebSocket-Location: %s\r\n' % self._request.ws_location)
         if self._request.ws_protocol:
-            self._request.connection.write('WebSocket-Protocol: ')
-            self._request.connection.write(self._request.ws_protocol)
-            self._request.connection.write('\r\n')
-        self._request.connection.write('\r\n')
+            self._sendall(
+                'WebSocket-Protocol: %s\r\n' % self._request.ws_protocol)
+        self._sendall('\r\n')
 
     def _check_header_lines(self):
         for key, expected_value in _MANDATORY_HEADERS:

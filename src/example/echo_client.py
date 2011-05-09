@@ -186,7 +186,80 @@ class _TLSSocket(object):
         pass
 
 
-class ClientHandshakeProcessorHybi00(object):
+class ClientHandshakeBase(object):
+    def _read_fields(self):
+        # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
+        fields = {}
+        while True:  # "Field"
+            # 4.1 33. let /name/ and /value/ be empty byte arrays
+            name = ''
+            value = ''
+            # 4.1 34. read /name/
+            name = self._read_name()
+            if name is None:
+                break
+            # 4.1 35. read spaces
+            # TODO(tyoshino): Skip only one space as described in the spec.
+            ch = self._skip_spaces()
+            # 4.1 36. read /value/
+            value = self._read_value(ch)
+            # 4.1 37. read a byte from the server
+            ch = _receive_bytes(self._socket, 1)
+            if ch != '\n':  # 0x0A
+                raise ClientHandshakeError('expected LF after line: %s: %s' % (
+                    name, value))
+            # 4.1 38. append an entry to the /fields/ list that has the name
+            # given by the string obtained by interpreting the /name/ byte
+            # array as a UTF-8 stream and the value given by the string
+            # obtained by interpreting the /value/ byte array as a UTF-8 byte
+            # stream.
+            fields.setdefault(name, []).append(value)
+            # 4.1 39. return to the "Field" step above
+        return fields
+
+    def _read_name(self):
+        # 4.1 33. let /name/ be empty byte arrays
+        name = ''
+        while True:
+            # 4.1 34. read a byte from the server
+            ch = _receive_bytes(self._socket, 1)
+            if ch == '\r':  # 0x0D
+                return None
+            elif ch == '\n':  # 0x0A
+                raise ClientHandshakeError(
+                    'unexpected LF when reading header name (%r)' % name)
+            elif ch == ':':  # 0x3A
+                return name
+            elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
+                ch = chr(ord(ch) + 0x20)
+                name += ch
+            else:
+                name += ch
+
+    def _skip_spaces(self):
+        # 4.1 35. read a byte from the server
+        while True:
+            ch = _receive_bytes(self._socket, 1)
+            if ch == ' ':  # 0x20
+                continue
+            return ch
+
+    def _read_value(self, ch):
+        # 4.1 33. let /value/ be empty byte arrays
+        value = ''
+        # 4.1 36. read a byte from server.
+        while True:
+            if ch == '\r':  # 0x0D
+                return value
+            elif ch == '\n':  # 0x0A
+                raise ClientHandshakeError(
+                    'unexpected LF when reading header value (%r)' % value)
+            else:
+                value += ch
+            ch = _receive_bytes(self._socket, 1)
+
+
+class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
     """WebSocket opening handshake processor for
     draft-ietf-hybi-thewebsocketprotocol-00 (equivalent to
     draft-hixie-thewebsocketprotocol-76).
@@ -377,77 +450,6 @@ class ClientHandshakeProcessorHybi00(object):
         # 4.1 26. let /key3/ be a string consisting of eight random bytes (or
         # equivalently, a random 64 bit integer encoded in a big-endian order).
         return ''.join([chr(random.randint(0, 255)) for _ in xrange(8)])
-
-    def _read_fields(self):
-        # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
-        fields = {}
-        while True:  # "Field"
-            # 4.1 33. let /name/ and /value/ be empty byte arrays
-            name = ''
-            value = ''
-            # 4.1 34. read /name/
-            name = self._read_name()
-            if name is None:
-                break
-            # 4.1 35. read spaces
-            # TODO(tyoshino): Skip only one space as described in the spec.
-            ch = self._skip_spaces()
-            # 4.1 36. read /value/
-            value = self._read_value(ch)
-            # 4.1 37. read a byte from the server
-            ch = _receive_bytes(self._socket, 1)
-            if ch != '\n':  # 0x0A
-                raise ClientHandshakeError('expected LF after line: %s: %s' % (
-                    name, value))
-            # 4.1 38. append an entry to the /fields/ list that has the name
-            # given by the string obtained by interpreting the /name/ byte
-            # array as a UTF-8 stream and the value given by the string
-            # obtained by interpreting the /value/ byte array as a UTF-8 byte
-            # stream.
-            fields.setdefault(name, []).append(value)
-            # 4.1 39. return to the "Field" step above
-        return fields
-
-    def _read_name(self):
-        # 4.1 33. let /name/ be empty byte arrays
-        name = ''
-        while True:
-            # 4.1 34. read a byte from the server
-            ch = _receive_bytes(self._socket, 1)
-            if ch == '\r':  # 0x0D
-                return None
-            elif ch == '\n':  # 0x0A
-                raise ClientHandshakeError(
-                    'unexpected LF when reading header name (%r)' % name)
-            elif ch == ':':  # 0x3A
-                return name
-            elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
-                ch = chr(ord(ch) + 0x20)
-                name += ch
-            else:
-                name += ch
-
-    def _skip_spaces(self):
-        # 4.1 35. read a byte from the server
-        while True:
-            ch = _receive_bytes(self._socket, 1)
-            if ch == ' ':  # 0x20
-                continue
-            return ch
-
-    def _read_value(self, ch):
-        # 4.1 33. let /value/ be empty byte arrays
-        value = ''
-        # 4.1 36. read a byte from server.
-        while True:
-            if ch == '\r':  # 0x0D
-                return value
-            elif ch == '\n':  # 0x0A
-                raise ClientHandshakeError(
-                    'unexpected LF when reading header value (%r)' % value)
-            else:
-                value += ch
-            ch = _receive_bytes(self._socket, 1)
 
 
 class ClientHandshakeProcessorHixie75(object):

@@ -132,6 +132,43 @@ def _receive_bytes(socket, length):
     return ''.join(bytes)
 
 
+def _get_mandatory_header(fields, name):
+    """Gets the value of the header specified by name from fields.
+
+    This function expects that there's only one header with the specified name
+    in fields. Otherwise, raises an ClientHandshakeError.
+    """
+
+    values = fields.get(name.lower())
+    if values is None or len(values) == 0:
+        raise ClientHandshakeError(
+            '%s header not found: %r' % (name, values))
+    if len(values) > 1:
+        raise ClientHandshakeError(
+            'Multiple %s headers found: %r' % (name, values))
+    return values[0]
+
+
+def _validate_mandatory_header(fields, name,
+                               expected_value, case_sensitive=False):
+    """Gets and validates the value of the header specified by name from fields.
+
+    If expected_value is specified, compares expected value and actual value and
+    raises an ClientHandshakeError on failure. You can specify case
+    sensitiveness in this comparison by case_sensitive parameter. This function
+    expects that there's only one header with the specified name in fields.
+    Otherwise, raises an ClientHandshakeError.
+    """
+
+    value = _get_mandatory_header(fields, name)
+
+    if ((case_sensitive and value != expected_value) or
+        (not case_sensitive and value.lower() != expected_value.lower())):
+        raise ClientHandshakeError(
+            'Illegal value for header %s: %r (expected) vs %r (actual)' %
+            (name, expected_value, value))
+
+
 class _TLSSocket(object):
     """Wrapper for a TLS connection."""
 
@@ -255,32 +292,22 @@ class ClientHandshakeProcessorHybi00(object):
             raise ClientHandshakeError('expected LF after line: %s: %s' %
                                        (name, value))
         # 4.1 41. check /fields/
-        if len(fields['upgrade']) != 1:
-            raise ClientHandshakeError('not one upgrade: %s' %
-                                       fields['upgrade'])
-        if len(fields['connection']) != 1:
-            raise ClientHandshakeError('not one connection: %s' %
-                                       fields['connection'])
-        if len(fields['sec-websocket-origin']) != 1:
-            raise ClientHandshakeError('not one sec-websocket-origin: %s' %
-                                       fields['sec-sebsocket-origin'])
-        if len(fields['sec-websocket-location']) != 1:
-            raise ClientHandshakeError('not one sec-websocket-location: %s' %
-                                       fields['sec-sebsocket-location'])
         # TODO(ukai): protocol
         # if the entry's name is "upgrade"
         #  if the value is not exactly equal to the string "WebSocket",
         #  then fail the WebSocket connection and abort these steps.
-        if fields['upgrade'][0] != 'WebSocket':
-            raise ClientHandshakeError(
-                'unexpected upgrade: %s' % fields['upgrade'][0])
+        _validate_mandatory_header(fields, 'Upgrade', 'WebSocket', True)
         # if the entry's name is "connection"
         #  if the value, converted to ASCII lowercase, is not exactly equal
         #  to the string "upgrade", then fail the WebSocket connection and
         #  abort these steps.
-        if fields['connection'][0].lower() != 'upgrade':
-            raise ClientHandshakeError('unexpected connection: %s' %
-                                       fields['connection'][0])
+        _validate_mandatory_header(fields, 'Connection', 'Upgrade',
+                                   False)
+
+        origin = _get_mandatory_header(fields, 'Sec-WebSocket-Origin')
+
+        location = _get_mandatory_header(fields, 'Sec-WebSocket-Location')
+
         # TODO(ukai): check origin, location, cookie, ..
 
         # 4.1 42. let /challenge/ be the concatenation of /number_1/,

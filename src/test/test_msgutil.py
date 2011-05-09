@@ -44,6 +44,7 @@ from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
+from mod_pywebsocket.stream import StreamOptions
 from mod_pywebsocket import util
 from test import mock
 
@@ -72,7 +73,8 @@ def _create_request(*frames):
 
     req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
     req.ws_version = common.VERSION_HYBI06
-    req.ws_stream = Stream(req)
+    stream_options = StreamOptions()
+    req.ws_stream = Stream(req, stream_options)
     return req
 
 
@@ -81,7 +83,8 @@ def _create_request(*frames):
 def _create_blocking_request():
     req = mock.MockRequest(connection=mock.MockBlockingConn())
     req.ws_version = common.VERSION_HYBI06
-    req.ws_stream = Stream(req)
+    stream_options = StreamOptions()
+    req.ws_stream = Stream(req, stream_options)
     return req
 
 

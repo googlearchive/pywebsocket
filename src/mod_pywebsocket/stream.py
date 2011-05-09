@@ -38,6 +38,7 @@ from mod_pywebsocket._stream_base import InvalidFrameException
 from mod_pywebsocket._stream_base import UnsupportedFrameException
 from mod_pywebsocket._stream_hixie75 import StreamHixie75
 from mod_pywebsocket._stream_hybi06 import Stream
+from mod_pywebsocket._stream_hybi06 import StreamOptions
 
 # These methods are intended to be used by WebSocket client developers to have
 # their implementations receive broken data in tests.

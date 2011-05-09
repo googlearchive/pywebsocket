@@ -45,16 +45,21 @@ from mod_pywebsocket import util
 class StreamHixie75(StreamBase):
     """Stream of WebSocket messages."""
 
-    def __init__(self, request):
+    def __init__(self, request, enable_closing_handshake=False):
         """Construct an instance.
 
         Args:
             request: mod_python request.
+            enable_closing_handshake: to let StreamHixie75 perform closing
+                                      handshake as specified in HyBi 00, set
+                                      this option to True.
         """
 
         StreamBase.__init__(self, request)
 
         self._logger = util.get_class_logger(self)
+
+        self._enable_closing_handshake = enable_closing_handshake
 
         self._request.client_terminated = False
         self._request.server_terminated = False
@@ -127,7 +132,7 @@ class StreamHixie75(StreamBase):
                     _ = self.receive_bytes(length)
                 # 5.3 3. 12. if /type/ is 0xFF and /length/ is 0, then set the
                 # /client terminated/ flag and abort these steps.
-                if self._request.ws_version is common.VERSION_HIXIE75:
+                if not self._enable_closing_handshake:
                     continue
 
                 if frame_type == 0xFF and length == 0:
@@ -158,7 +163,7 @@ class StreamHixie75(StreamBase):
                 # Discard data of other types.
 
     def _send_closing_handshake(self):
-        if self._request.ws_version is common.VERSION_HIXIE75:
+        if not self._enable_closing_handshake:
             raise BadOperationException(
                 'Closing handshake is not supported in Hixie 75 protocol')
 
@@ -183,7 +188,7 @@ class StreamHixie75(StreamBase):
                 'Requested close_connection but server is already terminated')
             return
 
-        if self._request.ws_version is common.VERSION_HIXIE75:
+        if not self._enable_closing_handshake:
             self._request.server_terminated = True
             self._logger.debug('Connection closed')
             return

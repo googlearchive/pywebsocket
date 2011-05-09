@@ -192,7 +192,7 @@ class MockRequest(object):
         # self.is_https_ needs to be accessible from tests.  To avoid name
         # conflict with self.is_https(), it is named as such.
         self.is_https_ = is_https
-        self.ws_stream = StreamHixie75(self)
+        self.ws_stream = StreamHixie75(self, True)
         self.ws_close_code = None
         self.ws_close_reason = None
         self.ws_version = common.VERSION_HYBI00

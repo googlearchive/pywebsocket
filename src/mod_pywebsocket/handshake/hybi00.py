@@ -146,7 +146,7 @@ class Handshaker(object):
 
         self._logger.debug('IETF HyBi 00 protocol')
         self._request.ws_version = common.VERSION_HYBI00
-        self._request.ws_stream = StreamHixie75(self._request)
+        self._request.ws_stream = StreamHixie75(self._request, True)
 
     def _set_challenge_response(self):
         # 5.2 4-8.

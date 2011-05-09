@@ -33,6 +33,7 @@
 
 
 from collections import deque
+import os
 import struct
 
 from mod_pywebsocket import common
@@ -48,6 +49,9 @@ def is_control_opcode(opcode):
     return (opcode == common.OPCODE_CLOSE or
             opcode == common.OPCODE_PING or
             opcode == common.OPCODE_PONG)
+
+
+_NOOP_MASKER = util.NoopMasker()
 
 
 # Helper functions made public to be used for writing unittests for WebSocket
@@ -112,19 +116,33 @@ def create_header(opcode, payload_length, fin, rsv1, rsv2, rsv3, rsv4):
     return header
 
 
-def create_text_frame(message, opcode=common.OPCODE_TEXT, fin=1):
+def _build_frame(header, body, mask):
+    frame = header + body
+
+    if not mask:
+        return frame
+
+    masking_nonce = os.urandom(4)
+    masker = util.RepeatedXorMasker(masking_nonce)
+
+    return masking_nonce + masker.mask(frame)
+
+
+def create_text_frame(message, opcode=common.OPCODE_TEXT, fin=1, mask=False):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
     header = create_header(opcode, len(encoded_message), fin, 0, 0, 0, 0)
-    return header + encoded_message
+    return _build_frame(header, encoded_message, mask)
 
 
 class FragmentedTextFrameBuilder(object):
     """A stateful class to send a message as fragments."""
 
-    def __init__(self):
+    def __init__(self, mask):
         """Constructs an instance."""
+
+        self._mask = mask
 
         self._started = False
 
@@ -141,29 +159,36 @@ class FragmentedTextFrameBuilder(object):
             self._started = True
             fin = 0
 
-        return create_text_frame(message, opcode, fin)
+        return create_text_frame(message, opcode, fin, self._mask)
 
 
-def create_ping_frame(body):
+def create_ping_frame(body, mask=False):
     header = create_header(common.OPCODE_PING, len(body), 1, 0, 0, 0, 0)
-    return header + body
+    return _build_frame(header, body, mask)
 
 
-def create_pong_frame(body):
+def create_pong_frame(body, mask=False):
     header = create_header(common.OPCODE_PONG, len(body), 1, 0, 0, 0, 0)
-    return header + body
+    return _build_frame(header, body, mask)
 
 
-def create_close_frame(body):
+def create_close_frame(body, mask=False):
     header = create_header(common.OPCODE_CLOSE, len(body), 1, 0, 0, 0, 0)
-    return header + body
+    return _build_frame(header, body, mask)
+
+
+class StreamOptions(object):
+    def __init__(self):
+        self.deflate = False
+        self.mask_send = False
+        self.unmask_receive = True
 
 
 class Stream(StreamBase):
     """Stream of WebSocket messages."""
 
-    def __init__(self, request):
-        """Construct an instance.
+    def __init__(self, request, options):
+        """Constructs an instance.
 
         Args:
             request: mod_python request.
@@ -173,7 +198,9 @@ class Stream(StreamBase):
 
         self._logger = util.get_class_logger(self)
 
-        if self._request.ws_deflate:
+        self._options = options
+
+        if self._options.deflate:
             self._logger.debug('Deflated stream')
             self._request = util.DeflateRequest(self._request)
 
@@ -185,7 +212,7 @@ class Stream(StreamBase):
         # Holds the opcode of the first fragment.
         self._original_opcode = None
 
-        self._writer = FragmentedTextFrameBuilder()
+        self._writer = FragmentedTextFrameBuilder(self._options.mask_send)
 
         self._ping_queue = deque()
 
@@ -199,8 +226,11 @@ class Stream(StreamBase):
             InvalidFrameException: when the frame contains invalid data.
         """
 
-        masking_nonce = self.receive_bytes(4)
-        masker = util.RepeatedXorMasker(masking_nonce)
+        if self._options.unmask_receive:
+            masking_nonce = self.receive_bytes(4)
+            masker = util.RepeatedXorMasker(masking_nonce)
+        else:
+            masker = _NOOP_MASKER
 
         received = masker.mask(self.receive_bytes(2))
 
@@ -413,7 +443,7 @@ class Stream(StreamBase):
                 'less')
 
         frame = create_close_frame(
-            struct.pack('!H', code) + encoded_reason)
+            struct.pack('!H', code) + encoded_reason, self._options.mask_send)
 
         self._request.server_terminated = True
 
@@ -455,7 +485,7 @@ class Stream(StreamBase):
             raise ValueError(
                 'Application data size of control frames must be 125 bytes or '
                 'less')
-        frame = create_ping_frame(body)
+        frame = create_ping_frame(body, self._options.mask_send)
         self._write(frame)
 
         self._ping_queue.append(body)
@@ -465,7 +495,7 @@ class Stream(StreamBase):
             raise ValueError(
                 'Application data size of control frames must be 125 bytes or '
                 'less')
-        frame = create_pong_frame(body)
+        frame = create_pong_frame(body, self._options.mask_send)
         self._write(frame)
 
 

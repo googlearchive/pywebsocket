@@ -144,6 +144,14 @@ def get_class_logger(o):
         '%s.%s' % (o.__class__.__module__, o.__class__.__name__))
 
 
+class NoopMasker(object):
+    def __init__(self):
+        pass
+
+    def mask(self, s):
+        return s
+
+
 class RepeatedXorMasker(object):
     """A masking object that applies XOR on the string given to mask method
     with the masking bytes given to the constructor repeatedly. This object

@@ -554,12 +554,14 @@ class EchoClient(object):
             logging.info('Connection established')
 
             request = ClientRequest(self._socket)
-            self._stream = self._stream_class(request)
             if self._options.protocol_version == 'hybi01':
+                self._stream = self._stream_class(request)
                 request.ws_version = common.VERSION_HYBI01
             elif self._options.protocol_version == 'hybi00':
+                self._stream = self._stream_class(request, True)
                 request.ws_version = common.VERSION_HYBI00
             elif self._options.protocol_version == 'hixie75':
+                self._stream = self._stream_class(request)
                 request.ws_version = common.VERSION_HIXIE75
             else:
                 raise ValueError('illegal --protocol-version flag: %s' %

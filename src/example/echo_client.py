@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -61,9 +61,11 @@ or
 """
 
 
+import base64
 import codecs
 import logging
 from optparse import OptionParser
+import os
 import random
 import re
 import socket
@@ -73,17 +75,23 @@ import sys
 from mod_pywebsocket import common
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
+from mod_pywebsocket.stream import StreamOptions
 from mod_pywebsocket import util
 
 
 _TIMEOUT_SEC = 10
 _UNDEFINED_PORT = -1
 
-_UPGRADE_HEADER = 'Upgrade: WebSocket\r\n'
+_UPGRADE_HEADER = 'Upgrade: websocket\r\n'
+_UPGRADE_HEADER_HIXIE75 = 'Upgrade: WebSocket\r\n'
 _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 
 # Special message that tells the echo server to start closing handshake
 _GOODBYE_MESSAGE = 'Goodbye'
+
+_PROTOCOL_VERSION_HYBI06 = 'hybi06'
+_PROTOCOL_VERSION_HYBI00 = 'hybi00'
+_PROTOCOL_VERSION_HIXIE75 = 'hixie75'
 
 
 class ClientHandshakeError(Exception):
@@ -259,6 +267,115 @@ class ClientHandshakeBase(object):
             ch = _receive_bytes(self._socket, 1)
 
 
+class ClientHandshakeProcessor(ClientHandshakeBase):
+    """WebSocket opening handshake processor for
+    draft-ietf-hybi-thewebsocketprotocol-06.
+    """
+
+    def __init__(self, socket, options):
+        self._socket = socket
+        self._options = options
+
+        self._logger = util.get_class_logger(self)
+
+    def handshake(self):
+        """Performs opening handshake on the specified socket.
+
+        Raises:
+            ClientHandshakeError: handshake failed.
+        """
+
+        self._socket.sendall(_build_method_line(self._options.resource))
+
+        fields = []
+        fields.append(_format_host_header(
+            self._options.server_host,
+            self._options.server_port,
+            self._options.use_tls))
+        fields.append(_UPGRADE_HEADER)
+        fields.append(_CONNECTION_HEADER)
+        if self._options.origin is not None:
+            fields.append(_origin_header(self._options.origin))
+
+        original_key = os.urandom(16)
+        self._key = base64.b64encode(original_key)
+        self._logger.debug('Sec-WebSocket-Key: %r (%s)' %
+                           (self._key, util.hexify(original_key)))
+        fields.append('Sec-WebSocket-Key: %s\r\n' % self._key)
+
+        fields.append('Sec-WebSocket-Version: 6\r\n')
+
+        for field in fields:
+            self._socket.sendall(field)
+
+        self._socket.sendall('\r\n')
+
+        logging.info('Sent handshake')
+
+        status_line = ''
+        while True:
+            ch = _receive_bytes(self._socket, 1)
+            status_line += ch
+            if ch == '\n':
+                break
+
+        m = re.match('HTTP/\\d+\.\\d+ (\\d\\d\\d) .*\r\n', status_line)
+        if m is None:
+            raise ClientHandshakeError(
+                'Wrong status line format: %r' % status_line)
+        status_code = m.group(1)
+        if status_code != '101':
+            raise ClientHandshakeError(
+                'Expected HTTP status code 101 but found %r' % status_code)
+
+        fields = self._read_fields()
+
+        ch = _receive_bytes(self._socket, 1)
+        if ch != '\n':  # 0x0A
+            raise ClientHandshakeError(
+                'Expected LF but found %r while reading value %r for header '
+                'name %r' % (ch, value, name))
+
+        _validate_mandatory_header(fields, 'Upgrade', 'websocket',
+                                   False)
+
+        _validate_mandatory_header(fields, 'Connection', 'Upgrade',
+                                   False)
+
+        accept = _get_mandatory_header(fields, 'Sec-WebSocket-Accept')
+
+        # Validate
+        try:
+            binary_accept = base64.b64decode(accept)
+        except TypeError, e:
+            raise HandshakeError(
+                'Illegal value for header Sec-WebSocket-Accept: %r' % accept)
+
+        if len(binary_accept) != 20:
+            raise ClientHandshakeError(
+                'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
+
+        self._logger.debug(
+            'Response for challenge : %r (%s)' %
+            (accept, util.hexify(binary_accept)))
+
+        binary_expected_accept = util.sha1_hash(
+            self._key + common.WEBSOCKET_ACCEPT_UUID).digest()
+        expected_accept = base64.b64encode(binary_expected_accept)
+
+        self._logger.debug(
+            'Expected response for challenge: %r (%s)' %
+            (expected_accept, util.hexify(binary_expected_accept)))
+
+        if accept != expected_accept:
+            raise ClientHandshakeError(
+                'Invalid Sec-WebSocket-Accept header: %r (expected: %s)' %
+                (accept, expected_accept))
+
+        # TODO(tyoshino): Handle Sec-WebSocket-Protocol
+        # TODO(tyoshino): Handle Cookie, etc.
+
+
 class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
     """WebSocket opening handshake processor for
     draft-ietf-hybi-thewebsocketprotocol-00 (equivalent to
@@ -280,7 +397,7 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
-        fields.append(_UPGRADE_HEADER)
+        fields.append(_UPGRADE_HEADER_HIXIE75)
         # 4.1 8. Add the string "Connection: Upgrade" to /fields/.
         fields.append(_CONNECTION_HEADER)
         # 4.1 9-12. Add Host: field to /fields/.
@@ -289,6 +406,9 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
             self._options.server_port,
             self._options.use_tls))
         # 4.1 13. Add Origin: field to /fields/.
+        if not self._options.origin:
+            raise ClientHandshakeError(
+                'Specify the origin of the connection by --origin flag')
         fields.append(_origin_header(self._options.origin))
         # TODO: 4.1 14 Add Sec-WebSocket-Protocol: field to /fields/.
         # TODO: 4.1 15 Add cookie headers to /fields/.
@@ -299,13 +419,7 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         self._number2, key2 = self._generate_sec_websocket_key()
         fields.append('Sec-WebSocket-Key2: ' + key2 + '\r\n')
 
-        if self._options.protocol_version == 'hybi01':
-            fields.append('Sec-WebSocket-Draft: 1\r\n')
-        elif self._options.protocol_version == 'hybi00':
-            fields.append('Sec-WebSocket-Draft: 0\r\n')
-        else:
-            raise ClientHandshakeError('illegal --protocol-version flag: %s' %
-                                       self._options.protocol_version)
+        fields.append('Sec-WebSocket-Draft: 0\r\n')
 
         # 4.1 24. For each string in /fields/, in a random order: send the
         # string, encoded as UTF-8, followed by a UTF-8 encoded U+000D CARRIAGE
@@ -459,7 +573,7 @@ class ClientHandshakeProcessorHixie75(object):
 
     _EXPECTED_RESPONSE = (
         'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
-        _UPGRADE_HEADER +
+        _UPGRADE_HEADER_HIXIE75 +
         _CONNECTION_HEADER)
 
     def __init__(self, socket, options):
@@ -486,7 +600,7 @@ class ClientHandshakeProcessorHixie75(object):
         """
 
         self._socket.sendall(_build_method_line(self._options.resource))
-        self._socket.sendall(_UPGRADE_HEADER)
+        self._socket.sendall(_UPGRADE_HEADER_HIXIE75)
         self._socket.sendall(_CONNECTION_HEADER)
         self._socket.sendall(_format_host_header(
             self._options.server_host,
@@ -529,11 +643,9 @@ class ClientRequest(object):
 class EchoClient(object):
     """WebSocket echo client."""
 
-    def __init__(self, options, handshake_class, stream_class):
+    def __init__(self, options):
         self._options = options
         self._socket = None
-        self._handshake_class = handshake_class
-        self._stream_class = stream_class
 
     def run(self):
         """Run the client.
@@ -549,25 +661,37 @@ class EchoClient(object):
             if self._options.use_tls:
                 self._socket = _TLSSocket(self._socket)
 
-            self._handshake = self._handshake_class(
-                self._socket, self._options)
+            version = self._options.protocol_version
+
+            if version == _PROTOCOL_VERSION_HYBI06:
+                self._handshake = ClientHandshakeProcessor(
+                    self._socket, self._options)
+            elif version == _PROTOCOL_VERSION_HYBI00:
+                self._handshake = ClientHandshakeProcessorHybi00(
+                    self._socket, self._options)
+            elif version == _PROTOCOL_VERSION_HIXIE75:
+                self._handshake = ClientHandshakeProcessorHixie75(
+                    self._socket, self._options)
+            else:
+                raise ValueError(
+                    'Invalid --protocol-version flag: %r' % version)
+
             self._handshake.handshake()
 
             logging.info('Connection established')
 
             request = ClientRequest(self._socket)
-            if self._options.protocol_version == 'hybi01':
-                self._stream = self._stream_class(request)
-                request.ws_version = common.VERSION_HYBI01
-            elif self._options.protocol_version == 'hybi00':
-                self._stream = self._stream_class(request, True)
-                request.ws_version = common.VERSION_HYBI00
-            elif self._options.protocol_version == 'hixie75':
-                self._stream = self._stream_class(request)
-                request.ws_version = common.VERSION_HIXIE75
-            else:
-                raise ValueError('illegal --protocol-version flag: %s' %
-                                 self._options.protocol_version)
+
+            if version == _PROTOCOL_VERSION_HYBI06:
+                stream_option = StreamOptions()
+                stream_option.mask_send = True
+                stream_option.unmask_receive = False
+                stream_option.deflate = False
+                self._stream = Stream(request, stream_option)
+            elif version == _PROTOCOL_VERSION_HYBI00:
+                self._stream = StreamHixie75(request, True)
+            elif version == _PROTOCOL_VERSION_HIXIE75:
+                self._stream = StreamHixie75(request)
 
             for line in self._options.message.split(','):
                 self._stream.send_message(line)
@@ -583,7 +707,7 @@ class EchoClient(object):
                         print 'Error: %s' % e
                     raise
 
-            if request.ws_version != common.VERSION_HIXIE75:
+            if version != _PROTOCOL_VERSION_HIXIE75:
                 self._do_closing_handshake()
         finally:
             self._socket.close()
@@ -620,7 +744,7 @@ def main():
                       dest='server_port', type='int',
                       default=_UNDEFINED_PORT, help='server port')
     parser.add_option('-o', '--origin', dest='origin', type='string',
-                      default='http://localhost/', help='origin')
+                      default=None, help='origin')
     parser.add_option('-r', '--resource', dest='resource', type='string',
                       default='/echo', help='resource path')
     parser.add_option('-m', '--message', dest='message', type='string',
@@ -640,9 +764,11 @@ def main():
                       'protocol-version flag')
     parser.add_option('--protocol-version', '--protocol_version',
                       dest='protocol_version',
-                      type='string', default='hybi01',
-                      help='WebSocket protocol version to use. One of '
-                      + '\'hybi01\', \'hybi00\', \'hixie75\'')
+                      type='string', default=_PROTOCOL_VERSION_HYBI06,
+                      help='WebSocket protocol version to use. One of \'' +
+                      _PROTOCOL_VERSION_HYBI06 + '\', \'' +
+                      _PROTOCOL_VERSION_HYBI00 + '\', \'' +
+                      _PROTOCOL_VERSION_HIXIE75 + '\'')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
                       choices=['debug', 'info', 'warn', 'error', 'critical'],
@@ -654,7 +780,7 @@ def main():
     logger.setLevel(logging.getLevelName(options.log_level.upper()))
 
     if options.draft75:
-        options.protocol_version = 'hixie75'
+        options.protocol_version = _PROTOCOL_VERSION_HIXIE75
 
     # Default port number depends on whether TLS is used.
     if options.server_port == _UNDEFINED_PORT:
@@ -668,18 +794,7 @@ def main():
     if not options.message:
         options.message = u'Hello,\u65e5\u672c'   # "Japan" in Japanese
 
-    if options.protocol_version == 'hybi01':
-        EchoClient(
-            options, ClientHandshakeProcessorHybi00, Stream).run()
-    elif options.protocol_version == 'hybi00':
-        EchoClient(
-            options, ClientHandshakeProcessorHybi00, StreamHixie75).run()
-    elif options.protocol_version == 'hixie75':
-        EchoClient(
-            options, ClientHandshakeProcessorHixie75, StreamHixie75).run()
-    else:
-        raise ValueError(
-            'Invalid protocol version flag: %s' % options.protocol_version)
+    EchoClient(options).run()
 
 
 if __name__ == '__main__':

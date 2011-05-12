@@ -275,7 +275,7 @@ class DeflateConnection(object):
             'mod_pywebsocket.util.DeflateConnection')
 
         self._compress = zlib.compressobj(
-            0, zlib.DEFLATED, -zlib.MAX_WBITS)
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
         self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
         self._unconsumed = ''
 

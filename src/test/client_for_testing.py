@@ -107,18 +107,22 @@ def _format_host_header(host, port, secure):
         hostport += ':' + str(port)
     # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
     # character, and /hostport/, to /fields/.
-    return 'Host: ' + hostport + '\r\n'
+    return 'Host: %s\r\n' % hostport
 
 
 # TODO(tyoshino): Define a base class and move these shared methods to that.
 def _receive_bytes(socket, length):
     bytes = []
-    while length > 0:
-        new_bytes = socket.recv(length)
-        if not new_bytes:
-            raise Exception('connection closed unexpectedly')
-        bytes.append(new_bytes)
-        length -= len(new_bytes)
+    remaining = length
+    while remaining > 0:
+        received_bytes = socket.recv(remaining)
+        if not received_bytes:
+            raise Exception(
+                'Connection closed before receiving requested length '
+                '(requested %d bytes but received only %d bytes)' %
+                (length, length - remaining))
+        bytes.append(received_bytes)
+        remaining -= len(received_bytes)
     return ''.join(bytes)
 
 
@@ -143,8 +147,9 @@ def _read_fields(socket):
         # 4.1 37. read a byte from the server
         ch = _receive_bytes(socket, 1)
         if ch != '\n':  # 0x0A
-            raise Exception('expected LF after line: %s: %s' % (
-                name, value))
+            raise Exception(
+                'Expected LF but found %r while reading value %r for header '
+                '%r' % (ch, name, value))
         # 4.1 38. append an entry to the /fields/ list that has the name
         # given by the string obtained by interpreting the /name/ byte
         # array as a UTF-8 stream and the value given by the string
@@ -165,7 +170,7 @@ def _read_name(socket):
             return None
         elif ch == '\n':  # 0x0A
             raise Exception(
-                'unexpected LF when reading header name (%r)' % name)
+                'Unexpected LF when reading header name %r' % name)
         elif ch == ':':  # 0x3A
             return name
         elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
@@ -193,7 +198,7 @@ def _read_value(socket, ch):
             return value
         elif ch == '\n':  # 0x0A
             raise Exception(
-                'unexpected LF when reading header value (%r)' % value)
+                'Unexpected LF when reading header value %r' % value)
         else:
             value += ch
         ch = _receive_bytes(socket, 1)
@@ -248,8 +253,8 @@ class WebSocketHybi06Handshake(object):
 
         original_key = os.urandom(16)
         key = base64.b64encode(original_key)
-        self._logger.debug('client nonce : %s (%s)' %
-                           (key, util.hexify(original_key)))
+        self._logger.debug(
+            'Sec-WebSocket-Key: %s (%s)' % (key, util.hexify(original_key)))
         fields.append('Sec-WebSocket-Key: %s\r\n' % key)
 
         fields.append('Sec-WebSocket-Version: 6\r\n')
@@ -280,19 +285,24 @@ class WebSocketHybi06Handshake(object):
             if ch == '\n':
                 break
         if len(field) < 7 or not field.endswith('\r\n'):
-            raise Exception('wrong status line: %s' % field)
+            raise Exception('Wrong status line: %r' % field)
         m = re.match('[^ ]* ([^ ]*) .*', field)
         if m is None:
-            raise Exception('no code found in: %s' % field)
+            raise Exception(
+                'No HTTP status code found in status line: %r' % field)
         code = m.group(1)
         if not re.match('[0-9][0-9][0-9]', code):
-            raise Exception('wrong code %s in: %s' % (code, field))
+            raise Exception(
+                'HTTP status code %r is not three digit in status line: %r' %
+                (code, field))
         if code != '101':
-            raise Exception('unexpected code in: %s' % field)
+            raise Exception(
+                'Expected HTTP status code 101 but found %r in status line: '
+                '%r' % (code, field))
         fields = _read_fields(self._socket)
         ch = _receive_bytes(self._socket, 1)
         if ch != '\n':  # 0x0A
-            raise Exception('expected LF after line: %s: %s' % (name, value))
+            raise Exception('Expected LF but found: %r' % ch)
 
         self._logger.debug('Opening handshake response headers: %r' % fields)
 
@@ -329,21 +339,21 @@ class WebSocketHybi06Handshake(object):
             raise HandshakeError(
                 'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
 
-        self._logger.debug('accept : %s (%s)' %
+        self._logger.debug('Actual Sec-WebSocket-Accept: %r (%s)' %
                            (accept, util.hexify(decoded_accept)))
 
         original_expected_accept = util.sha1_hash(
             key + _WEBSOCKET_ACCEPT_UUID).digest()
         expected_accept = base64.b64encode(original_expected_accept)
 
-        self._logger.debug('expected accept : %s (%s)' %
+        self._logger.debug('Expected Sec-WebSocket-Accept: %r (%s)' %
                            (expected_accept,
                             util.hexify(original_expected_accept)))
 
         if accept != expected_accept:
             raise Exception(
-                'Invalid Sec-WebSocket-Accept header: %s (expected: %s)' %
-                (accept, expected_accept))
+                'Invalid Sec-WebSocket-Accept header: %r (expected) != %r '
+                '(actual)' % (accept, expected_accept))
 
         server_extensions_header = fields.get('sec-websocket-extensions')
         if (server_extensions_header is None or
@@ -417,9 +427,9 @@ class WebSocketHybi00Handshake(object):
 
         # 4.1 16-23. Add Sec-WebSocket-Key<n> to /fields/.
         self._number1, key1 = self._generate_sec_websocket_key()
-        fields.append('Sec-WebSocket-Key1: ' + key1 + '\r\n')
+        fields.append('Sec-WebSocket-Key1: %s\r\n' % key1)
         self._number2, key2 = self._generate_sec_websocket_key()
-        fields.append('Sec-WebSocket-Key2: ' + key2 + '\r\n')
+        fields.append('Sec-WebSocket-Key2: %s\r\n' % key2)
 
         fields.append('Sec-WebSocket-Draft: %s\r\n' % self._draft_field)
 
@@ -454,10 +464,10 @@ class WebSocketHybi00Handshake(object):
         # contain at least two 0x20 bytes, then fail the WebSocket connection
         # and abort these steps.
         if len(field) < 7 or not field.endswith('\r\n'):
-            raise Exception('wrong status line: %s' % field)
+            raise Exception('Wrong status line: %r' % field)
         m = re.match('[^ ]* ([^ ]*) .*', field)
         if m is None:
-            raise Exception('no code found in: %s' % field)
+            raise Exception('No code found in status line: %r' % field)
         # 4.1 29. let /code/ be the substring of /field/ that starts from the
         # byte after the first 0x20 byte, and ends with the byte before the
         # second 0x20 byte.
@@ -466,18 +476,22 @@ class WebSocketHybi00Handshake(object):
         # /code/ are not in the range 0x30 to 0x90, then fail the WebSocket
         # connection and abort these steps.
         if not re.match('[0-9][0-9][0-9]', code):
-            raise Exception('wrong code %s in: %s' % (code, field))
+            raise Exception(
+                'HTTP status code %r is not three digit in status line: %r' %
+                (code, field))
         # 4.1 31. if /code/, interpreted as UTF-8, is "101", then move to the
         # next step.
         if code != '101':
-            raise Exception('unexpected code in: %s' % field)
+            raise Exception(
+                'Expected HTTP status code 101 but found %r in status line: '
+                '%r' % (code, field))
         # 4.1 32-39. read fields into /fields/
         fields = _read_fields(self._socket)
         # 4.1 40. _Fields processing_
         # read a byte from server
         ch = _receive_bytes(self._socket, 1)
         if ch != '\n':  # 0x0A
-            raise Exception('expected LF after line: %s: %s' % (name, value))
+            raise Exception('Expected LF but found %r' % ch)
         # 4.1 41. check /fields/
         if len(fields['upgrade']) != 1:
             raise Exception(
@@ -521,23 +535,28 @@ class WebSocketHybi00Handshake(object):
         self._logger.debug('num %d, %d, %s' % (
             self._number1, self._number2,
             util.hexify(self._key3)))
-        self._logger.debug('challenge: %s' % util.hexify(challenge))
+        self._logger.debug(
+            'Challenge: %r (%s)' % (challenge, util.hexify(challenge)))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = util.md5_hash(challenge).digest()
-        self._logger.debug('expected : %s' % util.hexify(expected))
+        self._logger.debug(
+            'Expected challenge response: %r (%s)' %
+            (expected, util.hexify(expected)))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
-        self._logger.debug('reply    : %s' % util.hexify(reply))
+        self._logger.debug(
+            'Actual challenge response: %r (%s)' % (reply, util.hexify(reply)))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.
         if expected != reply:
-            raise Exception('challenge/response failed: %s != %s' % (
-                expected, reply))
+            raise Exception(
+                'Bad challenge response: %r (expected) != %r (actual)' %
+                (expected, reply))
         # 4.1 46. The *WebSocket connection is established*.
 
     def _generate_sec_websocket_key(self):
@@ -693,12 +712,12 @@ class WebSocketStream(object):
 
         if actual_opcode != opcode:
             raise Exception(
-                'Unexpected opcode : %d (expected) vs %d (actual)' %
+                'Unexpected opcode: %d (expected) vs %d (actual)' %
                 (opcode, actual_opcode))
 
         if actual_fin != fin:
             raise Exception(
-                'Unexpected fin : %d (expected) vs %d (actual)' %
+                'Unexpected fin: %d (expected) vs %d (actual)' %
                 (fin, actual_fin))
 
         second_byte = ord(received[1])
@@ -710,7 +729,7 @@ class WebSocketStream(object):
 
         if actual_rsv != rsv:
             raise Exception(
-                'Unexpected rsv : %r (expected) vs %r (actual)' %
+                'Unexpected rsv: %r (expected) vs %r (actual)' %
                 (rsv, actual_rsv))
 
         if payload_length == 127:
@@ -726,14 +745,14 @@ class WebSocketStream(object):
 
         if payload_length != len(payload):
             raise Exception(
-                'Unexpected payload length : %d (expected) vs %d (actual)' %
+                'Unexpected payload length: %d (expected) vs %d (actual)' %
                 (payload_length, len(payload)))
 
         received = _receive_bytes(self._socket, payload_length)
 
         if payload != received:
             raise Exception(
-                'Unexpected payload : %r (expected) vs %r (actual)' %
+                'Unexpected payload: %r (expected) vs %r (actual)' %
                 (payload, received))
 
     def _build_close_frame(self, code, reason):
@@ -755,7 +774,7 @@ class WebSocketStream(object):
         actual_frame = _receive_bytes(self._socket, len(expected_frame))
         if actual_frame != expected_frame:
             raise Exception(
-                'Unexpected close frame : %r (expected) vs %r (actual)' %
+                'Unexpected close frame: %r (expected) vs %r (actual)' %
                 (expected_frame, actual_frame))
 
 
@@ -780,18 +799,18 @@ class WebSocketStreamHixie75(object):
 
         if received != '\x00':
             raise Exception(
-                'Unexpected frame type : %d (expected) vs %d (actual)' %
+                'Unexpected frame type: %d (expected) vs %d (actual)' %
                 (0, ord(received)))
 
         received = _receive_bytes(self._socket, len(payload) + 1)
         if received[-1] != '\xff':
             raise Exception(
-                'Termination expected : 0xff (expected) vs %r (actual)' %
+                'Termination expected: 0xff (expected) vs %r (actual)' %
                 received)
 
         if received[0:-1] != payload:
             raise Exception(
-                'Unexpected payload : %r (expected) vs %r (actual)' %
+                'Unexpected payload: %r (expected) vs %r (actual)' %
                 (payload, received[0:-1]))
 
     def send_close(self):
@@ -879,7 +898,8 @@ class Client(object):
                 raise
             return
         except Exception, e:
-            if str(e) != 'connection closed unexpectedly':
+            if str(e).find(
+                'Connection closed before receiving requested length ') != 0:
                 raise
             return
 

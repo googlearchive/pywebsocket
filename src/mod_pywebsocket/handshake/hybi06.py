@@ -103,7 +103,7 @@ class Handshaker(object):
 
         key = self._get_key()
         (accept, accept_binary) = compute_accept(key)
-        self._logger.debug('server accept : %s (%s)' %
+        self._logger.debug('Sec-WebSocket-Accept: %r (%s)' %
                            (accept, util.hexify(accept_binary)))
 
         self._logger.debug('IETF HyBi 06 protocol')
@@ -126,7 +126,8 @@ class Handshaker(object):
             # TODO(tyoshino): Validate selected subprotocol value.
 
             self._logger.debug(
-                'protocol accepted  : %r', self._request.ws_protocol)
+                'Subprotocol accepted: %r',
+                self._request.ws_protocol)
         else:
             if self._request.ws_protocol is not None:
                 raise HandshakeError(
@@ -160,7 +161,7 @@ class Handshaker(object):
         self._request.ws_requested_protocols = [
             s.strip() for s in requested_protocols]
 
-        self._logger.debug('protocols requested : %r', requested_protocols)
+        self._logger.debug('Subprotocols requested: %r', requested_protocols)
 
     def _set_extensions(self):
         self._request.ws_deflate = False
@@ -184,9 +185,9 @@ class Handshaker(object):
                 self._request.ws_extensions.append(extension)
                 self._request.ws_deflate = True
 
-        self._logger.debug('extensions requested : %r', requested_extensions)
+        self._logger.debug('Extensions requested: %r', requested_extensions)
         self._logger.debug(
-            'extensions accepted  : %r', self._request.ws_extensions)
+            'Extensions accepted: %r', self._request.ws_extensions)
 
     def _validate_key(self, key):
         # Validate
@@ -205,8 +206,8 @@ class Handshaker(object):
 
         if not key_is_valid:
             raise HandshakeError(
-                'Illegal value for header ' + common.SEC_WEBSOCKET_KEY_HEADER +
-                ': ' + key)
+                'Illegal value for header %s: %r' %
+                (common.SEC_WEBSOCKET_KEY_HEADER, key))
 
         return decoded_key
 
@@ -216,7 +217,7 @@ class Handshaker(object):
 
         decoded_key = self._validate_key(key)
 
-        self._logger.debug('client nonce : %s (%s)' %
+        self._logger.debug('Sec-WebSocket-Key: %r (%s)' %
                            (key, util.hexify(decoded_key)))
 
         return key

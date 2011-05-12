@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -154,10 +154,14 @@ class Handshaker(object):
         # 5.2 9. let /response/ be the MD5 finterprint of /challenge/
         self._request.ws_challenge_md5 = util.md5_hash(
             self._request.ws_challenge).digest()
-        self._logger.debug('challenge: %s' % util.hexify(
-            self._request.ws_challenge))
-        self._logger.debug('response:  %s' % util.hexify(
-            self._request.ws_challenge_md5))
+        self._logger.debug(
+            'Challenge: %r (%s)' %
+            (self._request.ws_challenge,
+             util.hexify(self._request.ws_challenge)))
+        self._logger.debug(
+            'Challenge response: %r (%s)' %
+            (self._request.ws_challenge_md5,
+             util.hexify(self._request.ws_challenge_md5)))
 
     def _get_key_value(self, key_field):
         key_value = get_mandatory_header(self._request, key_field)
@@ -178,10 +182,10 @@ class Handshaker(object):
         # 5.2 6. if /key-number_n/ is not an integral multiple of /spaces_n/
         # then abort the WebSocket connection.
         if key_number % spaces != 0:
-            raise HandshakeError('key_number %d is not an integral '
+            raise HandshakeError('Key-number %d is not an integral '
                                  'multiple of spaces %d' % (key_number,
                                                             spaces))
-        # 5.2 7. let /part_n/ be /key_number_n/ divided by /spaces_n/.
+        # 5.2 7. let /part_n/ be /key-number_n/ divided by /spaces_n/.
         part = key_number / spaces
         self._logger.debug('%s: %s => %d / %d => %d' % (
             key_field, key_value, key_number, spaces, part))

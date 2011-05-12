@@ -1,4 +1,4 @@
-# Copyright 2010, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -156,8 +156,9 @@ class Handshaker(object):
                 raise HandshakeError('Header %s is not defined' % key)
             if expected_value:
                 if actual_value != expected_value:
-                    raise HandshakeError('Illegal value for header %s: %s' %
-                                         (key, actual_value))
+                    raise HandshakeError(
+                        'Expected %r for header %s but found %r' %
+                        (expected_value, key, actual_value))
         if self._strict:
             try:
                 lines = self._request.connection.get_memorized_lines()

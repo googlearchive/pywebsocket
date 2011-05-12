@@ -122,7 +122,7 @@ def _format_host_header(host, port, secure):
         hostport += ':' + str(port)
     # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
     # character, and /hostport/, to /fields/.
-    return 'Host: ' + hostport + '\r\n'
+    return 'Host: %s\r\n' % hostport
 
 
 def _receive_bytes(socket, length):
@@ -133,8 +133,8 @@ def _receive_bytes(socket, length):
         if not received_bytes:
             raise IOError(
                 'Connection closed before receiving requested length '
-                '(%d bytes (actual) vs %d bytes (requested))' %
-                (length - remaining, length))
+                '(requested %d bytes but received only %d bytes)' %
+                (length, length - remaining))
         bytes.append(received_bytes)
         remaining -= len(received_bytes)
     return ''.join(bytes)
@@ -214,8 +214,9 @@ class ClientHandshakeBase(object):
             # 4.1 37. read a byte from the server
             ch = _receive_bytes(self._socket, 1)
             if ch != '\n':  # 0x0A
-                raise ClientHandshakeError('expected LF after line: %s: %s' % (
-                    name, value))
+                raise ClientHandshakeError(
+                    'Expected LF but found %r while reading value %r for '
+                    'header %r' % (ch, value, name))
             # 4.1 38. append an entry to the /fields/ list that has the name
             # given by the string obtained by interpreting the /name/ byte
             # array as a UTF-8 stream and the value given by the string
@@ -235,10 +236,10 @@ class ClientHandshakeBase(object):
                 return None
             elif ch == '\n':  # 0x0A
                 raise ClientHandshakeError(
-                    'unexpected LF when reading header name (%r)' % name)
+                    'Unexpected LF when reading header name %r' % name)
             elif ch == ':':  # 0x3A
                 return name
-            elif ch >= 'A' and ch <= 'Z':  # range 0x31 to 0x5A
+            elif ch >= 'A' and ch <= 'Z':  # Range 0x31 to 0x5A
                 ch = chr(ord(ch) + 0x20)
                 name += ch
             else:
@@ -261,7 +262,7 @@ class ClientHandshakeBase(object):
                 return value
             elif ch == '\n':  # 0x0A
                 raise ClientHandshakeError(
-                    'unexpected LF when reading header value (%r)' % value)
+                    'Unexpected LF when reading header value %r' % value)
             else:
                 value += ch
             ch = _receive_bytes(self._socket, 1)
@@ -415,9 +416,11 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
 
         # 4.1 16-23. Add Sec-WebSocket-Key<n> to /fields/.
         self._number1, key1 = self._generate_sec_websocket_key()
-        fields.append('Sec-WebSocket-Key1: ' + key1 + '\r\n')
+        logging.debug('Number1: %d' % self._number1)
+        fields.append('Sec-WebSocket-Key1: %s\r\n' % key1)
         self._number2, key2 = self._generate_sec_websocket_key()
-        fields.append('Sec-WebSocket-Key2: ' + key2 + '\r\n')
+        logging.debug('Number2: %d' % self._number2)
+        fields.append('Sec-WebSocket-Key2: %s\r\n' % key2)
 
         fields.append('Sec-WebSocket-Draft: 0\r\n')
 
@@ -435,7 +438,8 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
         self._socket.sendall(self._key3)
-        logging.debug('key3     : %s' % util.hexify(self._key3))
+        logging.debug(
+            'Key3: %r (%s)' % (self._key3, util.hexify(self._key3)))
 
         logging.info('Sent handshake')
 
@@ -453,10 +457,11 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         # contain at least two 0x20 bytes, then fail the WebSocket connection
         # and abort these steps.
         if len(field) < 7 or not field.endswith('\r\n'):
-            raise ClientHandshakeError('wrong status line: %s' % field)
+            raise ClientHandshakeError('Wrong status line: %r' % field)
         m = re.match('[^ ]* ([^ ]*) .*', field)
         if m is None:
-            raise ClientHandshakeError('no code found in: %s' % field)
+            raise ClientHandshakeError(
+                'No HTTP status code found in status line: %r' % field)
         # 4.1 29. let /code/ be the substring of /field/ that starts from the
         # byte after the first 0x20 byte, and ends with the byte before the
         # second 0x20 byte.
@@ -465,19 +470,22 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         # /code/ are not in the range 0x30 to 0x90, then fail the WebSocket
         # connection and abort these steps.
         if not re.match('[0-9][0-9][0-9]', code):
-            raise ClientHandshakeError('wrong code %s in: %s' % (code, field))
+            raise ClientHandshakeError(
+                'HTTP status code %r is not three digit in status line: %r' %
+                (code, field))
         # 4.1 31. if /code/, interpreted as UTF-8, is "101", then move to the
         # next step.
         if code != '101':
-            raise ClientHandshakeError('unexpected code in: %s' % field)
+            raise ClientHandshakeError(
+                'Expected HTTP status code 101 but found %r in status line: '
+                '%r' % (code, field))
         # 4.1 32-39. read fields into /fields/
         fields = self._read_fields()
         # 4.1 40. _Fields processing_
         # read a byte from server
         ch = _receive_bytes(self._socket, 1)
         if ch != '\n':  # 0x0A
-            raise ClientHandshakeError('expected LF after line: %s: %s' %
-                                       (name, value))
+            raise ClientHandshakeError('Expected LF but found %r' % ch)
         # 4.1 41. check /fields/
         # TODO(ukai): protocol
         # if the entry's name is "upgrade"
@@ -488,8 +496,7 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         #  if the value, converted to ASCII lowercase, is not exactly equal
         #  to the string "upgrade", then fail the WebSocket connection and
         #  abort these steps.
-        _validate_mandatory_header(fields, 'Connection', 'Upgrade',
-                                   False)
+        _validate_mandatory_header(fields, 'Connection', 'Upgrade', False)
 
         origin = _get_mandatory_header(fields, 'Sec-WebSocket-Origin')
 
@@ -505,27 +512,28 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         challenge += struct.pack('!I', self._number2)
         challenge += self._key3
 
-        logging.debug('num+key3 : %d, %d, %s' % (
-            self._number1, self._number2,
-            util.hexify(self._key3)))
-        logging.debug('challenge: %s' % util.hexify(challenge))
+        logging.debug(
+            'Challenge: %r (%s)' % (challenge, util.hexify(challenge)))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = util.md5_hash(challenge).digest()
-        logging.debug('expected : %s' % util.hexify(expected))
+        logging.debug(
+            'Expected challenge response: %r (%s)' %
+            (expected, util.hexify(expected)))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
-        logging.debug('reply    : %s' % util.hexify(reply))
+        logging.debug(
+            'Actual challenge response: %r (%s)' % (reply, util.hexify(reply)))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.
         if expected != reply:
             raise ClientHandshakeError(
-                'challenge/response failed: %s != %s' % (
-                    expected, reply))
+                'Bad challenge response: %r (expected) != %r (actual)' %
+                (expected, reply))
         # 4.1 46. The *WebSocket connection is established*.
 
     def _generate_sec_websocket_key(self):

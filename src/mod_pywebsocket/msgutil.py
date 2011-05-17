@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -98,6 +98,7 @@ class MessageReceiver(threading.Thread):
     because pyOpenSSL used by the server raises a fatal error if the socket
     is accessed from multiple threads.
     """
+
     def __init__(self, request, onmessage=None):
         """Construct an instance.
 
@@ -109,6 +110,7 @@ class MessageReceiver(threading.Thread):
                        and MessageReceiver.receive_nowait are useless because
                        they will never return any messages.
         """
+
         threading.Thread.__init__(self)
         self._request = request
         self._queue = Queue.Queue()
@@ -168,6 +170,7 @@ class MessageSender(threading.Thread):
     because pyOpenSSL used by the server raises a fatal error if the socket
     is accessed from multiple threads.
     """
+
     def __init__(self, request):
         """Construct an instance.
 

@@ -116,7 +116,8 @@ class StreamHixie75(StreamBase):
 
         if self._request.client_terminated:
             raise BadOperationException(
-                'Requested receive_message after receiving a closing handshake')
+                'Requested receive_message after receiving a closing '
+                'handshake')
 
         while True:
             # Read 1 byte.

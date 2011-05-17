@@ -1,4 +1,4 @@
-# Copyright 2010, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -50,13 +50,13 @@ def get_default_port(is_secure):
         return common.DEFAULT_WEB_SOCKET_PORT
 
 
-# TODO(tyoshino): Have stricter validator for HyBi 06.
+# TODO(tyoshino): Have stricter validator for HyBi 07.
 def validate_subprotocol(subprotocol):
     """Validate a value in subprotocol fields such as WebSocket-Protocol,
     Sec-WebSocket-Protocol.
 
     See
-    - HyBi 06: Section 5.1.
+    - HyBi 06: Section 5.2.2.
     - HyBi 00: Section 4.1. Opening handshake
     - Hixie 75: Section 4.1. Handshake
     """

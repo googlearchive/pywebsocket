@@ -53,7 +53,7 @@ from test import mock
 _MASKING_NONCE = 'ABCD'
 
 
-def _mask_hybi06(frame):
+def _mask_hybi07(frame):
     frame_key = map(ord, _MASKING_NONCE)
     frame_key_len = len(frame_key)
     result = array.array('B')
@@ -68,11 +68,11 @@ def _mask_hybi06(frame):
 # We'll get data given as read_data on calling request.connection.read().
 def _create_request(*frames):
     read_data = []
-    for frame in frames:
-        read_data.append(_mask_hybi06(frame))
+    for (header, body) in frames:
+        read_data.append(header + _mask_hybi07(body))
 
     req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
-    req.ws_version = common.VERSION_HYBI06
+    req.ws_version = common.VERSION_HYBI07
     stream_options = StreamOptions()
     req.ws_stream = Stream(req, stream_options)
     return req
@@ -82,13 +82,13 @@ def _create_request(*frames):
 # request.connection.written_data()
 def _create_blocking_request():
     req = mock.MockRequest(connection=mock.MockBlockingConn())
-    req.ws_version = common.VERSION_HYBI06
+    req.ws_version = common.VERSION_HYBI07
     stream_options = StreamOptions()
     req.ws_stream = Stream(req, stream_options)
     return req
 
 
-def _create_request_hixie75(read_data):
+def _create_request_hixie75(read_data=''):
     req = mock.MockRequest(connection=mock.MockConn(read_data))
     req.ws_stream = StreamHixie75(req)
     return req
@@ -104,134 +104,140 @@ def _create_blocking_request_hixie75():
 class MessageTest(unittest.TestCase):
     # Tests for Stream
     def test_send_message(self):
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, 'Hello')
-        self.assertEqual('\x84\x05Hello', request.connection.written_data())
+        self.assertEqual('\x81\x05Hello', request.connection.written_data())
 
         payload = 'a' * 125
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, payload)
-        self.assertEqual('\x84\x7d' + payload,
+        self.assertEqual('\x81\x7d' + payload,
                          request.connection.written_data())
 
     def test_send_medium_message(self):
         payload = 'a' * 126
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, payload)
-        self.assertEqual('\x84\x7e\x00\x7e' + payload,
+        self.assertEqual('\x81\x7e\x00\x7e' + payload,
                          request.connection.written_data())
 
         payload = 'a' * ((1 << 16) - 1)
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, payload)
-        self.assertEqual('\x84\x7e\xff\xff' + payload,
+        self.assertEqual('\x81\x7e\xff\xff' + payload,
                          request.connection.written_data())
 
     def test_send_large_message(self):
         payload = 'a' * (1 << 16)
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, payload)
-        self.assertEqual('\x84\x7f\x00\x00\x00\x00\x00\x01\x00\x00' + payload,
+        self.assertEqual('\x81\x7f\x00\x00\x00\x00\x00\x01\x00\x00' + payload,
                          request.connection.written_data())
 
     def test_send_message_unicode(self):
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, u'\u65e5')
         # U+65e5 is encoded as e6,97,a5 in UTF-8
-        self.assertEqual('\x84\x03\xe6\x97\xa5',
+        self.assertEqual('\x81\x03\xe6\x97\xa5',
                          request.connection.written_data())
 
     def test_send_message_fragments(self):
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, 'Hello', False)
         msgutil.send_message(request, ' ', False)
         msgutil.send_message(request, 'World', False)
         msgutil.send_message(request, '!', True)
-        self.assertEqual('\x04\x05Hello\x00\x01 \x00\x05World\x80\x01!',
+        self.assertEqual('\x01\x05Hello\x00\x01 \x00\x05World\x80\x01!',
                          request.connection.written_data())
 
     def test_send_fragments_immediate_zero_termination(self):
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_message(request, 'Hello World!', False)
         msgutil.send_message(request, '', True)
-        self.assertEqual('\x04\x0cHello World!\x80\x00',
+        self.assertEqual('\x01\x0cHello World!\x80\x00',
                          request.connection.written_data())
 
     def test_receive_message(self):
-        request = _create_request('\x84\x05Hello', '\x84\x06World!')
+        request = _create_request(
+            ('\x81\x85', 'Hello'), ('\x81\x86', 'World!'))
         self.assertEqual('Hello', msgutil.receive_message(request))
         self.assertEqual('World!', msgutil.receive_message(request))
 
         payload = 'a' * 125
-        request = _create_request('\x84\x7d' + payload)
+        request = _create_request(('\x81\xfd', payload))
         self.assertEqual(payload, msgutil.receive_message(request))
 
     def test_receive_medium_message(self):
         payload = 'a' * 126
-        request = _create_request('\x84\x7e\x00\x7e' + payload)
+        request = _create_request(('\x81\xfe\x00\x7e', payload))
         self.assertEqual(payload, msgutil.receive_message(request))
 
         payload = 'a' * ((1 << 16) - 1)
-        request = _create_request('\x84\x7e\xff\xff' + payload)
+        request = _create_request(('\x81\xfe\xff\xff', payload))
         self.assertEqual(payload, msgutil.receive_message(request))
 
     def test_receive_large_message(self):
         payload = 'a' * (1 << 16)
         request = _create_request(
-            '\x84\x7f\x00\x00\x00\x00\x00\x01\x00\x00' + payload)
+            ('\x81\xff\x00\x00\x00\x00\x00\x01\x00\x00', payload))
         self.assertEqual(payload, msgutil.receive_message(request))
 
     def test_receive_message_unicode(self):
-        request = _create_request('\x84\x03\xe6\x9c\xac')
+        request = _create_request(('\x81\x83', '\xe6\x9c\xac'))
         # U+672c is encoded as e6,9c,ac in UTF-8
         self.assertEqual(u'\u672c', msgutil.receive_message(request))
 
     def test_receive_message_erroneous_unicode(self):
         # \x80 and \x81 are invalid as UTF-8.
-        request = _create_request('\x84\x02\x80\x81')
+        request = _create_request(('\x81\x82', '\x80\x81'))
         # Invalid characters should be replaced with
         # U+fffd REPLACEMENT CHARACTER
         self.assertEqual(u'\ufffd\ufffd', msgutil.receive_message(request))
 
     def test_receive_fragments(self):
         request = _create_request(
-            '\x04\x05Hello', '\x00\x01 ', '\x00\x05World', '\x80\x01!')
+            ('\x01\x85', 'Hello'),
+            ('\x00\x81', ' '),
+            ('\x00\x85', 'World'),
+            ('\x80\x81', '!'))
         self.assertEqual('Hello World!', msgutil.receive_message(request))
 
     def test_receive_fragments_unicode(self):
         # UTF-8 encodes U+6f22 into e6bca2 and U+5b57 into e5ad97.
         request = _create_request(
-            '\x04\x02\xe6\xbc', '\x00\x02\xa2\xe5', '\x80\x02\xad\x97')
+            ('\x01\x82', '\xe6\xbc'),
+            ('\x00\x82', '\xa2\xe5'),
+            ('\x80\x82', '\xad\x97'))
         self.assertEqual(u'\u6f22\u5b57', msgutil.receive_message(request))
 
     def test_receive_fragments_immediate_zero_termination(self):
         request = _create_request(
-            '\x04\x0cHello World!', '\x80\x00')
+            ('\x01\x8c', 'Hello World!'), ('\x80\x80', ''))
         self.assertEqual('Hello World!', msgutil.receive_message(request))
 
     def test_receive_fragments_duplicate_start(self):
         request = _create_request(
-            '\x04\x05Hello', '\x04\x05World')
+            ('\x01\x85', 'Hello'), ('\x01\x85', 'World'))
         self.assertRaises(msgutil.InvalidFrameException,
                           msgutil.receive_message,
                           request)
 
     def test_receive_fragments_intermediate_but_not_started(self):
-        request = _create_request('\x00\x05Hello')
+        request = _create_request(('\x00\x85', 'Hello'))
         self.assertRaises(msgutil.InvalidFrameException,
                           msgutil.receive_message,
                           request)
 
     def test_receive_fragments_end_but_not_started(self):
-        request = _create_request('\x80\x05Hello')
+        request = _create_request(('\x80\x85', 'Hello'))
         self.assertRaises(msgutil.InvalidFrameException,
                           msgutil.receive_message,
                           request)
 
     def test_receive_message_discard(self):
         request = _create_request(
-            '\x85\x06IGNORE', '\x84\x05Hello',
-            '\x85\x09DISREGARD', '\x84\x06World!')
+            ('\x8f\x86', 'IGNORE'), ('\x81\x85', 'Hello'),
+            ('\x8f\x89', 'DISREGARD'), ('\x81\x86', 'World!'))
         self.assertRaises(msgutil.UnsupportedFrameException,
                           msgutil.receive_message, request)
         self.assertEqual('Hello', msgutil.receive_message(request))
@@ -241,15 +247,15 @@ class MessageTest(unittest.TestCase):
 
     def test_receive_close(self):
         request = _create_request(
-            '\x81\x0a' + struct.pack('!H', 1000) + 'Good bye')
+            ('\x88\x8a', struct.pack('!H', 1000) + 'Good bye'))
         self.assertEqual(None, msgutil.receive_message(request))
         self.assertEqual(1000, request.ws_close_code)
         self.assertEqual('Good bye', request.ws_close_reason)
 
     def test_send_ping(self):
-        request = _create_request('')
+        request = _create_request()
         msgutil.send_ping(request, 'Hello World!')
-        self.assertEqual('\x82\x0cHello World!',
+        self.assertEqual('\x89\x0cHello World!',
                          request.connection.written_data())
 
     def test_receive_ping(self):
@@ -259,13 +265,13 @@ class MessageTest(unittest.TestCase):
         # Stream automatically respond to ping with pong without any action
         # by application layer.
         request = _create_request(
-            '\x82\x05Hello', '\x84\x05World')
+            ('\x89\x85', 'Hello'), ('\x81\x85', 'World'))
         self.assertEqual('World', msgutil.receive_message(request))
-        self.assertEqual('\x83\x05Hello',
+        self.assertEqual('\x8a\x05Hello',
                          request.connection.written_data())
 
         request = _create_request(
-            '\x82\x05Hello', '\x84\x05World')
+            ('\x89\x85', 'Hello'), ('\x81\x85', 'World'))
         request.on_ping_handler = handler
         self.assertEqual('World', msgutil.receive_message(request))
         self.assertTrue(request.called)
@@ -275,42 +281,39 @@ class MessageTest(unittest.TestCase):
             request.called = True
 
         request = _create_request(
-            '\x83\x05Hello', '\x84\x05World')
+            ('\x8a\x85', 'Hello'), ('\x81\x85', 'World'))
         request.on_pong_handler = handler
         msgutil.send_ping(request, 'Hello')
-        self.assertEqual('\x82\x05Hello',
+        self.assertEqual('\x89\x05Hello',
                          request.connection.written_data())
         # Valid pong is received, but receive_message won't return for it.
         self.assertEqual('World', msgutil.receive_message(request))
-        self.assertEqual('\x82\x05Hello',
+        # Check that nothing was written after receive_message call.
+        self.assertEqual('\x89\x05Hello',
                          request.connection.written_data())
 
         self.assertTrue(request.called)
 
-    def test_receive_extra_or_bad_pong(self):
-        # No preceding ping.
+    def test_receive_unsolicited_pong(self):
+        # Unsolicited pong is allowed from HyBi 07.
         request = _create_request(
-            '\x83\x05Hello', '\x84\x05World')
-        self.assertRaises(msgutil.InvalidFrameException,
-                          msgutil.receive_message,
-                          request)
+            ('\x8a\x85', 'Hello'), ('\x81\x85', 'World'))
+        msgutil.receive_message(request)
 
         request = _create_request(
-            '\x83\x05Hello', '\x84\x05World')
+            ('\x8a\x85', 'Hello'), ('\x81\x85', 'World'))
         msgutil.send_ping(request, 'Jumbo')
         # Body mismatch.
-        self.assertRaises(msgutil.InvalidFrameException,
-                          msgutil.receive_message,
-                          request)
+        msgutil.receive_message(request)
 
     def test_ping_cannot_be_fragmented(self):
-        request = _create_request('\x02\x05Hello')
+        request = _create_request(('\x09\x85', 'Hello'))
         self.assertRaises(msgutil.InvalidFrameException,
                           msgutil.receive_message,
                           request)
 
     def test_ping_with_too_long_payload(self):
-        request = _create_request('\x82\x7e\x01\x00' + 'a' * 256)
+        request = _create_request(('\x89\xfe\x01\x00', 'a' * 256))
         self.assertRaises(msgutil.InvalidFrameException,
                           msgutil.receive_message,
                           request)
@@ -319,12 +322,12 @@ class MessageTest(unittest.TestCase):
 class MessageTestHixie75(unittest.TestCase):
     # Tests for StreamHixie75
     def test_send_message(self):
-        request = _create_request_hixie75('')
+        request = _create_request_hixie75()
         msgutil.send_message(request, 'Hello')
         self.assertEqual('\x00Hello\xff', request.connection.written_data())
 
     def test_send_message_unicode(self):
-        request = _create_request_hixie75('')
+        request = _create_request_hixie75()
         msgutil.send_message(request, u'\u65e5')
         # U+65e5 is encoded as e6,97,a5 in UTF-8
         self.assertEqual('\x00\xe6\x97\xa5\xff',
@@ -349,7 +352,7 @@ class MessageTestHixie75(unittest.TestCase):
 
     def test_receive_message_discard(self):
         request = _create_request_hixie75('\x80\x06IGNORE\x00Hello\xff'
-                                '\x01DISREGARD\xff\x00World!\xff')
+                                          '\x01DISREGARD\xff\x00World!\xff')
         self.assertEqual('Hello', msgutil.receive_message(request))
         self.assertEqual('World!', msgutil.receive_message(request))
 
@@ -361,7 +364,7 @@ class MessageReceiverTest(unittest.TestCase):
 
         self.assertEqual(None, receiver.receive_nowait())
 
-        request.connection.put_bytes(_mask_hybi06('\x84\x06Hello!'))
+        request.connection.put_bytes('\x81\x86' + _mask_hybi07('Hello!'))
         self.assertEqual('Hello!', receiver.receive())
 
     def test_onmessage(self):
@@ -372,7 +375,7 @@ class MessageReceiverTest(unittest.TestCase):
         request = _create_blocking_request()
         receiver = msgutil.MessageReceiver(request, onmessage_handler)
 
-        request.connection.put_bytes(_mask_hybi06('\x84\x06Hello!'))
+        request.connection.put_bytes('\x81\x86' + _mask_hybi07('Hello!'))
         self.assertEqual('Hello!', onmessage_queue.get())
 
 
@@ -404,7 +407,7 @@ class MessageSenderTest(unittest.TestCase):
         sender = msgutil.MessageSender(request)
 
         sender.send('World')
-        self.assertEqual('\x84\x05World', request.connection.written_data())
+        self.assertEqual('\x81\x05World', request.connection.written_data())
 
     def test_send_nowait(self):
         # Use a queue to check the bytes written by MessageSender.
@@ -420,8 +423,8 @@ class MessageSenderTest(unittest.TestCase):
 
         sender.send_nowait('Hello')
         sender.send_nowait('World')
-        self.assertEqual('\x84\x05Hello', send_queue.get())
-        self.assertEqual('\x84\x05World', send_queue.get())
+        self.assertEqual('\x81\x05Hello', send_queue.get())
+        self.assertEqual('\x81\x05World', send_queue.get())
 
 
 class MessageSenderHixie75Test(unittest.TestCase):

@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""WebSocket HyBi 06 opening handshake processor."""
+"""WebSocket HyBi 07 opening handshake processor."""
 
 
 # Note: request.connection.write is used in this module, even though mod_python
@@ -106,8 +106,8 @@ class Handshaker(object):
         self._logger.debug('Sec-WebSocket-Accept: %r (%s)' %
                            (accept, util.hexify(accept_binary)))
 
-        self._logger.debug('IETF HyBi 06 protocol')
-        self._request.ws_version = common.VERSION_HYBI06
+        self._logger.debug('IETF HyBi 07 protocol')
+        self._request.ws_version = common.VERSION_HYBI07
         stream_options = StreamOptions()
         stream_options.deflate = self._request.ws_deflate
         self._request.ws_stream = Stream(self._request, stream_options)
@@ -143,7 +143,7 @@ class Handshaker(object):
 
     def _check_version(self):
         unused_value = get_mandatory_header(
-            self._request, common.SEC_WEBSOCKET_VERSION_HEADER, '6')
+            self._request, common.SEC_WEBSOCKET_VERSION_HEADER, '7')
 
     def _set_protocol(self):
         self._request.ws_protocol = None

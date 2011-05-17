@@ -62,8 +62,8 @@ _DEFAULT_SECURE_PORT = 443
 
 # Opcodes introduced in IETF HyBi 01 for the new framing format
 _OPCODE_CONTINUATION = 0x0
-_OPCODE_CLOSE = 0x1
-_OPCODE_TEXT = 0x4
+_OPCODE_CLOSE = 0x8
+_OPCODE_TEXT = 0x1
 
 # Strings used for handshake
 _UPGRADE_HEADER = 'Upgrade: websocket\r\n'
@@ -126,7 +126,7 @@ def _receive_bytes(socket, length):
     return ''.join(bytes)
 
 
-# TODO(tyoshino): Now HyBi 06 diverts these methods. We should move to HTTP
+# TODO(tyoshino): Now HyBi 07 diverts these methods. We should move to HTTP
 # parser. For HyBi 00 and Hixie 75, pack these methods as some parser class.
 def _read_fields(socket):
     # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
@@ -221,8 +221,8 @@ class _TLSSocket(object):
         pass
 
 
-class WebSocketHybi06Handshake(object):
-    """WebSocket handshake processor for IETF HyBi 06."""
+class WebSocketHybi07Handshake(object):
+    """WebSocket handshake processor for IETF HyBi 07."""
 
     def __init__(self, options):
         self._logger = util.get_class_logger(self)
@@ -257,7 +257,7 @@ class WebSocketHybi06Handshake(object):
             'Sec-WebSocket-Key: %s (%s)' % (key, util.hexify(original_key)))
         fields.append('Sec-WebSocket-Key: %s\r\n' % key)
 
-        fields.append('Sec-WebSocket-Version: 6\r\n')
+        fields.append('Sec-WebSocket-Version: 7\r\n')
 
         # Setting up extensions.
         extensions = []
@@ -646,7 +646,7 @@ class WebSocketHixie75Handshake(object):
 
 
 class WebSocketStream(object):
-    """WebSocket frame processor for IETF HyBi 06."""
+    """WebSocket frame processor for IETF HyBi 07."""
 
     def __init__(self, socket, handshake):
         self._handshake = handshake
@@ -657,7 +657,7 @@ class WebSocketStream(object):
 
         self._fragmented = False
 
-    def _mask_hybi06(self, s):
+    def _mask_hybi07(self, s):
         # TODO(tyoshino): os.urandom does open/read/close for every call. If
         # performance matters, change this to some library call that generates
         # cryptographically secure pseudo random number sequence.
@@ -669,8 +669,8 @@ class WebSocketStream(object):
             count = (count + 1) % len(masking_nonce)
         return ''.join(result)
 
-    def send_frame_of_arbitrary_bytes(self, bytes):
-        self._socket.sendall(self._mask_hybi06(bytes))
+    def send_frame_of_arbitrary_bytes(self, header, body):
+        self._socket.sendall(header + self._mask_hybi07(body))
 
     def send_text(self, payload, end=True):
         encoded_payload = payload.encode('utf-8')
@@ -687,20 +687,22 @@ class WebSocketStream(object):
             self._fragmented = True
             fin = 0
 
+        mask_bit = 1 << 7
+
         header = chr(fin << 7 | opcode)
         payload_length = len(encoded_payload)
         if payload_length <= 125:
-            header += chr(payload_length)
+            header += chr(mask_bit | payload_length)
         elif payload_length < 1 << 16:
-            header += chr(126) + struct.pack('!H', payload_length)
+            header += chr(mask_bit | 126) + struct.pack('!H', payload_length)
         elif payload_length < 1 << 63:
-            header += chr(127) + struct.pack('!Q', payload_length)
+            header += chr(mask_bit | 127) + struct.pack('!Q', payload_length)
         else:
             raise Exception('Too long payload (%d byte)' % payload_length)
-        self._socket.sendall(self._mask_hybi06(header + encoded_payload))
+        self._socket.sendall(header + self._mask_hybi07(encoded_payload))
 
     def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
-                            rsv1=0, rsv2=0, rsv3=0, rsv4=0):
+                            rsv1=0, rsv2=0, rsv3=0):
         received = _receive_bytes(self._socket, 2)
 
         first_byte = ord(received[0])
@@ -721,16 +723,20 @@ class WebSocketStream(object):
                 (fin, actual_fin))
 
         second_byte = ord(received[1])
-        actual_rsv4 = second_byte >> 7 & 1
+        mask = second_byte >> 7 & 1
         payload_length = second_byte & 0x7f
 
-        actual_rsv = (actual_rsv1, actual_rsv2, actual_rsv3, actual_rsv4)
-        rsv = (rsv1, rsv2, rsv3, rsv4)
+        actual_rsv = (actual_rsv1, actual_rsv2, actual_rsv3)
+        rsv = (rsv1, rsv2, rsv3)
 
         if actual_rsv != rsv:
             raise Exception(
                 'Unexpected rsv: %r (expected) vs %r (actual)' %
                 (rsv, actual_rsv))
+
+        if mask != 0:
+            raise Exception(
+                'Mask bit must be 0 for frames coming from server')
 
         if payload_length == 127:
             extended_payload_length = _receive_bytes(self._socket, 8)
@@ -755,22 +761,25 @@ class WebSocketStream(object):
                 'Unexpected payload: %r (expected) vs %r (actual)' %
                 (payload, received))
 
-    def _build_close_frame(self, code, reason):
+    def _build_close_frame(self, code, reason, mask):
         frame = chr(1 << 7 | _OPCODE_CLOSE)
+
         if code is not None:
             body = struct.pack('!H', code) + reason.encode('utf-8')
-            frame += chr(len(body)) + body
         else:
-            # Just append RSV4 of 0 and payload length header of 0.
-            frame += '\x00'
+            body = ''
+        if mask:
+            frame += chr(1 << 7 | len(body)) + self._mask_hybi07(body)
+        else:
+            frame += chr(len(body)) + body
         return frame
 
     def send_close(self):
         self._socket.sendall(
-            self._mask_hybi06(self._build_close_frame(STATUS_NORMAL, '')))
+            self._build_close_frame(STATUS_NORMAL, '', True))
 
     def assert_receive_close(self, code, reason):
-        expected_frame = self._build_close_frame(code, reason)
+        expected_frame = self._build_close_frame(code, reason, False)
         actual_frame = _receive_bytes(self._socket, len(expected_frame))
         if actual_frame != expected_frame:
             raise Exception(
@@ -786,8 +795,8 @@ class WebSocketStreamHixie75(object):
     def __init__(self, socket, unused_handshake):
         self._socket = socket
 
-    def send_frame_of_arbitrary_bytes(self, bytes):
-        self._socket.sendall(bytes)
+    def send_frame_of_arbitrary_bytes(self, header, body):
+        self._socket.sendall(header + body)
 
     def send_text(self, payload, unused_end):
         encoded_payload = payload.encode('utf-8')
@@ -860,8 +869,8 @@ class Client(object):
 
         self._logger.info('Connection established')
 
-    def send_frame_of_arbitrary_bytes(self, bytes):
-        self._stream.send_frame_of_arbitrary_bytes(bytes)
+    def send_frame_of_arbitrary_bytes(self, header, body):
+        self._stream.send_frame_of_arbitrary_bytes(header, body)
 
     def send_message(self, message, end=True):
         self._stream.send_text(message, end)
@@ -908,7 +917,7 @@ class Client(object):
 
 def create_client(options):
     return Client(
-        options, WebSocketHybi06Handshake(options), WebSocketStream)
+        options, WebSocketHybi07Handshake(options), WebSocketStream)
 
 
 def create_client_hybi00(options):

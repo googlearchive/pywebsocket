@@ -29,7 +29,7 @@
 
 
 # Constants indicating WebSocket protocol version.
-VERSION_HYBI06 = 6
+VERSION_HYBI07 = 7
 VERSION_HYBI00 = 0
 VERSION_HIXIE75 = -1
 
@@ -43,13 +43,13 @@ WEB_SOCKET_SECURE_SCHEME = 'wss'
 
 # Frame opcodes defined in the spec.
 OPCODE_CONTINUATION = 0x0
-OPCODE_CLOSE = 0x1
-OPCODE_PING = 0x2
-OPCODE_PONG = 0x3
-OPCODE_TEXT = 0x4
-OPCODE_BINARY = 0x5
+OPCODE_TEXT = 0x1
+OPCODE_BINARY = 0x2
+OPCODE_CLOSE = 0x8
+OPCODE_PING = 0x9
+OPCODE_PONG = 0xa
 
-# UUIDs used by HyBi 06 opening handshake and frame masking.
+# UUIDs used by HyBi 07 opening handshake and frame masking.
 WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
 # Opening handshake header names and expected values.

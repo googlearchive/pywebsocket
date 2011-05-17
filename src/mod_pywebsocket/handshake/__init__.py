@@ -1,4 +1,4 @@
-# Copyright 2010, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -66,7 +66,7 @@ class Handshaker(object):
         self._request = request
         self._dispatcher = dispatcher
         self._strict = strict
-        self._hybi06Handshaker = hybi06.Handshaker(request, dispatcher)
+        self._hybi07Handshaker = hybi06.Handshaker(request, dispatcher)
         self._hybi00Handshaker = hybi00.Handshaker(request, dispatcher)
         self._hixie75Handshaker = None
         if allowDraft75:
@@ -80,7 +80,7 @@ class Handshaker(object):
             'Opening handshake headers: %s' % self._request.headers_in)
 
         handshakers = [
-            ('HyBi 06', self._hybi06Handshaker),
+            ('HyBi 07', self._hybi07Handshaker),
             ('HyBi 00', self._hybi00Handshaker),
             ('Hixie 75', self._hixie75Handshaker)]
         last_error = HandshakeError('No handshaker available')

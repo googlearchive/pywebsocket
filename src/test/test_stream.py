@@ -45,12 +45,12 @@ class StreamTest(unittest.TestCase):
     def test_create_header(self):
         # more, rsv1, ..., rsv4 are all true
         header = stream.create_header(common.OPCODE_TEXT, 1, 1, 1, 1, 1, 1)
-        self.assertEqual('\xf4\x81', header)
+        self.assertEqual('\xf1\x81', header)
 
         # Maximum payload size
         header = stream.create_header(
             common.OPCODE_TEXT, (1 << 63) - 1, 0, 0, 0, 0, 0)
-        self.assertEqual('\x04\x7f\x7f\xff\xff\xff\xff\xff\xff\xff', header)
+        self.assertEqual('\x01\x7f\x7f\xff\xff\xff\xff\xff\xff\xff', header)
 
         # Invalid opcode 0x10
         self.assertRaises(ValueError,

@@ -124,7 +124,7 @@ class EndToEndTest(unittest.TestCase):
         else:
             os.kill(pid, signal.SIGKILL)
 
-    def _run_hybi06_test(self, test_function):
+    def _run_hybi07_test(self, test_function):
         server = self._run_server()
         try:
             # TODO(tyoshino): add some logic to poll the server until it becomes
@@ -139,7 +139,7 @@ class EndToEndTest(unittest.TestCase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi06_deflate_test(self, test_function):
+    def _run_hybi07_deflate_test(self, test_function):
         server = self._run_server()
         try:
             time.sleep(0.2)
@@ -154,16 +154,16 @@ class EndToEndTest(unittest.TestCase):
             self._kill_process(server.pid)
 
     def test_echo(self):
-        self._run_hybi06_test(_echo_check_procedure)
+        self._run_hybi07_test(_echo_check_procedure)
 
     def test_echo_server_close(self):
-        self._run_hybi06_test(_echo_check_procedure_with_goodbye)
+        self._run_hybi07_test(_echo_check_procedure_with_goodbye)
 
     def test_echo_deflate(self):
-        self._run_hybi06_deflate_test(_echo_check_procedure)
+        self._run_hybi07_deflate_test(_echo_check_procedure)
 
     def test_echo_deflate_server_close(self):
-        self._run_hybi06_deflate_test(_echo_check_procedure_with_goodbye)
+        self._run_hybi07_deflate_test(_echo_check_procedure_with_goodbye)
 
     def test_close_on_protocol_error(self):
         def test_function(client):
@@ -171,22 +171,22 @@ class EndToEndTest(unittest.TestCase):
 
             # Intermediate frame without any preceding start of fragmentation
             # frame.
-            client.send_frame_of_arbitrary_bytes('\x00\x00')
+            client.send_frame_of_arbitrary_bytes('\x80\x80', '')
             client.assert_receive_close(
                 client_for_testing.STATUS_PROTOCOL_ERROR)
 
-        self._run_hybi06_test(test_function)
+        self._run_hybi07_test(test_function)
 
     def test_close_on_unsupported_frame(self):
         def test_function(client):
             client.connect()
 
             # Text frame with RSV3 bit raised.
-            client.send_frame_of_arbitrary_bytes('\x94\x00')
+            client.send_frame_of_arbitrary_bytes('\x91\x80', '')
             client.assert_receive_close(
                 client_for_testing.STATUS_UNSUPPORTED)
 
-        self._run_hybi06_test(test_function)
+        self._run_hybi07_test(test_function)
 
     def _run_hybi00_test(self, test_function):
         server = self._run_server()

@@ -58,7 +58,7 @@ def _create_good_request_def():
          'Connection': 'Upgrade',
          'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
          'Sec-WebSocket-Origin': 'http://example.com',
-         'Sec-WebSocket-Version': '6'})
+         'Sec-WebSocket-Version': '7'})
 
 
 def _create_request(request_def):
@@ -112,7 +112,7 @@ class AbortingDispatcher(object):
         pass
 
 
-class Hybi06HandshakerTest(unittest.TestCase):
+class Hybi07HandshakerTest(unittest.TestCase):
     def test_do_handshake(self):
         request = _create_request(_create_good_request_def())
         dispatcher = mock.MockDispatcher()
@@ -132,7 +132,7 @@ class Hybi06HandshakerTest(unittest.TestCase):
         self.assertEqual('http://example.com', request.ws_origin)
         self.assertEqual(None, request.ws_protocol)
         self.assertEqual(None, request.ws_extensions)
-        self.assertEqual(common.VERSION_HYBI06, request.ws_version)
+        self.assertEqual(common.VERSION_HYBI07, request.ws_version)
 
     def test_aborting_handshake(self):
         handshaker = Handshaker(

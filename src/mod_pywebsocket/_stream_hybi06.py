@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Stream class for IETF HyBi 06 WebSocket protocol.
+"""Stream class for IETF HyBi 07 WebSocket protocol.
 """
 
 
@@ -46,9 +46,7 @@ from mod_pywebsocket._stream_base import UnsupportedFrameException
 
 
 def is_control_opcode(opcode):
-    return (opcode == common.OPCODE_CLOSE or
-            opcode == common.OPCODE_PING or
-            opcode == common.OPCODE_PONG)
+    return (opcode >> 3) == 1
 
 
 _NOOP_MASKER = util.NoopMasker()
@@ -56,40 +54,35 @@ _NOOP_MASKER = util.NoopMasker()
 
 # Helper functions made public to be used for writing unittests for WebSocket
 # clients.
-def create_length_header(length, rsv4):
+def create_length_header(length, mask):
     """Creates a length header.
 
     Args:
         length: Frame length. Must be less than 2^63.
-        rsv4: RSV4 bit. Must be 0 or 1.
+        mask: Mask bit. Must be boolean.
 
     Raises:
         ValueError: when bad data is given.
     """
 
-    if rsv4 & ~1:
-        raise ValueError('rsv4 must be 0 or 1')
-
-    header = ''
+    if mask:
+        mask_bit = 1 << 7
+    else:
+        mask_bit = 0
 
     if length < 0:
         raise ValueError('length must be non negative integer')
     elif length <= 125:
-        second_byte = (rsv4 << 7) | length
-        header += chr(second_byte)
+        return chr(mask_bit | length)
     elif length < (1 << 16):
-        second_byte = (rsv4 << 7) | 126
-        header += chr(second_byte) + struct.pack('!H', length)
+        return chr(mask_bit | 126) + struct.pack('!H', length)
     elif length < (1 << 63):
-        second_byte = (rsv4 << 7) | 127
-        header += chr(second_byte) + struct.pack('!Q', length)
+        return chr(mask_bit | 127) + struct.pack('!Q', length)
     else:
         raise ValueError('Payload is too big for one frame')
 
-    return header
 
-
-def create_header(opcode, payload_length, fin, rsv1, rsv2, rsv3, rsv4):
+def create_header(opcode, payload_length, fin, rsv1, rsv2, rsv3, mask):
     """Creates a frame header.
 
     Raises:
@@ -102,7 +95,7 @@ def create_header(opcode, payload_length, fin, rsv1, rsv2, rsv3, rsv4):
     if payload_length < 0 or (1 << 63) <= payload_length:
         raise ValueError('payload_length out of range')
 
-    if (fin | rsv1 | rsv2 | rsv3 | rsv4) & ~1:
+    if (fin | rsv1 | rsv2 | rsv3) & ~1:
         raise ValueError('FIN bit and Reserved bit parameter must be 0 or 1')
 
     header = ''
@@ -111,28 +104,26 @@ def create_header(opcode, payload_length, fin, rsv1, rsv2, rsv3, rsv4):
                   | (rsv1 << 6) | (rsv2 << 5) | (rsv3 << 4)
                   | opcode)
     header += chr(first_byte)
-    header += create_length_header(payload_length, rsv4)
+    header += create_length_header(payload_length, mask)
 
     return header
 
 
 def _build_frame(header, body, mask):
-    frame = header + body
-
     if not mask:
-        return frame
+        return header + body
 
     masking_nonce = os.urandom(4)
     masker = util.RepeatedXorMasker(masking_nonce)
 
-    return masking_nonce + masker.mask(frame)
+    return header + masking_nonce + masker.mask(body)
 
 
 def create_text_frame(message, opcode=common.OPCODE_TEXT, fin=1, mask=False):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
-    header = create_header(opcode, len(encoded_message), fin, 0, 0, 0, 0)
+    header = create_header(opcode, len(encoded_message), fin, 0, 0, 0, mask)
     return _build_frame(header, encoded_message, mask)
 
 
@@ -163,17 +154,17 @@ class FragmentedTextFrameBuilder(object):
 
 
 def create_ping_frame(body, mask=False):
-    header = create_header(common.OPCODE_PING, len(body), 1, 0, 0, 0, 0)
+    header = create_header(common.OPCODE_PING, len(body), 1, 0, 0, 0, mask)
     return _build_frame(header, body, mask)
 
 
 def create_pong_frame(body, mask=False):
-    header = create_header(common.OPCODE_PONG, len(body), 1, 0, 0, 0, 0)
+    header = create_header(common.OPCODE_PONG, len(body), 1, 0, 0, 0, mask)
     return _build_frame(header, body, mask)
 
 
 def create_close_frame(body, mask=False):
-    header = create_header(common.OPCODE_CLOSE, len(body), 1, 0, 0, 0, 0)
+    header = create_header(common.OPCODE_CLOSE, len(body), 1, 0, 0, 0, mask)
     return _build_frame(header, body, mask)
 
 
@@ -226,13 +217,7 @@ class Stream(StreamBase):
             InvalidFrameException: when the frame contains invalid data.
         """
 
-        if self._options.unmask_receive:
-            masking_nonce = self.receive_bytes(4)
-            masker = util.RepeatedXorMasker(masking_nonce)
-        else:
-            masker = _NOOP_MASKER
-
-        received = masker.mask(self.receive_bytes(2))
+        received = self.receive_bytes(2)
 
         first_byte = ord(received[0])
         fin = (first_byte >> 7) & 1
@@ -242,24 +227,35 @@ class Stream(StreamBase):
         opcode = first_byte & 0xf
 
         second_byte = ord(received[1])
-        rsv4 = (second_byte >> 7) & 1
+        mask = (second_byte >> 7) & 1
         payload_length = second_byte & 0x7f
 
+        if (mask == 1) != self._options.unmask_receive:
+            raise InvalidFrameException(
+                'Mask bit on the received frame did\'nt match masking '
+                'configuration for received frames')
+
         if payload_length == 127:
-            extended_payload_length = masker.mask(self.receive_bytes(8))
+            extended_payload_length = self.receive_bytes(8)
             payload_length = struct.unpack(
                 '!Q', extended_payload_length)[0]
             if payload_length > 0x7FFFFFFFFFFFFFFF:
                 raise InvalidFrameException(
                     'Extended payload length >= 2^63')
         elif payload_length == 126:
-            extended_payload_length = masker.mask(self.receive_bytes(2))
+            extended_payload_length = self.receive_bytes(2)
             payload_length = struct.unpack(
                 '!H', extended_payload_length)[0]
 
+        if mask == 1:
+            masking_nonce = self.receive_bytes(4)
+            masker = util.RepeatedXorMasker(masking_nonce)
+        else:
+            masker = _NOOP_MASKER
+
         bytes = masker.mask(self.receive_bytes(payload_length))
 
-        return opcode, bytes, fin, rsv1, rsv2, rsv3, rsv4
+        return opcode, bytes, fin, rsv1, rsv2, rsv3
 
     def send_message(self, message, end=True):
         """Send message.
@@ -304,11 +300,11 @@ class Stream(StreamBase):
             # mp_conn.read will block if no bytes are available.
             # Timeout is controlled by TimeOut directive of Apache.
 
-            opcode, bytes, fin, rsv1, rsv2, rsv3, rsv4 = self._receive_frame()
-            if rsv1 or rsv2 or rsv3 or rsv4:
+            opcode, bytes, fin, rsv1, rsv2, rsv3 = self._receive_frame()
+            if rsv1 or rsv2 or rsv3:
                 raise UnsupportedFrameException(
-                    'Unsupported flag is set (rsv = %d%d%d%d)' %
-                    (rsv1, rsv2, rsv3, rsv4))
+                    'Unsupported flag is set (rsv = %d%d%d)' %
+                    (rsv1, rsv2, rsv3))
 
             if opcode == common.OPCODE_CONTINUATION:
                 if not self._received_fragments:
@@ -410,14 +406,26 @@ class Stream(StreamBase):
             elif self._original_opcode == common.OPCODE_PONG:
                 # TODO(tyoshino): Add ping timeout handling.
 
-                if len(self._ping_queue) == 0:
-                    raise InvalidFrameException(
-                        'No ping waiting for pong on our queue')
-                expected_body = self._ping_queue.popleft()
-                if expected_body != message:
-                    raise InvalidFrameException(
-                        'Received pong contained a body different from our '
-                        'ping\'s one')
+                inflight_pings = deque()
+
+                while True:
+                    try:
+                        expected_body = self._ping_queue.popleft()
+                        if expected_body == message:
+                            # inflight_pings contains pings ignored by the
+                            # other peer. Just forget them.
+                            self._logger.debug(
+                                'Ping %r is acked (%d pings were ignored)' %
+                                (expected_body, len(inflight_pings)))
+                            break
+                        else:
+                            inflight_pings.append(expected_body)
+                    except IndexError, e:
+                        # The received pong was unsolicited pong. Keep the
+                        # ping queue as is.
+                        self._ping_queue = inflight_pings
+                        self._logger.debug('Received a unsolicited pong')
+                        break
 
                 try:
                     handler = self._request.on_pong_handler
@@ -430,7 +438,7 @@ class Stream(StreamBase):
                 continue
             else:
                 raise UnsupportedFrameException(
-                    'opcode %d is not supported' % self._original_opcode)
+                    'Opcode %d is not supported' % self._original_opcode)
 
     def _send_closing_handshake(self, code, reason):
         if code >= (1 << 16) or code < 0:

@@ -112,6 +112,13 @@ class AbortingDispatcher(object):
         pass
 
 
+_EXPECTED_RESPONSE = (
+    'HTTP/1.1 101 Switching Protocols\r\n'
+    'Upgrade: websocket\r\n'
+    'Connection: Upgrade\r\n'
+    'Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n')
+
+
 class Hybi07HandshakerTest(unittest.TestCase):
     def test_do_handshake(self):
         request = _create_request(_create_good_request_def())
@@ -121,18 +128,32 @@ class Hybi07HandshakerTest(unittest.TestCase):
 
         self.assertTrue(dispatcher.do_extra_handshake_called)
 
-        EXPECTED_RESPONSE = (
-            'HTTP/1.1 101 Switching Protocols\r\n'
-            'Upgrade: websocket\r\n'
-            'Connection: Upgrade\r\n'
-            'Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n')
-
-        self.assertEqual(EXPECTED_RESPONSE, request.connection.written_data())
+        self.assertEqual(
+            _EXPECTED_RESPONSE, request.connection.written_data())
         self.assertEqual('/demo', request.ws_resource)
         self.assertEqual('http://example.com', request.ws_origin)
         self.assertEqual(None, request.ws_protocol)
         self.assertEqual(None, request.ws_extensions)
         self.assertEqual(common.VERSION_HYBI07, request.ws_version)
+
+    def test_do_handshake_with_capitalized_value(self):
+        request_def = _create_good_request_def()
+        request_def.headers['upgrade'] = 'WEBSOCKET'
+
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(
+            _EXPECTED_RESPONSE, request.connection.written_data())
+
+        request_def = _create_good_request_def()
+        request_def.headers['Connection'] = 'UPGRADE'
+
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(
+            _EXPECTED_RESPONSE, request.connection.written_data())
 
     def test_aborting_handshake(self):
         handshaker = Handshaker(

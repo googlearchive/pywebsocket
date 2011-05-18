@@ -59,6 +59,22 @@ _GOOD_REQUEST = (
     '^n:ds[4U'
 )
 
+_GOOD_REQUEST_CAPITALIZED_HEADER_VALUES = (
+    80,
+    'GET',
+    '/demo',
+    {
+        'Host':'example.com',
+        'Connection':'UPGRADE',
+        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
+        'Sec-WebSocket-Protocol':'sample',
+        'Upgrade':'WEBSOCKET',
+        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
+        'Origin':'http://example.com',
+    },
+    '^n:ds[4U'
+)
+
 _GOOD_RESPONSE_DEFAULT_PORT = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
     'Upgrade: WebSocket\r\n'
@@ -373,6 +389,14 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual('http://example.com', request.ws_origin)
         self.assertEqual('ws://example.com/demo', request.ws_location)
         self.assertEqual('sample', request.ws_protocol)
+
+    def test_good_request_capitalized_header_values(self):
+        request = _create_request(_GOOD_REQUEST_CAPITALIZED_HEADER_VALUES)
+        handshaker = handshake.Handshaker(request,
+                                          mock.MockDispatcher())
+        handshaker.do_handshake()
+        self.assertEqual(_GOOD_RESPONSE_DEFAULT_PORT,
+                         request.connection.written_data())
 
     def test_good_request_secure_default_port(self):
         request = _create_request(_GOOD_REQUEST)

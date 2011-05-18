@@ -49,6 +49,7 @@ from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import check_header_lines
 from mod_pywebsocket.handshake._base import get_mandatory_header
+from mod_pywebsocket.handshake._base import validate_mandatory_header
 
 
 _MANDATORY_HEADERS = [
@@ -142,7 +143,7 @@ class Handshaker(object):
         self._request.ws_origin = origin
 
     def _check_version(self):
-        unused_value = get_mandatory_header(
+        unused_value = validate_mandatory_header(
             self._request, common.SEC_WEBSOCKET_VERSION_HEADER, '7')
 
     def _set_protocol(self):

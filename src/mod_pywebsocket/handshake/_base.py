@@ -100,15 +100,20 @@ def build_location(request):
     return ''.join(location_parts)
 
 
-def get_mandatory_header(request, key, expected_value=None):
+def get_mandatory_header(request, key):
     value = request.headers_in.get(key)
     if value is None:
         raise HandshakeError('Header %s is not defined' % key)
-    if expected_value is not None and expected_value != value:
-        raise HandshakeError(
-            'Illegal value for header %s: %s (expected: %s)' %
-            (key, value, expected_value))
     return value
+
+
+def validate_mandatory_header(request, key, expected_value):
+    value = get_mandatory_header(request, key)
+
+    if value.lower() != expected_value.lower():
+        raise HandshakeError(
+            'Expected %r for header %s but found %r (case-insensitive)' %
+            (expected_value, key, value))
 
 
 def check_header_lines(request, mandatory_headers):
@@ -120,7 +125,7 @@ def check_header_lines(request, mandatory_headers):
     # values, are as follows.
     #  |Upgrade| and |Connection|
     for key, expected_value in mandatory_headers:
-        get_mandatory_header(request, key, expected_value)
+        validate_mandatory_header(request, key, expected_value)
 
 
 # vi:sts=4 sw=4 et

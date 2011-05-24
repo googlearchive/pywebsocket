@@ -215,6 +215,10 @@ class DeflateRequest(object):
 # Python. See also RFC1950 (ZLIB 3.3).
 
 
+# TODO(tyoshino): Refactor DeflateSocket and DeflateConnection to share some
+# duplicated code between them.
+
+
 class DeflateSocket(object):
     """A wrapper class for socket object to intercept send and recv to perform
     deflate compression and decompression transparently.
@@ -231,10 +235,19 @@ class DeflateSocket(object):
 
         self._compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
+        self._reset_decompress()
         self._unconsumed = ''
 
+    def _reset_decompress(self):
+        self._logger.debug('Reset decompress object')
+        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
+
     def recv(self, size):
+        """Receives data from the socket specified on the construction up
+        to the specified size. Once any data is available, returns it even if
+        it's smaller than the specified size.
+        """
+
         # TODO(tyoshino): Allow call with size=0. It should block until any
         # decompressed data is available.
         if size <= 0:
@@ -243,12 +256,28 @@ class DeflateSocket(object):
         while True:
             data += self._decompress.decompress(
                 self._unconsumed, size - len(data))
-            self._unconsumed = self._decompress.unconsumed_tail
             if self._decompress.unused_data:
-                raise Exception('Non-decompressible data found: %r' %
-                                self._decompress.unused_data)
-            if len(data) != 0:
-                break
+                # Encountered a last block (i.e. a block with BFINAL = 1) and
+                # found a new stream (unused_data). We cannot use the same
+                # zlib.Decompress object for the new stream. Create a new
+                # Decompress object to decompress the new one.
+                self._unconsumed = self._decompress.unused_data
+                self._reset_decompress()
+                if len(data) == size:
+                    # data is filled. Don't call decompress again.
+                    break
+                else:
+                    # Re-invoke Decompress.decompress to try to decompress all
+                    # available bytes before invoking socket.recv which blocks
+                    # until any new byte is received.
+                    continue
+            else:
+                # Here, since unused_data is empty, even if unconsumed_tail is
+                # not empty, bytes of requested length are already in data. We
+                # don't have to "continue" here.
+                self._unconsumed = self._decompress.unconsumed_tail
+                if len(data) != 0:
+                    break
 
             read_data = self._socket.recv(DeflateSocket._RECV_SIZE)
             self._logger.debug('Received compressed: %r' % read_data)
@@ -286,13 +315,21 @@ class DeflateConnection(object):
 
         self._compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
+        self._reset_decompress()
         self._unconsumed = ''
+
+    def _reset_decompress(self):
+        self._logger.debug('Reset decompress object')
+        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
 
     def put_bytes(self, bytes):
         self.write(bytes)
 
     def read(self, size=-1):
+        """Reads at most size bytes. Blocks until there's at least one byte
+        available.
+        """
+
         # TODO(tyoshino): Allow call with size=0.
         if size == 0 or size < -1:
             raise Exception('size must be -1 or positive')
@@ -301,16 +338,39 @@ class DeflateConnection(object):
         while True:
             if size < 0:
                 data += self._decompress.decompress(self._unconsumed)
+                # See Python bug http://bugs.python.org/issue12050 to
+                # understand why the same code cannot be used for updating
+                # self._unconsumed for here and else block.
+                self._unconsumed = ''
             else:
                 data += self._decompress.decompress(
                     self._unconsumed, size - len(data))
-            self._unconsumed = self._decompress.unconsumed_tail
+                self._unconsumed = self._decompress.unconsumed_tail
             if self._decompress.unused_data:
-                raise Exception('Non-decompressible data found: %r' %
-                                self._decompress.unused_data)
+                # Encountered a last block (i.e. a block with BFINAL = 1) and
+                # found a new stream (unused_data). We cannot use the same
+                # zlib.Decompress object for the new stream. Create a new
+                # Decompress object to decompress the new one.
+                #
+                # It's fine to ignore unconsumed_tail if unused_data is not
+                # empty.
+                self._unconsumed = self._decompress.unused_data
+                self._reset_decompress()
+                if size >= 0 and len(data) == size:
+                    # data is filled. Don't call decompress again.
+                    break
+                else:
+                    # Re-invoke Decompress.decompress to try to decompress all
+                    # available bytes before invoking read which blocks until
+                    # any new byte is available.
+                    continue
+            else:
+                # Here, since unused_data is empty, even if unconsumed_tail is
+                # not empty, bytes of requested length are already in data. We
+                # don't have to "continue" here.
 
-            if size >= 0 and len(data) != 0:
-                break
+                if size >= 0 and len(data) != 0:
+                    break
 
             # TODO(tyoshino): Make this read efficient by some workaround.
             #

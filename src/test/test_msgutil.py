@@ -37,6 +37,7 @@ import array
 import Queue
 import struct
 import unittest
+import zlib
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
@@ -65,6 +66,15 @@ def _mask_hybi07(frame):
     return _MASKING_NONCE + result.tostring()
 
 
+def _create_request_from_rawdata(read_data, deflate):
+    req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
+    req.ws_version = common.VERSION_HYBI07
+    stream_options = StreamOptions()
+    stream_options.deflate = deflate
+    req.ws_stream = Stream(req, stream_options)
+    return req
+
+
 def _create_request(*frames):
     """Creates MockRequest using data given as frames.
 
@@ -76,11 +86,7 @@ def _create_request(*frames):
     for (header, body) in frames:
         read_data.append(header + _mask_hybi07(body))
 
-    req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
-    req.ws_version = common.VERSION_HYBI07
-    stream_options = StreamOptions()
-    req.ws_stream = Stream(req, stream_options)
-    return req
+    return _create_request_from_rawdata(read_data, False)
 
 
 def _create_blocking_request():
@@ -166,6 +172,16 @@ class MessageTest(unittest.TestCase):
         msgutil.send_message(request, '', True)
         self.assertEqual('\x01\x0cHello World!\x80\x00',
                          request.connection.written_data())
+
+    def test_send_deflated_message(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        request = _create_request_from_rawdata('', True)
+        msgutil.send_message(request, 'Hello')
+        expected = compress.compress('\x81\x05Hello')
+        expected += compress.flush(zlib.Z_SYNC_FLUSH)
+        self.assertEqual(expected, request.connection.written_data())
 
     def test_receive_message(self):
         request = _create_request(
@@ -261,6 +277,25 @@ class MessageTest(unittest.TestCase):
         self.assertEqual(None, msgutil.receive_message(request))
         self.assertEqual(1000, request.ws_close_code)
         self.assertEqual('Good bye', request.ws_close_reason)
+
+    def test_receive_deflated_message(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data = compress.compress('\x81\x85' + _mask_hybi07('Hello'))
+        data += compress.flush(zlib.Z_SYNC_FLUSH)
+        data += compress.compress('\x81\x89' + _mask_hybi07('WebSocket'))
+        data += compress.flush(zlib.Z_FINISH)
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data += compress.compress('\x81\x85' + _mask_hybi07('World'))
+        data += compress.flush(zlib.Z_SYNC_FLUSH)
+        request = _create_request_from_rawdata(data, True)
+        self.assertEqual('Hello', msgutil.receive_message(request))
+        self.assertEqual('WebSocket', msgutil.receive_message(request))
+        self.assertEqual('World', msgutil.receive_message(request))
 
     def test_send_ping(self):
         request = _create_request()

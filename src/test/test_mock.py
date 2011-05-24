@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -43,6 +43,8 @@ from test import mock
 
 
 class MockConnTest(unittest.TestCase):
+    """A unittest for MockConn class."""
+
     def setUp(self):
         self._conn = mock.MockConn('ABC\r\nDEFG\r\n\r\nHIJK')
 
@@ -72,18 +74,31 @@ class MockConnTest(unittest.TestCase):
 
 
 class MockBlockingConnTest(unittest.TestCase):
+    """A unittest for MockBlockingConn class."""
+
     def test_read(self):
+        """Tests that data put to MockBlockingConn by put_bytes method can be
+        read from it.
+        """
+
         class LineReader(threading.Thread):
+            """A test class that launches a thread, calls readline on the
+            specified conn repeatedly and puts the read data to the specified
+            queue.
+            """
+
             def __init__(self, conn, queue):
                 threading.Thread.__init__(self)
                 self._queue = queue
                 self._conn = conn
                 self.setDaemon(True)
                 self.start()
+
             def run(self):
                 while True:
                     data = self._conn.readline()
                     self._queue.put(data)
+
         conn = mock.MockBlockingConn()
         queue = Queue.Queue()
         reader = LineReader(conn, queue)
@@ -94,8 +109,10 @@ class MockBlockingConnTest(unittest.TestCase):
 
 
 class MockTableTest(unittest.TestCase):
+    """A unittest for MockTable class."""
+
     def test_create_from_dict(self):
-        table = mock.MockTable({'Key':'Value'})
+        table = mock.MockTable({'Key': 'Value'})
         self.assertEqual('Value', table.get('KEY'))
         self.assertEqual('Value', table['key'])
 

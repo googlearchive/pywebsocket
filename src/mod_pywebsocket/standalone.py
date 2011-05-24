@@ -259,7 +259,8 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                     # In this case, handshake has been successful, so just log
                     # the exception and return False.
                     logging.info('mod_pywebsocket: %s' % e)
-                    logging.info('mod_pywebsocket: %s' % util.get_stack_trace())
+                    logging.info(
+                        'mod_pywebsocket: %s' % util.get_stack_trace())
                 return False
             except handshake.HandshakeError, e:
                 # Handshake for ws(s) failed. Assume http(s).
@@ -431,8 +432,10 @@ def _main():
             if 'CYGWIN_PATH' in os.environ:
                 cygwin_path = os.environ['CYGWIN_PATH']
             util.wrap_popen3_for_win(cygwin_path)
+
             def __check_script(scriptpath):
                 return util.get_script_interp(scriptpath, cygwin_path)
+
             CGIHTTPServer.executable = __check_script
 
     if options.use_tls:

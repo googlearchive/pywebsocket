@@ -159,10 +159,11 @@ def _get_mandatory_header(fields, name):
 
 def _validate_mandatory_header(fields, name,
                                expected_value, case_sensitive=False):
-    """Gets and validates the value of the header specified by name from fields.
+    """Gets and validates the value of the header specified by name from
+    fields.
 
-    If expected_value is specified, compares expected value and actual value and
-    raises an ClientHandshakeError on failure. You can specify case
+    If expected_value is specified, compares expected value and actual value
+    and raises an ClientHandshakeError on failure. You can specify case
     sensitiveness in this comparison by case_sensitive parameter. This function
     expects that there's only one header with the specified name in fields.
     Otherwise, raises an ClientHandshakeError.
@@ -195,6 +196,10 @@ class _TLSSocket(object):
 
 
 class ClientHandshakeBase(object):
+    """A base class for WebSocket opening handshake processors for each
+    protocol version.
+    """
+
     def _read_fields(self):
         # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
         fields = {}
@@ -445,9 +450,9 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
 
         self._logger.info('Sent handshake')
 
-        # 4.1 28. Read bytes from the server until either the connection closes,
-        # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
-        # bytes.
+        # 4.1 28. Read bytes from the server until either the connection
+        # closes, or a 0x0A byte is read. let /field/ be these bytes, including
+        # the 0x0A bytes.
         field = ''
         while True:
             ch = _receive_bytes(self._socket, 1)
@@ -623,7 +628,8 @@ class ClientHandshakeProcessorHixie75(object):
 
         self._logger.info('Sent handshake')
 
-        for expected_char in ClientHandshakeProcessorHixie75._EXPECTED_RESPONSE:
+        for expected_char in (
+            ClientHandshakeProcessorHixie75._EXPECTED_RESPONSE):
             received = _receive_bytes(self._socket, 1)
             if expected_char != received:
                 raise ClientHandshakeError('Handshake failure')
@@ -648,6 +654,10 @@ class ClientConnection(object):
 
 
 class ClientRequest(object):
+    """A wrapper class just to make it able to pass a socket object to
+    functions that expect a mp_request object.
+    """
+
     def __init__(self, socket):
         self.connection = ClientConnection(socket)
 

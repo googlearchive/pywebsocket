@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -47,7 +47,10 @@ _TEST_HANDLERS_DIR = os.path.join(
 
 _TEST_HANDLERS_SUB_DIR = os.path.join(_TEST_HANDLERS_DIR, 'sub')
 
+
 class DispatcherTest(unittest.TestCase):
+    """A unittest for dispatch module."""
+
     def test_normalize_path(self):
         self.assertEqual(os.path.abspath('/a/b').replace('\\', '/'),
                          dispatch._normalize_path('/a/b'))
@@ -81,7 +84,8 @@ class DispatcherTest(unittest.TestCase):
         self.assertEqual('/h', converter(r'/a/b/h_wsh.py'))
 
     def test_enumerate_handler_file_paths(self):
-        paths = list(dispatch._enumerate_handler_file_paths(_TEST_HANDLERS_DIR))
+        paths = list(
+            dispatch._enumerate_handler_file_paths(_TEST_HANDLERS_DIR))
         paths.sort()
         self.assertEqual(7, len(paths))
         expected_paths = [
@@ -206,30 +210,28 @@ class DispatcherTest(unittest.TestCase):
     def test_scan_dir(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
         self.assertEqual(3, len(disp._handler_suite_map))
-        self.failUnless(disp._handler_suite_map.has_key('/origin_check'))
+        self.failUnless('/origin_check' in disp._handler_suite_map)
         self.failUnless(
-            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
-        self.failUnless(disp._handler_suite_map.has_key('/sub/plain'))
+            '/sub/exception_in_transfer' in disp._handler_suite_map)
+        self.failUnless('/sub/plain' in disp._handler_suite_map)
 
     def test_scan_sub_dir(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, _TEST_HANDLERS_SUB_DIR)
         self.assertEqual(2, len(disp._handler_suite_map))
-        self.failIf(disp._handler_suite_map.has_key('/origin_check'))
+        self.failIf('/origin_check' in disp._handler_suite_map)
         self.failUnless(
-            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
-        self.failUnless(disp._handler_suite_map.has_key('/sub/plain'))
+            '/sub/exception_in_transfer' in disp._handler_suite_map)
+        self.failUnless('/sub/plain' in disp._handler_suite_map)
 
     def test_scan_sub_dir_as_root(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_SUB_DIR,
                                    _TEST_HANDLERS_SUB_DIR)
         self.assertEqual(2, len(disp._handler_suite_map))
-        self.failIf(disp._handler_suite_map.has_key('/origin_check'))
-        self.failIf(
-            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
-        self.failIf(disp._handler_suite_map.has_key('/sub/plain'))
-        self.failUnless(
-            disp._handler_suite_map.has_key('/exception_in_transfer'))
-        self.failUnless(disp._handler_suite_map.has_key('/plain'))
+        self.failIf('/origin_check' in disp._handler_suite_map)
+        self.failIf('/sub/exception_in_transfer' in disp._handler_suite_map)
+        self.failIf('/sub/plain' in disp._handler_suite_map)
+        self.failUnless('/exception_in_transfer' in disp._handler_suite_map)
+        self.failUnless('/plain' in disp._handler_suite_map)
 
     def test_scan_dir_must_under_root(self):
         dispatch.Dispatcher('a/b', 'a/b/c')  # OK
@@ -241,11 +243,11 @@ class DispatcherTest(unittest.TestCase):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
         disp.add_resource_path_alias('/', '/origin_check')
         self.assertEqual(4, len(disp._handler_suite_map))
-        self.failUnless(disp._handler_suite_map.has_key('/origin_check'))
+        self.failUnless('/origin_check' in disp._handler_suite_map)
         self.failUnless(
-            disp._handler_suite_map.has_key('/sub/exception_in_transfer'))
-        self.failUnless(disp._handler_suite_map.has_key('/sub/plain'))
-        self.failUnless(disp._handler_suite_map.has_key('/'))
+            '/sub/exception_in_transfer' in disp._handler_suite_map)
+        self.failUnless('/sub/plain' in disp._handler_suite_map)
+        self.failUnless('/' in disp._handler_suite_map)
         self.assertRaises(dispatch.DispatchError,
                           disp.add_resource_path_alias, '/alias', '/not-exist')
 

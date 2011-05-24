@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -42,6 +42,8 @@ from mod_pywebsocket import memorizingfile
 
 
 class UtilTest(unittest.TestCase):
+    """A unittest for memorizingfile module."""
+
     def check(self, memorizing_file, num_read, expected_list):
         for unused in range(num_read):
             memorizing_file.readline()

@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -118,6 +118,7 @@ def get_script_interp(script_path, cygwin_path=None):
         return __translate_interp(m.group(1), cygwin_path)
     return None
 
+
 def wrap_popen3_for_win(cygwin_path):
     """Wrap popen3 to support #!-script on Windows.
 
@@ -125,13 +126,16 @@ def wrap_popen3_for_win(cygwin_path):
       cygwin_path:  path for cygwin binary if command path is needed to be
                     translated.  None if no translation required.
     """
+
     __orig_popen3 = os.popen3
+
     def __wrap_popen3(cmd, mode='t', bufsize=-1):
         cmdline = cmd.split(' ')
         interp = get_script_interp(cmdline[0], cygwin_path)
         if interp:
             cmd = interp + ' ' + cmd
         return __orig_popen3(cmd, mode, bufsize)
+
     os.popen3 = __wrap_popen3
 
 
@@ -145,6 +149,10 @@ def get_class_logger(o):
 
 
 class NoopMasker(object):
+    """A masking object that has the same interface as RepeatedXorMasker but
+    just returns the string passed in without making any change.
+    """
+
     def __init__(self):
         pass
 
@@ -205,6 +213,8 @@ class DeflateRequest(object):
 #
 # See zconf.h, deflate.cc, inflate.cc of zlib library, and zlibmodule.c of
 # Python. See also RFC1950 (ZLIB 3.3).
+
+
 class DeflateSocket(object):
     """A wrapper class for socket object to intercept send and recv to perform
     deflate compression and decompression transparently.
@@ -228,7 +238,7 @@ class DeflateSocket(object):
         # TODO(tyoshino): Allow call with size=0. It should block until any
         # decompressed data is available.
         if size <= 0:
-           raise Exception('Non-positive size passed')
+            raise Exception('Non-positive size passed')
         data = ''
         while True:
             data += self._decompress.decompress(
@@ -285,7 +295,7 @@ class DeflateConnection(object):
     def read(self, size=-1):
         # TODO(tyoshino): Allow call with size=0.
         if size == 0 or size < -1:
-           raise Exception('size must be -1 or positive')
+            raise Exception('size must be -1 or positive')
 
         data = ''
         while True:

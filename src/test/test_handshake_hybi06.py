@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -44,6 +44,10 @@ import mock
 
 
 class RequestDefinition(object):
+    """A class for holding data for constructing opening handshake strings for
+    testing the opening handshake processor.
+    """
+
     def __init__(self, method, uri, headers):
         self.method = method
         self.uri = uri
@@ -120,6 +124,10 @@ _EXPECTED_RESPONSE = (
 
 
 class Hybi07HandshakerTest(unittest.TestCase):
+    """A unittest for draft-ietf-hybi-thewebsocketprotocol-06 handshake
+    processor.
+    """
+
     def test_do_handshake(self):
         request = _create_request(_create_good_request_def())
         dispatcher = mock.MockDispatcher()

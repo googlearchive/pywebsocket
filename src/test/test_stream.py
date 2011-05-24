@@ -42,6 +42,8 @@ from mod_pywebsocket import stream
 
 
 class StreamTest(unittest.TestCase):
+    """A unittest for stream module."""
+
     def test_create_header(self):
         # more, rsv1, ..., rsv4 are all true
         header = stream.create_header(common.OPCODE_TEXT, 1, 1, 1, 1, 1, 1)

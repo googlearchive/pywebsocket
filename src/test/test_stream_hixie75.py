@@ -42,6 +42,8 @@ from test.test_msgutil import _create_request_hixie75
 
 
 class StreamHixie75Test(unittest.TestCase):
+    """A unittest for StreamHixie75 class."""
+
     def test_payload_length(self):
         for length, bytes in ((0, '\x00'), (0x7f, '\x7f'), (0x80, '\x81\x00'),
                               (0x1234, '\x80\xa4\x34')):

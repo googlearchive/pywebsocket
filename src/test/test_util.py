@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -46,6 +46,8 @@ _TEST_DATA_DIR = os.path.join(os.path.split(__file__)[0], 'testdata')
 
 
 class UtilTest(unittest.TestCase):
+    """A unittest for util module."""
+
     def test_get_stack_trace(self):
         self.assertEqual('None\n', util.get_stack_trace())
         try:
@@ -79,6 +81,8 @@ class UtilTest(unittest.TestCase):
 
 
 class RepeatedXorMaskerTest(unittest.TestCase):
+    """A unittest for RepeatedXorMasker class."""
+
     def test_mask(self):
         # Sample input e6,97,a5 is U+65e5 in UTF-8
         masker = util.RepeatedXorMasker('\xff\xff\xff')

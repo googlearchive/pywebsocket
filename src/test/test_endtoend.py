@@ -80,6 +80,12 @@ def _echo_check_procedure_with_goodbye(client):
 
 
 class EndToEndTest(unittest.TestCase):
+    """An end-to-end test that launches pywebsocket standalone server as a
+    separate process, connects to it using the client_for_testing module, and
+    checks if the server behaves correctly by exchanging opening handshake and
+    frames over a TCP connection.
+    """
+
     def setUp(self):
         self.top_dir = os.path.join(os.path.split(__file__)[0], '..')
         os.putenv('PYTHONPATH', os.path.pathsep.join(sys.path))
@@ -127,8 +133,8 @@ class EndToEndTest(unittest.TestCase):
     def _run_hybi07_test(self, test_function):
         server = self._run_server()
         try:
-            # TODO(tyoshino): add some logic to poll the server until it becomes
-            # ready
+            # TODO(tyoshino): add some logic to poll the server until it
+            # becomes ready
             time.sleep(0.2)
 
             client = client_for_testing.create_client(self._options)
@@ -166,6 +172,10 @@ class EndToEndTest(unittest.TestCase):
         self._run_hybi07_deflate_test(_echo_check_procedure_with_goodbye)
 
     def test_close_on_protocol_error(self):
+        """Tests that the server sends a close frame with protocol error status
+        code when the client sends data with some protocol error.
+        """
+
         def test_function(client):
             client.connect()
 
@@ -178,6 +188,11 @@ class EndToEndTest(unittest.TestCase):
         self._run_hybi07_test(test_function)
 
     def test_close_on_unsupported_frame(self):
+        """Tests that the server sends a close frame with unsupported operation
+        status code when the client sends data asking some operation that is
+        not supported by the server.
+        """
+
         def test_function(client):
             client.connect()
 
@@ -221,6 +236,10 @@ class EndToEndTest(unittest.TestCase):
             self._kill_process(server.pid)
 
     def test_echo_hixie75(self):
+        """Tests that the server can talk draft-hixie-thewebsocketprotocol-75
+        protocol.
+        """
+
         def test_function(client):
             client.connect()
 
@@ -230,6 +249,12 @@ class EndToEndTest(unittest.TestCase):
         self._run_hixie75_test(test_function)
 
     def test_echo_server_close_hixie75(self):
+        """Tests that the server can talk draft-hixie-thewebsocketprotocol-75
+        protocol. At the end of message exchanging, the client sends a keyword
+        message that requests the server to close the connection, and then
+        checks if the connection is really closed.
+        """
+
         def test_function(client):
             client.connect()
 

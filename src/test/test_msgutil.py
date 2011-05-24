@@ -65,8 +65,13 @@ def _mask_hybi07(frame):
     return _MASKING_NONCE + result.tostring()
 
 
-# We'll get data given as read_data on calling request.connection.read().
 def _create_request(*frames):
+    """Creates MockRequest using data given as frames.
+
+    frames will be returned on calling request.connection.read() where request
+    is MockRequest returned by this function.
+    """
+
     read_data = []
     for (header, body) in frames:
         read_data.append(header + _mask_hybi07(body))
@@ -78,9 +83,13 @@ def _create_request(*frames):
     return req
 
 
-# Data written to this request can be read out by calling
-# request.connection.written_data()
 def _create_blocking_request():
+    """Creates MockRequest.
+
+    Data written to a MockRequest can be read out by calling
+    request.connection.written_data().
+    """
+
     req = mock.MockRequest(connection=mock.MockBlockingConn())
     req.ws_version = common.VERSION_HYBI07
     stream_options = StreamOptions()
@@ -100,8 +109,9 @@ def _create_blocking_request_hixie75():
     return req
 
 
-# TODO(tyoshino): Add deflate test.
 class MessageTest(unittest.TestCase):
+    # TODO(tyoshino): Add deflate test.
+
     # Tests for Stream
     def test_send_message(self):
         request = _create_request()
@@ -259,6 +269,8 @@ class MessageTest(unittest.TestCase):
                          request.connection.written_data())
 
     def test_receive_ping(self):
+        """Tests receiving a ping control frame."""
+
         def handler(request, message):
             request.called = True
 
@@ -277,6 +289,8 @@ class MessageTest(unittest.TestCase):
         self.assertTrue(request.called)
 
     def test_receive_pong(self):
+        """Tests receiving a pong control frame."""
+
         def handler(request, message):
             request.called = True
 
@@ -320,7 +334,8 @@ class MessageTest(unittest.TestCase):
 
 
 class MessageTestHixie75(unittest.TestCase):
-    # Tests for StreamHixie75
+    """Tests for draft-hixie-thewebsocketprotocol-76 stream class."""
+
     def test_send_message(self):
         request = _create_request_hixie75()
         msgutil.send_message(request, 'Hello')
@@ -358,6 +373,8 @@ class MessageTestHixie75(unittest.TestCase):
 
 
 class MessageReceiverTest(unittest.TestCase):
+    """Tests the Stream class using MessageReceiver."""
+
     def test_queue(self):
         request = _create_blocking_request()
         receiver = msgutil.MessageReceiver(request)
@@ -369,6 +386,7 @@ class MessageReceiverTest(unittest.TestCase):
 
     def test_onmessage(self):
         onmessage_queue = Queue.Queue()
+
         def onmessage_handler(message):
             onmessage_queue.put(message)
 
@@ -380,6 +398,8 @@ class MessageReceiverTest(unittest.TestCase):
 
 
 class MessageReceiverHixie75Test(unittest.TestCase):
+    """Tests the StreamHixie75 class using MessageReceiver."""
+
     def test_queue(self):
         request = _create_blocking_request_hixie75()
         receiver = msgutil.MessageReceiver(request)
@@ -391,6 +411,7 @@ class MessageReceiverHixie75Test(unittest.TestCase):
 
     def test_onmessage(self):
         onmessage_queue = Queue.Queue()
+
         def onmessage_handler(message):
             onmessage_queue.put(message)
 
@@ -402,6 +423,8 @@ class MessageReceiverHixie75Test(unittest.TestCase):
 
 
 class MessageSenderTest(unittest.TestCase):
+    """Tests the Stream class using MessageSender."""
+
     def test_send(self):
         request = _create_blocking_request()
         sender = msgutil.MessageSender(request)
@@ -414,8 +437,10 @@ class MessageSenderTest(unittest.TestCase):
         # request.connection.written_data() cannot be used here because
         # MessageSender runs in a separate thread.
         send_queue = Queue.Queue()
+
         def write(bytes):
             send_queue.put(bytes)
+
         request = _create_blocking_request()
         request.connection.write = write
 
@@ -428,6 +453,8 @@ class MessageSenderTest(unittest.TestCase):
 
 
 class MessageSenderHixie75Test(unittest.TestCase):
+    """Tests the StreamHixie75 class using MessageSender."""
+
     def test_send(self):
         request = _create_blocking_request_hixie75()
         sender = msgutil.MessageSender(request)
@@ -440,8 +467,10 @@ class MessageSenderHixie75Test(unittest.TestCase):
         # request.connection.written_data() cannot be used here because
         # MessageSender runs in a separate thread.
         send_queue = Queue.Queue()
+
         def write(bytes):
             send_queue.put(bytes)
+
         request = _create_blocking_request_hixie75()
         request.connection.write = write
 

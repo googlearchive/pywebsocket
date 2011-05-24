@@ -54,6 +54,8 @@ _NOOP_MASKER = util.NoopMasker()
 
 # Helper functions made public to be used for writing unittests for WebSocket
 # clients.
+
+
 def create_length_header(length, mask):
     """Creates a length header.
 
@@ -169,7 +171,11 @@ def create_close_frame(body, mask=False):
 
 
 class StreamOptions(object):
+    """Holds option values to configure Stream objects."""
+
     def __init__(self):
+        """Constructs StreamOptions."""
+
         self.deflate = False
         self.mask_send = False
         self.unmask_receive = True
@@ -294,7 +300,8 @@ class Stream(StreamBase):
 
         if self._request.client_terminated:
             raise BadOperationException(
-                'Requested receive_message after receiving a closing handshake')
+                'Requested receive_message after receiving a closing '
+                'handshake')
 
         while True:
             # mp_conn.read will block if no bytes are available.
@@ -471,9 +478,9 @@ class Stream(StreamBase):
         if (code == common.STATUS_GOING_AWAY or
             code == common.STATUS_PROTOCOL_ERROR):
             # It doesn't make sense to wait for a close frame if the reason is
-            # protocol error or that the server is going away. For some of other
-            # reasons, it might not make sense to wait for a close frame, but
-            # it's not clear, yet.
+            # protocol error or that the server is going away. For some of
+            # other reasons, it might not make sense to wait for a close frame,
+            # but it's not clear, yet.
             return
 
         # TODO(ukai): 2. wait until the /client terminated/ flag has been set,

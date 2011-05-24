@@ -41,7 +41,7 @@ import sys
 _PACKAGE_NAME = 'mod_pywebsocket'
 
 if sys.version < '2.3':
-    print >>sys.stderr, '%s requires Python 2.3 or later.' % _PACKAGE_NAME
+    print >> sys.stderr, '%s requires Python 2.3 or later.' % _PACKAGE_NAME
     sys.exit(1)
 
 setup(author='Yuzo Fujishima',

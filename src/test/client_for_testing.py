@@ -111,6 +111,8 @@ def _format_host_header(host, port, secure):
 
 
 # TODO(tyoshino): Define a base class and move these shared methods to that.
+
+
 def _receive_bytes(socket, length):
     bytes = []
     remaining = length
@@ -128,6 +130,8 @@ def _receive_bytes(socket, length):
 
 # TODO(tyoshino): Now HyBi 07 diverts these methods. We should move to HTTP
 # parser. For HyBi 00 and Hixie 75, pack these methods as some parser class.
+
+
 def _read_fields(socket):
     # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
     fields = {}
@@ -450,9 +454,9 @@ class WebSocketHybi00Handshake(object):
 
         self._logger.info('Sent opening handshake')
 
-        # 4.1 28. Read bytes from the server until either the connection closes,
-        # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
-        # bytes.
+        # 4.1 28. Read bytes from the server until either the connection
+        # closes, or a 0x0A byte is read. let /field/ be these bytes, including
+        # the 0x0A bytes.
         field = ''
         while True:
             ch = _receive_bytes(self._socket, 1)
@@ -832,6 +836,8 @@ class WebSocketStreamHixie75(object):
 
 
 class ClientOptions(object):
+    """Holds option values to configure the Client object."""
+
     def __init__(self):
         self.server_host = ''
         self.origin = ''

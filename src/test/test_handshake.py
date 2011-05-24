@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -48,16 +48,15 @@ _GOOD_REQUEST = (
     'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'Sec-WebSocket-Protocol':'sample',
-        'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-        'Origin':'http://example.com',
+        'Host': 'example.com',
+        'Connection': 'Upgrade',
+        'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+        'Sec-WebSocket-Protocol': 'sample',
+        'Upgrade': 'WebSocket',
+        'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+        'Origin': 'http://example.com',
     },
-    '^n:ds[4U'
-)
+    '^n:ds[4U')
 
 _GOOD_REQUEST_CAPITALIZED_HEADER_VALUES = (
     80,
@@ -100,16 +99,15 @@ _GOOD_REQUEST_NONDEFAULT_PORT = (
     'GET',
     '/demo',
     {
-        'Host':'example.com:8081',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'Sec-WebSocket-Protocol':'sample',
-        'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-        'Origin':'http://example.com',
+        'Host': 'example.com:8081',
+        'Connection': 'Upgrade',
+        'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+        'Sec-WebSocket-Protocol': 'sample',
+        'Upgrade': 'WebSocket',
+        'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+        'Origin': 'http://example.com',
     },
-    '^n:ds[4U'
-)
+    '^n:ds[4U')
 
 _GOOD_RESPONSE_NONDEFAULT_PORT = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
@@ -136,15 +134,14 @@ _GOOD_REQUEST_NO_PROTOCOL = (
     'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-        'Origin':'http://example.com',
+        'Host': 'example.com',
+        'Connection': 'Upgrade',
+        'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+        'Upgrade': 'WebSocket',
+        'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+        'Origin': 'http://example.com',
     },
-    '^n:ds[4U'
-)
+    '^n:ds[4U')
 
 _GOOD_RESPONSE_NO_PROTOCOL = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
@@ -160,18 +157,17 @@ _GOOD_REQUEST_WITH_OPTIONAL_HEADERS = (
     'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'EmptyValue':'',
-        'Sec-WebSocket-Protocol':'sample',
-        'AKey':'AValue',
-        'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-        'Origin':'http://example.com',
+        'Host': 'example.com',
+        'Connection': 'Upgrade',
+        'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+        'EmptyValue': '',
+        'Sec-WebSocket-Protocol': 'sample',
+        'AKey': 'AValue',
+        'Upgrade': 'WebSocket',
+        'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+        'Origin': 'http://example.com',
     },
-    '^n:ds[4U'
-)
+    '^n:ds[4U')
 
 # TODO(tyoshino): Include \r \n in key3, challenge response.
 
@@ -180,16 +176,15 @@ _GOOD_REQUEST_WITH_NONPRINTABLE_KEY = (
     'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'Upgrade',
-        'Sec-WebSocket-Key2':'y  R2 48 Q1O4  e|BV3 i5 1  u- 65',
-        'Sec-WebSocket-Protocol':'sample',
-        'Upgrade':'WebSocket',
-        'Sec-WebSocket-Key1':'36 7   74 i  92 2\'m 9 0G',
-        'Origin':'http://example.com',
+        'Host': 'example.com',
+        'Connection': 'Upgrade',
+        'Sec-WebSocket-Key2': 'y  R2 48 Q1O4  e|BV3 i5 1  u- 65',
+        'Sec-WebSocket-Protocol': 'sample',
+        'Upgrade': 'WebSocket',
+        'Sec-WebSocket-Key1': '36 7   74 i  92 2\'m 9 0G',
+        'Origin': 'http://example.com',
     },
-    ''.join(map(chr, [0x01, 0xd1, 0xdd, 0x3b, 0xd1, 0x56, 0x63, 0xff]))
-)
+    ''.join(map(chr, [0x01, 0xd1, 0xdd, 0x3b, 0xd1, 0x56, 0x63, 0xff])))
 
 _GOOD_RESPONSE_WITH_NONPRINTABLE_KEY = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'
@@ -200,8 +195,7 @@ _GOOD_RESPONSE_WITH_NONPRINTABLE_KEY = (
     'Sec-WebSocket-Protocol: sample\r\n'
     '\r\n' +
     ''.join(map(chr, [0x0b, 0x99, 0xfa, 0x55, 0xbd, 0x01, 0x23, 0x7b,
-                      0x45, 0xa2, 0xf1, 0xd0, 0x87, 0x8a, 0xee, 0xeb]))
-)
+                      0x45, 0xa2, 0xf1, 0xd0, 0x87, 0x8a, 0xee, 0xeb])))
 
 _BAD_REQUESTS = (
     (  # HTTP request
@@ -209,123 +203,115 @@ _BAD_REQUESTS = (
         'GET',
         '/demo',
         {
-            'Host':'www.google.com',
-            'User-Agent':'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5;'
-                         ' en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3'
-                         ' GTB6 GTBA',
-            'Accept':'text/html,application/xhtml+xml,application/xml;q=0.9,'
-                     '*/*;q=0.8',
-            'Accept-Language':'en-us,en;q=0.5',
-            'Accept-Encoding':'gzip,deflate',
-            'Accept-Charset':'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
-            'Keep-Alive':'300',
-            'Connection':'keep-alive',
-        }
-    ),
+            'Host': 'www.google.com',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5;'
+                          ' en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3'
+                          ' GTB6 GTBA',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                      '*/*;q=0.8',
+            'Accept-Language': 'en-us,en;q=0.5',
+            'Accept-Encoding': 'gzip,deflate',
+            'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+            'Keep-Alive': '300',
+            'Connection': 'keep-alive',
+        }),
     (  # Wrong method
         80,
         'POST',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
-            'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
+            'Host': 'example.com',
+            'Connection': 'Upgrade',
+            'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+            'Sec-WebSocket-Protocol': 'sample',
+            'Upgrade': 'WebSocket',
+            'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+            'Origin': 'http://example.com',
         },
-        '^n:ds[4U'
-    ),
+        '^n:ds[4U'),
     (  # Missing Upgrade
         80,
         'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
+            'Host': 'example.com',
+            'Connection': 'Upgrade',
+            'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+            'Sec-WebSocket-Protocol': 'sample',
+            'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+            'Origin': 'http://example.com',
         },
-        '^n:ds[4U'
-    ),
+        '^n:ds[4U'),
     (  # Wrong Upgrade
         80,
         'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
-            'Upgrade':'NonWebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
+            'Host': 'example.com',
+            'Connection': 'Upgrade',
+            'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+            'Sec-WebSocket-Protocol': 'sample',
+            'Upgrade': 'NonWebSocket',
+            'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+            'Origin': 'http://example.com',
         },
-        '^n:ds[4U'
-    ),
+        '^n:ds[4U'),
     (  # Empty WebSocket-Protocol
         80,
         'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'',
-            'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
+            'Host': 'example.com',
+            'Connection': 'Upgrade',
+            'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+            'Sec-WebSocket-Protocol': '',
+            'Upgrade': 'WebSocket',
+            'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+            'Origin': 'http://example.com',
         },
-        '^n:ds[4U'
-    ),
+        '^n:ds[4U'),
     (  # Wrong port number format
         80,
         'GET',
         '/demo',
         {
-            'Host':'example.com:0x50',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
-            'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
+            'Host': 'example.com:0x50',
+            'Connection': 'Upgrade',
+            'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+            'Sec-WebSocket-Protocol': 'sample',
+            'Upgrade': 'WebSocket',
+            'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+            'Origin': 'http://example.com',
         },
-        '^n:ds[4U'
-    ),
+        '^n:ds[4U'),
     (  # Header/connection port mismatch
         8080,
         'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'sample',
-            'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
+            'Host': 'example.com',
+            'Connection': 'Upgrade',
+            'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+            'Sec-WebSocket-Protocol': 'sample',
+            'Upgrade': 'WebSocket',
+            'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+            'Origin': 'http://example.com',
         },
-        '^n:ds[4U'
-    ),
+        '^n:ds[4U'),
     (  # Illegal WebSocket-Protocol
         80,
         'GET',
         '/demo',
         {
-            'Host':'example.com',
-            'Connection':'Upgrade',
-            'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-            'Sec-WebSocket-Protocol':'illegal\x09protocol',
-            'Upgrade':'WebSocket',
-            'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-            'Origin':'http://example.com',
+            'Host': 'example.com',
+            'Connection': 'Upgrade',
+            'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+            'Sec-WebSocket-Protocol': 'illegal\x09protocol',
+            'Upgrade': 'WebSocket',
+            'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+            'Origin': 'http://example.com',
         },
-        '^n:ds[4U'
-    ),
+        '^n:ds[4U'),
 )
 
 
@@ -343,6 +329,8 @@ def _create_request(request_def):
 
 
 def _create_get_memorized_lines(lines):
+    """Creates a function that returns the given string."""
+
     def get_memorized_lines():
         return lines
     return get_memorized_lines
@@ -359,6 +347,8 @@ def _create_requests_with_lines(request_lines_set):
 
 
 class HandshakerTest(unittest.TestCase):
+    """A unittest for handshake module."""
+
     def test_validate_subprotocol(self):
         validate_subprotocol('sample')  # should succeed.
         validate_subprotocol('Sample')  # should succeed.

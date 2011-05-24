@@ -311,7 +311,7 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         self._socket.sendall('\r\n')
 
-        logging.info('Sent handshake')
+        self._logger.info('Sent handshake')
 
         status_line = ''
         while True:
@@ -387,6 +387,8 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         self._socket = socket
         self._options = options
 
+        self._logger = util.get_class_logger(self)
+
     def handshake(self):
         """Performs opening handshake on the specified socket.
 
@@ -416,10 +418,10 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
 
         # 4.1 16-23. Add Sec-WebSocket-Key<n> to /fields/.
         self._number1, key1 = self._generate_sec_websocket_key()
-        logging.debug('Number1: %d' % self._number1)
+        self._logger.debug('Number1: %d' % self._number1)
         fields.append('Sec-WebSocket-Key1: %s\r\n' % key1)
         self._number2, key2 = self._generate_sec_websocket_key()
-        logging.debug('Number2: %d' % self._number2)
+        self._logger.debug('Number2: %d' % self._number2)
         fields.append('Sec-WebSocket-Key2: %s\r\n' % key2)
 
         fields.append('Sec-WebSocket-Draft: 0\r\n')
@@ -438,10 +440,10 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
         self._socket.sendall(self._key3)
-        logging.debug(
+        self._logger.debug(
             'Key3: %r (%s)' % (self._key3, util.hexify(self._key3)))
 
-        logging.info('Sent handshake')
+        self._logger.info('Sent handshake')
 
         # 4.1 28. Read bytes from the server until either the connection closes,
         # or a 0x0A byte is read. let /field/ be these bytes, including the 0x0A
@@ -512,20 +514,20 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         challenge += struct.pack('!I', self._number2)
         challenge += self._key3
 
-        logging.debug(
+        self._logger.debug(
             'Challenge: %r (%s)' % (challenge, util.hexify(challenge)))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = util.md5_hash(challenge).digest()
-        logging.debug(
+        self._logger.debug(
             'Expected challenge response: %r (%s)' %
             (expected, util.hexify(expected)))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
-        logging.debug(
+        self._logger.debug(
             'Actual challenge response: %r (%s)' % (reply, util.hexify(reply)))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
@@ -588,6 +590,8 @@ class ClientHandshakeProcessorHixie75(object):
         self._socket = socket
         self._options = options
 
+        self._logger = util.get_class_logger(self)
+
     def _skip_headers(self):
         terminator = '\r\n\r\n'
         pos = 0
@@ -617,7 +621,7 @@ class ClientHandshakeProcessorHixie75(object):
         self._socket.sendall(_origin_header(self._options.origin))
         self._socket.sendall('\r\n')
 
-        logging.info('Sent handshake')
+        self._logger.info('Sent handshake')
 
         for expected_char in ClientHandshakeProcessorHixie75._EXPECTED_RESPONSE:
             received = _receive_bytes(self._socket, 1)
@@ -655,6 +659,8 @@ class EchoClient(object):
         self._options = options
         self._socket = None
 
+        self._logger = util.get_class_logger(self)
+
     def run(self):
         """Run the client.
 
@@ -686,7 +692,7 @@ class EchoClient(object):
 
             self._handshake.handshake()
 
-            logging.info('Connection established')
+            self._logger.info('Connection established')
 
             request = ClientRequest(self._socket)
 
@@ -726,19 +732,19 @@ class EchoClient(object):
         if self._options.message.split(',')[-1] == _GOODBYE_MESSAGE:
             # requested server initiated closing handshake, so
             # expecting closing handshake message from server.
-            logging.info('Wait for server-initiated closing handshake')
+            self._logger.info('Wait for server-initiated closing handshake')
             message = self._stream.receive_message()
             if message is None:
                 print 'Recv close'
                 print 'Send ack'
-                logging.info(
+                self._logger.info(
                     'Received closing handshake and sent ack')
                 return
         print 'Send close'
         self._stream.close_connection()
-        logging.info('Sent closing handshake')
+        self._logger.info('Sent closing handshake')
         print 'Recv ack'
-        logging.info('Received ack')
+        self._logger.info('Received ack')
 
 
 def main():
@@ -784,8 +790,7 @@ def main():
 
     (options, unused_args) = parser.parse_args()
 
-    logger = logging.getLogger()
-    logger.setLevel(logging.getLevelName(options.log_level.upper()))
+    logging.basicConfig(level=logging.getLevelName(options.log_level.upper()))
 
     if options.draft75:
         options.protocol_version = _PROTOCOL_VERSION_HIXIE75

@@ -623,6 +623,9 @@ class ClientHandshakeProcessorHixie75(object):
             self._options.server_host,
             self._options.server_port,
             self._options.use_tls))
+        if not self._options.origin:
+            raise ClientHandshakeError(
+                'Specify the origin of the connection by --origin flag')
         self._socket.sendall(_origin_header(self._options.origin))
         self._socket.sendall('\r\n')
 

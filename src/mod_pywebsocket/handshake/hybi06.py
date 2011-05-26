@@ -46,9 +46,12 @@ from mod_pywebsocket import common
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamOptions
 from mod_pywebsocket import util
-from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import check_header_lines
+from mod_pywebsocket.handshake._base import Extension
+from mod_pywebsocket.handshake._base import format_extensions
 from mod_pywebsocket.handshake._base import get_mandatory_header
+from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.handshake._base import validate_mandatory_header
 
 
@@ -170,25 +173,31 @@ class Handshaker(object):
         extensions_header = self._request.headers_in.get(
             common.SEC_WEBSOCKET_EXTENSIONS_HEADER)
         if not extensions_header:
+            self._request.ws_requested_extensions = None
             self._request.ws_extensions = None
             return
 
         self._request.ws_extensions = []
 
-        requested_extensions = extensions_header.split(',')
-        # TODO(tyoshino): Follow the ABNF in the spec.
-        requested_extensions = [s.strip() for s in requested_extensions]
+        requested_extensions = parse_extensions(extensions_header)
 
         for extension in requested_extensions:
+            extension_name = extension.name()
             # We now support only deflate-stream extension. Any other
             # extension requests are just ignored for now.
-            if extension == 'deflate-stream':
+            if (extension_name == 'deflate-stream' and
+                len(extension.get_parameter_names()) == 0):
                 self._request.ws_extensions.append(extension)
                 self._request.ws_deflate = True
 
-        self._logger.debug('Extensions requested: %r', requested_extensions)
+        self._request.ws_requested_extensions = requested_extensions
+
         self._logger.debug(
-            'Extensions accepted: %r', self._request.ws_extensions)
+            'Extensions requested: %r',
+            map(Extension.name, self._request.ws_requested_extensions))
+        self._logger.debug(
+            'Extensions accepted: %r',
+            map(Extension.name, self._request.ws_extensions))
 
     def _validate_key(self, key):
         # Validate
@@ -244,7 +253,7 @@ class Handshaker(object):
         if self._request.ws_extensions is not None:
             self._send_header(
                 common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
-                ', '.join(self._request.ws_extensions))
+                format_extensions(self._request.ws_extensions))
         self._sendall('\r\n')
 
 

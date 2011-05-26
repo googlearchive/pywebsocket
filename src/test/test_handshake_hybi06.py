@@ -223,7 +223,31 @@ class Hybi07HandshakerTest(unittest.TestCase):
         handshaker = _create_handshaker(request)
         handshaker.do_handshake()
         self.assertEqual(EXPECTED_RESPONSE, request.connection.written_data())
-        self.assertEqual(['deflate-stream'], request.ws_extensions)
+        self.assertEqual(1, len(request.ws_extensions))
+        extension = request.ws_extensions[0]
+        self.assertEqual('deflate-stream', extension.name())
+        self.assertEqual(0, len(extension.get_parameter_names()))
+
+    def test_do_handshake_with_extensions(self):
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Extensions'] = (
+            'deflate-stream, , '
+            'unknown; e   =    "mc^2"; ma="\r\n      \\\rf  "; pv=nrt')
+
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(2, len(request.ws_requested_extensions))
+        first_extension = request.ws_requested_extensions[0]
+        self.assertEqual('deflate-stream', first_extension.name())
+        self.assertEqual(0, len(first_extension.get_parameter_names()))
+        second_extension = request.ws_requested_extensions[1]
+        self.assertEqual('unknown', second_extension.name())
+        self.assertEqual(
+            ['e', 'ma', 'pv'], second_extension.get_parameter_names())
+        self.assertEqual('mc^2', second_extension.get_parameter('e'))
+        self.assertEqual(' \rf ', second_extension.get_parameter('ma'))
+        self.assertEqual('nrt', second_extension.get_parameter('pv'))
 
     def test_do_handshake_with_optional_headers(self):
         request_def = _create_good_request_def()

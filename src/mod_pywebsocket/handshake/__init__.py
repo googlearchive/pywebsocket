@@ -40,6 +40,9 @@ from mod_pywebsocket import util
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake import hybi06
+# Export Extension symbol from this module.
+from mod_pywebsocket.handshake._base import Extension
+# Export HandshakeError symbol from this module.
 from mod_pywebsocket.handshake._base import HandshakeError
 
 
@@ -94,5 +97,6 @@ class Handshaker(object):
                     self._logger.info('%s handshake failed: %s' % (name, e))
                     last_error = e
         raise last_error
+
 
 # vi:sts=4 sw=4 et

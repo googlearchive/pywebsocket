@@ -431,8 +431,10 @@ class WebSocketHybi00Handshake(object):
 
         # 4.1 16-23. Add Sec-WebSocket-Key<n> to /fields/.
         self._number1, key1 = self._generate_sec_websocket_key()
+        self._logger.debug('Number1: %d', self._number1)
         fields.append('Sec-WebSocket-Key1: %s\r\n' % key1)
         self._number2, key2 = self._generate_sec_websocket_key()
+        self._logger.debug('Number2: %d', self._number1)
         fields.append('Sec-WebSocket-Key2: %s\r\n' % key2)
 
         fields.append('Sec-WebSocket-Draft: %s\r\n' % self._draft_field)
@@ -451,6 +453,8 @@ class WebSocketHybi00Handshake(object):
         self._key3 = self._generate_key3()
         # 4.1 27. send /key3/ to the server.
         self._socket.sendall(self._key3)
+        self._logger.debug(
+            'Key3: %r (%s)', self._key3, util.hexify(self._key3))
 
         self._logger.info('Sent opening handshake')
 
@@ -536,9 +540,6 @@ class WebSocketHybi00Handshake(object):
         challenge += struct.pack('!I', self._number2)
         challenge += self._key3
 
-        self._logger.debug('num %d, %d, %s' % (
-            self._number1, self._number2,
-            util.hexify(self._key3)))
         self._logger.debug(
             'Challenge: %r (%s)' % (challenge, util.hexify(challenge)))
 

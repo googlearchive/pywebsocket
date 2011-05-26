@@ -166,6 +166,8 @@ class Handshaker(object):
     def _get_key_value(self, key_field):
         key_value = get_mandatory_header(self._request, key_field)
 
+        self._logger.debug('%s: %r', key_field, key_value)
+
         # 5.2 4. let /key-number_n/ be the digits (characters in the range
         # U+0030 DIGIT ZERO (0) to U+0039 DIGIT NINE (9)) in /key_n/,
         # interpreted as a base ten integer, ignoring all other characters
@@ -179,16 +181,20 @@ class Handshaker(object):
         spaces = re.subn(" ", "", key_value)[1]
         if spaces == 0:
             raise HandshakeError('%s field contains no space' % key_field)
+
+        self._logger.debug(
+            '%s: Key-number is %d and number of spaces is %d',
+            key_field, key_number, spaces)
+
         # 5.2 6. if /key-number_n/ is not an integral multiple of /spaces_n/
         # then abort the WebSocket connection.
         if key_number % spaces != 0:
-            raise HandshakeError('Key-number %d is not an integral '
-                                 'multiple of spaces %d' % (key_number,
-                                                            spaces))
+            raise HandshakeError(
+                '%s: Key-number (%d) is not an integral multiple of spaces '
+                '(%d)' % (key_field, key_number, spaces))
         # 5.2 7. let /part_n/ be /key-number_n/ divided by /spaces_n/.
         part = key_number / spaces
-        self._logger.debug('%s: %s => %d / %d => %d' % (
-            key_field, key_value, key_number, spaces, part))
+        self._logger.debug('%s: Part is %d', key_field, part)
         return part
 
     def _get_challenge(self):

@@ -215,128 +215,37 @@ class DeflateRequest(object):
 # Python. See also RFC1950 (ZLIB 3.3).
 
 
-# TODO(tyoshino): Refactor DeflateSocket and DeflateConnection to share some
-# duplicated code between them.
-
-
-class DeflateSocket(object):
-    """A wrapper class for socket object to intercept send and recv to perform
-    deflate compression and decompression transparently.
-    """
-
-    # Size of the buffer passed to recv to receive compressed data.
-    _RECV_SIZE = 4096
-
-    def __init__(self, socket):
-        self._socket = socket
-
-        self._logger = logging.getLogger(
-            'mod_pywebsocket.util.DeflateSocket')
+class _Deflater(object):
+    def __init__(self):
+        self._logger = get_class_logger(self)
 
         self._compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        self._reset_decompress()
-        self._unconsumed = ''
 
-    def _reset_decompress(self):
-        self._logger.debug('Reset decompress object')
-        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
-
-    def recv(self, size):
-        """Receives data from the socket specified on the construction up
-        to the specified size. Once any data is available, returns it even if
-        it's smaller than the specified size.
-        """
-
-        # TODO(tyoshino): Allow call with size=0. It should block until any
-        # decompressed data is available.
-        if size <= 0:
-            raise Exception('Non-positive size passed')
-        data = ''
-        while True:
-            data += self._decompress.decompress(
-                self._unconsumed, size - len(data))
-            if self._decompress.unused_data:
-                # Encountered a last block (i.e. a block with BFINAL = 1) and
-                # found a new stream (unused_data). We cannot use the same
-                # zlib.Decompress object for the new stream. Create a new
-                # Decompress object to decompress the new one.
-                self._unconsumed = self._decompress.unused_data
-                self._reset_decompress()
-                if len(data) == size:
-                    # data is filled. Don't call decompress again.
-                    break
-                else:
-                    # Re-invoke Decompress.decompress to try to decompress all
-                    # available bytes before invoking socket.recv which blocks
-                    # until any new byte is received.
-                    continue
-            else:
-                # Here, since unused_data is empty, even if unconsumed_tail is
-                # not empty, bytes of requested length are already in data. We
-                # don't have to "continue" here.
-                self._unconsumed = self._decompress.unconsumed_tail
-                if len(data) != 0:
-                    break
-
-            read_data = self._socket.recv(DeflateSocket._RECV_SIZE)
-            self._logger.debug('Received compressed: %r' % read_data)
-            if not read_data:
-                break
-            self._unconsumed += read_data
-        self._logger.debug('Received: %r' % data)
-        return data
-
-    def sendall(self, bytes):
-        self.send(bytes)
-
-    def send(self, bytes):
+    def compress_and_flush(self, bytes):
         compressed_bytes = self._compress.compress(bytes)
         compressed_bytes += self._compress.flush(zlib.Z_SYNC_FLUSH)
-        self._socket.sendall(compressed_bytes)
-        self._logger.debug('Wrote: %r' % bytes)
-        self._logger.debug('Wrote compressed: %r' % compressed_bytes)
-        return len(bytes)
+        self._logger.debug('Compress input %r', bytes)
+        self._logger.debug('Compress result %r', compressed_bytes)
+        return compressed_bytes
 
 
-class DeflateConnection(object):
-    """A wrapper class for request object to intercept write and read to
-    perform deflate compression and decompression transparently.
-    """
+class _Inflater(object):
+    def __init__(self):
+        self._logger = get_class_logger(self)
 
-    # Size of the buffer passed to recv to receive compressed data.
-    _RECV_SIZE = 4096
-
-    def __init__(self, connection):
-        self._connection = connection
-
-        self._logger = logging.getLogger(
-            'mod_pywebsocket.util.DeflateConnection')
-
-        self._compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        self._reset_decompress()
         self._unconsumed = ''
 
-    def _reset_decompress(self):
-        self._logger.debug('Reset decompress object')
-        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
+        self.reset()
 
-    def put_bytes(self, bytes):
-        self.write(bytes)
-
-    def read(self, size=-1):
-        """Reads at most size bytes. Blocks until there's at least one byte
-        available.
-        """
-
-        # TODO(tyoshino): Allow call with size=0.
-        if size == 0 or size < -1:
+    def decompress(self, size):
+        if not (size == -1 or size > 0):
             raise Exception('size must be -1 or positive')
 
         data = ''
+
         while True:
-            if size < 0:
+            if size == -1:
                 data += self._decompress.decompress(self._unconsumed)
                 # See Python bug http://bugs.python.org/issue12050 to
                 # understand why the same code cannot be used for updating
@@ -355,7 +264,7 @@ class DeflateConnection(object):
                 # It's fine to ignore unconsumed_tail if unused_data is not
                 # empty.
                 self._unconsumed = self._decompress.unused_data
-                self._reset_decompress()
+                self.reset()
                 if size >= 0 and len(data) == size:
                     # data is filled. Don't call decompress again.
                     break
@@ -368,9 +277,99 @@ class DeflateConnection(object):
                 # Here, since unused_data is empty, even if unconsumed_tail is
                 # not empty, bytes of requested length are already in data. We
                 # don't have to "continue" here.
+                break
 
-                if size >= 0 and len(data) != 0:
-                    break
+        if data:
+            self._logger.debug('Decompressed %r', data)
+        return data
+
+    def append(self, data):
+        self._logger.debug('Appended %r', data)
+        self._unconsumed += data
+
+    def reset(self):
+        self._logger.debug('Reset')
+        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
+
+
+class DeflateSocket(object):
+    """A wrapper class for socket object to intercept send and recv to perform
+    deflate compression and decompression transparently.
+    """
+
+    # Size of the buffer passed to recv to receive compressed data.
+    _RECV_SIZE = 4096
+
+    def __init__(self, socket):
+        self._socket = socket
+
+        self._logger = get_class_logger(self)
+
+        self._deflater = _Deflater()
+        self._inflater = _Inflater()
+
+    def recv(self, size):
+        """Receives data from the socket specified on the construction up
+        to the specified size. Once any data is available, returns it even if
+        it's smaller than the specified size.
+        """
+
+        # TODO(tyoshino): Allow call with size=0. It should block until any
+        # decompressed data is available.
+        if size <= 0:
+            raise Exception('Non-positive size passed')
+        while True:
+            data = self._inflater.decompress(size)
+            if len(data) != 0:
+                return data
+
+            read_data = self._socket.recv(DeflateSocket._RECV_SIZE)
+            if not read_data:
+                return ''
+            self._inflater.append(read_data)
+
+    def sendall(self, bytes):
+        self.send(bytes)
+
+    def send(self, bytes):
+        self._socket.sendall(self._deflater.compress_and_flush(bytes))
+        return len(bytes)
+
+
+class DeflateConnection(object):
+    """A wrapper class for request object to intercept write and read to
+    perform deflate compression and decompression transparently.
+    """
+
+    def __init__(self, connection):
+        self._connection = connection
+
+        self._logger = get_class_logger(self)
+
+        self._deflater = _Deflater()
+        self._inflater = _Inflater()
+
+    def put_bytes(self, bytes):
+        self.write(bytes)
+
+    def read(self, size=-1):
+        """Reads at most size bytes. Blocks until there's at least one byte
+        available.
+        """
+
+        # TODO(tyoshino): Allow call with size=0.
+        if not (size == -1 or size > 0):
+            raise Exception('size must be -1 or positive')
+
+        data = ''
+        while True:
+            if size == -1:
+                data += self._inflater.decompress(-1)
+            else:
+                data += self._inflater.decompress(size - len(data))
+
+            if size >= 0 and len(data) != 0:
+                break
 
             # TODO(tyoshino): Make this read efficient by some workaround.
             #
@@ -381,19 +380,13 @@ class DeflateConnection(object):
             # _StandaloneRequest.read that ultimately performs
             # socket._fileobject.read also blocks until length bytes was read
             read_data = self._connection.read(1)
-            self._logger.debug('Read compressed: %r' % read_data)
             if not read_data:
                 break
-            self._unconsumed += read_data
-        self._logger.debug('Read: %r' % data)
+            self._inflater.append(read_data)
         return data
 
     def write(self, bytes):
-        compressed_bytes = self._compress.compress(bytes)
-        compressed_bytes += self._compress.flush(zlib.Z_SYNC_FLUSH)
-        self._logger.debug('Wrote compressed: %r' % compressed_bytes)
-        self._logger.debug('Wrote: %r' % bytes)
-        self._connection.write(compressed_bytes)
+        self._connection.write(self._deflater.compress_and_flush(bytes))
 
 
 # vi:sts=4 sw=4 et

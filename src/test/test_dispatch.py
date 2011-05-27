@@ -147,16 +147,16 @@ class DispatcherTest(unittest.TestCase):
 
     def test_transfer_data(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
-        request = mock.MockRequest(connection=mock.MockConn(''))
+
+        request = mock.MockRequest(connection=mock.MockConn('\xff\x00'))
         request.ws_resource = '/origin_check'
         request.ws_protocol = 'p1'
-
         dispatcher.transfer_data(request)
         self.assertEqual('origin_check_wsh.py is called for /origin_check, p1'
                          '\xff\x00',
                          request.connection.written_data())
 
-        request = mock.MockRequest(connection=mock.MockConn(''))
+        request = mock.MockRequest(connection=mock.MockConn('\xff\x00'))
         request.ws_resource = '/sub/plain'
         request.ws_protocol = None
         dispatcher.transfer_data(request)
@@ -164,7 +164,7 @@ class DispatcherTest(unittest.TestCase):
                          '\xff\x00',
                          request.connection.written_data())
 
-        request = mock.MockRequest(connection=mock.MockConn(''))
+        request = mock.MockRequest(connection=mock.MockConn('\xff\x00'))
         request.ws_resource = '/sub/plain?'
         request.ws_protocol = None
         dispatcher.transfer_data(request)
@@ -172,7 +172,7 @@ class DispatcherTest(unittest.TestCase):
                          '\xff\x00',
                          request.connection.written_data())
 
-        request = mock.MockRequest(connection=mock.MockConn(''))
+        request = mock.MockRequest(connection=mock.MockConn('\xff\x00'))
         request.ws_resource = '/sub/plain?q=v'
         request.ws_protocol = None
         dispatcher.transfer_data(request)

@@ -241,6 +241,9 @@ class Stream(StreamBase):
                 'Mask bit on the received frame did\'nt match masking '
                 'configuration for received frames')
 
+        # The spec doesn't disallow putting a value in 0x0-0xFFFF into the
+        # 8-octet extended payload length field (or 0x0-0xFD in 2-octet field).
+        # So, we don't check the range of extended_payload_length.
         if payload_length == 127:
             extended_payload_length = self.receive_bytes(8)
             payload_length = struct.unpack(

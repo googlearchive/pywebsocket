@@ -242,7 +242,9 @@ class WebSocketHybi07Handshake(object):
 
         self._socket = socket
 
-        self._socket.sendall(_method_line(self._options.resource))
+        request_line = _method_line(self._options.resource)
+        self._logger.debug('Opening handshake Request-Line: %r', request_line)
+        self._socket.sendall(request_line)
 
         fields = []
         fields.append(_UPGRADE_HEADER)
@@ -274,13 +276,13 @@ class WebSocketHybi07Handshake(object):
             fields.append('Sec-WebSocket-Extensions: %s\r\n' %
                           ', '.join(extensions))
 
-        self._logger.debug('Opening handshake headers: %r' % fields)
+        self._logger.debug('Opening handshake request headers: %r', fields)
 
         for field in fields:
             self._socket.sendall(field)
         self._socket.sendall('\r\n')
 
-        self._logger.info('Sent opening handshake')
+        self._logger.info('Sent opening handshake request')
 
         field = ''
         while True:
@@ -288,6 +290,9 @@ class WebSocketHybi07Handshake(object):
             field += ch
             if ch == '\n':
                 break
+
+        self._logger.debug('Opening handshake Response-Line: %r', field)
+
         if len(field) < 7 or not field.endswith('\r\n'):
             raise Exception('Wrong status line: %r' % field)
         m = re.match('[^ ]* ([^ ]*) .*', field)
@@ -412,7 +417,9 @@ class WebSocketHybi00Handshake(object):
         self._socket = socket
 
         # 4.1 5. send request line.
-        self._socket.sendall(_method_line(self._options.resource))
+        request_line = _method_line(self._options.resource)
+        self._logger.debug('Opening handshake Request-Line: %r', request_line)
+        self._socket.sendall(request_line)
         # 4.1 6. Let /fields/ be an empty list of strings.
         fields = []
         # 4.1 7. Add the string "Upgrade: WebSocket" to /fields/.
@@ -443,8 +450,11 @@ class WebSocketHybi00Handshake(object):
         # string, encoded as UTF-8, followed by a UTF-8 encoded U+000D CARRIAGE
         # RETURN U+000A LINE FEED character pair (CRLF).
         random.shuffle(fields)
+
+        self._logger.debug('Opening handshake request headers: %r', fields)
         for field in fields:
             self._socket.sendall(field)
+
         # 4.1 25. send a UTF-8-encoded U+000D CARRIAGE RETURN U+000A LINE FEED
         # character pair (CRLF).
         self._socket.sendall('\r\n')
@@ -456,7 +466,7 @@ class WebSocketHybi00Handshake(object):
         self._logger.debug(
             'Key3: %r (%s)', self._key3, util.hexify(self._key3))
 
-        self._logger.info('Sent opening handshake')
+        self._logger.info('Sent opening handshake request')
 
         # 4.1 28. Read bytes from the server until either the connection
         # closes, or a 0x0A byte is read. let /field/ be these bytes, including
@@ -467,6 +477,9 @@ class WebSocketHybi00Handshake(object):
             field += ch
             if ch == '\n':
                 break
+
+        self._logger.debug('Opening handshake Response-Line: %r', field)
+
         # if /field/ is not at least seven bytes long, or if the last
         # two bytes aren't 0x0D and 0x0A respectively, or if it does not
         # contain at least two 0x20 bytes, then fail the WebSocket connection
@@ -495,6 +508,9 @@ class WebSocketHybi00Handshake(object):
                 '%r' % (code, field))
         # 4.1 32-39. read fields into /fields/
         fields = _read_fields(self._socket)
+
+        self._logger.debug('Opening handshake response headers: %r', fields)
+
         # 4.1 40. _Fields processing_
         # read a byte from server
         ch = _receive_bytes(self._socket, 1)
@@ -630,17 +646,22 @@ class WebSocketHixie75Handshake(object):
     def handshake(self, socket):
         self._socket = socket
 
-        self._socket.sendall(_method_line(self._options.resource))
-        self._socket.sendall(_UPGRADE_HEADER_HIXIE75)
-        self._socket.sendall(_CONNECTION_HEADER)
-        self._socket.sendall(_format_host_header(
+        request_line = _method_line(self._options.resource)
+        self._logger.debug('Opening handshake Request-Line: %r', request_line)
+        self._socket.sendall(request_line)
+
+        headers = _UPGRADE_HEADER_HIXIE75 + _CONNECTION_HEADER
+        headers += _format_host_header(
             self._options.server_host,
             self._options.server_port,
-            self._options.use_tls))
-        self._socket.sendall(_origin_header(self._options.origin))
+            self._options.use_tls)
+        headers += _origin_header(self._options.origin)
+        self._logger.debug('Opening handshake request headers: %r', headers)
+        self._socket.sendall(headers)
+
         self._socket.sendall('\r\n')
 
-        self._logger.info('Sent opening handshake')
+        self._logger.info('Sent opening handshake request')
 
         for expected_char in WebSocketHixie75Handshake._EXPECTED_RESPONSE:
             received = _receive_bytes(self._socket, 1)

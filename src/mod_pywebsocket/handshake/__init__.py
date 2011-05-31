@@ -79,8 +79,22 @@ class Handshaker(object):
     def do_handshake(self):
         """Perform WebSocket Handshake."""
 
+        self._logger.debug('Opening handshake resource: %r', self._request.uri)
+        # To print mimetools.Message as escaped one-line string, we converts
+        # headers_in to dict object. Without conversion, if we use %r, it just
+        # prints the type and address, and if we use %s, it prints the original
+        # header string as multiple lines.
+        #
+        # Both mimetools.Message and MpTable_Type of mod_python can be
+        # converted to dict.
+        #
+        # mimetools.Message.__str__ returns the original header string.
+        # dict(mimetools.Message object) returns the map from header names to
+        # header values. While MpTable_Type doesn't have such __str__ but just
+        # __repr__ which formats itself as well as dictionary object.
         self._logger.debug(
-            'Opening handshake headers: %s' % self._request.headers_in)
+            'Opening handshake request headers: %r',
+            dict(self._request.headers_in))
 
         handshakers = [
             ('HyBi 07', self._hybi07Handshaker),

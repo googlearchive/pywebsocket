@@ -291,7 +291,9 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             ClientHandshakeError: handshake failed.
         """
 
-        self._socket.sendall(_build_method_line(self._options.resource))
+        request_line = _build_method_line(self._options.resource)
+        self._logger.debug('Opening handshake Request-Line: %r', request_line)
+        self._socket.sendall(request_line)
 
         fields = []
         fields.append(_format_host_header(
@@ -315,6 +317,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             self._socket.sendall(field)
 
         self._socket.sendall('\r\n')
+
+        self._logger.debug('Opening handshake headers %r', field)
 
         self._logger.info('Sent handshake')
 

@@ -49,6 +49,7 @@ from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import check_header_lines
 from mod_pywebsocket.handshake._base import Extension
 from mod_pywebsocket.handshake._base import format_extensions
+from mod_pywebsocket.handshake._base import format_header
 from mod_pywebsocket.handshake._base import get_mandatory_header
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import parse_extensions
@@ -139,6 +140,8 @@ class Handshaker(object):
                     'any subprotocol')
 
         self._send_handshake(accept)
+
+        self._logger.debug('Sent opening handshake response')
 
     def _get_origin(self):
         origin = self._request.headers_in.get(
@@ -232,29 +235,32 @@ class Handshaker(object):
 
         return key
 
-    def _sendall(self, data):
-        self._request.connection.write(data)
-
-    def _send_header(self, name, value):
-        self._sendall('%s: %s\r\n' % (name, value))
-
     def _send_handshake(self, accept):
-        self._sendall('HTTP/1.1 101 Switching Protocols\r\n')
-        self._send_header(common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE)
-        self._send_header(
-            common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE)
-        self._send_header(common.SEC_WEBSOCKET_ACCEPT_HEADER, accept)
+        response = []
+
+        response.append('HTTP/1.1 101 Switching Protocols\r\n')
+
+        response.append(format_header(
+            common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE))
+        response.append(format_header(
+            common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
+        response.append(format_header(
+            common.SEC_WEBSOCKET_ACCEPT_HEADER, accept))
         # TODO(tyoshino): Encode value of protocol and extensions if any
         # special character that we have to encode by some manner.
         if self._request.ws_protocol is not None:
-            self._send_header(
+            response.append(format_header(
                 common.SEC_WEBSOCKET_PROTOCOL_HEADER,
-                self._request.ws_protocol)
+                self._request.ws_protocol))
         if self._request.ws_extensions is not None:
-            self._send_header(
+            response.append(format_header(
                 common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
-                format_extensions(self._request.ws_extensions))
-        self._sendall('\r\n')
+                format_extensions(self._request.ws_extensions)))
+        response.append('\r\n')
+
+        raw_response = ''.join(response)
+        self._logger.debug('Opening handshake response: %r', raw_response)
+        self._request.connection.write(raw_response)
 
 
 # vi:sts=4 sw=4 et

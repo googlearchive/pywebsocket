@@ -119,6 +119,10 @@ def parse_host_header(request):
         raise HandshakeError('Invalid port number format: %r' % e)
 
 
+def format_header(name, value):
+    return '%s: %s\r\n' % (name, value)
+
+
 def build_location(request):
     """Build WebSocket location for request."""
     location_parts = []

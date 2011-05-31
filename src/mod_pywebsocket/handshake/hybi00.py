@@ -48,6 +48,7 @@ from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import build_location
 from mod_pywebsocket.handshake._base import check_header_lines
+from mod_pywebsocket.handshake._base import format_header
 from mod_pywebsocket.handshake._base import get_mandatory_header
 from mod_pywebsocket.handshake._base import validate_subprotocol
 
@@ -97,8 +98,12 @@ class Handshaker(object):
         self._set_origin()
         self._set_challenge_response()
         self._set_protocol_version()
+
         self._dispatcher.do_extra_handshake(self._request)
+
         self._send_handshake()
+
+        self._logger.debug('Sent opening handshake response')
 
     def _set_resource(self):
         self._request.ws_resource = self._request.uri
@@ -208,31 +213,33 @@ class Handshaker(object):
         challenge += self._request.connection.read(8)
         return challenge
 
-    def _sendall(self, data):
-        self._request.connection.write(data)
-
-    def _send_header(self, name, value):
-        self._sendall('%s: %s\r\n' % (name, value))
-
     def _send_handshake(self):
+        response = []
+
         # 5.2 10. send the following line.
-        self._sendall('HTTP/1.1 101 WebSocket Protocol Handshake\r\n')
+        response.append('HTTP/1.1 101 WebSocket Protocol Handshake\r\n')
+
         # 5.2 11. send the following fields to the client.
-        self._send_header(
-            common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE_HIXIE75)
-        self._send_header(
-            common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE)
-        self._send_header('Sec-WebSocket-Location', self._request.ws_location)
-        self._send_header(
-            common.SEC_WEBSOCKET_ORIGIN_HEADER, self._request.ws_origin)
+        response.append(format_header(
+            common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE_HIXIE75))
+        response.append(format_header(
+            common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
+        response.append(format_header(
+            'Sec-WebSocket-Location', self._request.ws_location))
+        response.append(format_header(
+            common.SEC_WEBSOCKET_ORIGIN_HEADER, self._request.ws_origin))
         if self._request.ws_protocol:
-            self._send_header(
+            response.append(format_header(
                 common.SEC_WEBSOCKET_PROTOCOL_HEADER,
-                self._request.ws_protocol)
+                self._request.ws_protocol))
         # 5.2 12. send two bytes 0x0D 0x0A.
-        self._sendall('\r\n')
+        response.append('\r\n')
         # 5.2 13. send /response/
-        self._sendall(self._request.ws_challenge_md5)
+        response.append(self._request.ws_challenge_md5)
+
+        raw_response = ''.join(response)
+        self._logger.debug('Opening handshake response: %r', raw_response)
+        self._request.connection.write(raw_response)
 
 
 # vi:sts=4 sw=4 et

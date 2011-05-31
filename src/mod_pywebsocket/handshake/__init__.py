@@ -103,12 +103,12 @@ class Handshaker(object):
         last_error = HandshakeError('No handshaker available')
         for name, handshaker in handshakers:
             if handshaker:
-                self._logger.info('Trying %s protocol' % name)
+                self._logger.info('Trying %s protocol', name)
                 try:
                     handshaker.do_handshake()
                     return
                 except HandshakeError, e:
-                    self._logger.info('%s handshake failed: %s' % (name, e))
+                    self._logger.info('%s handshake failed: %s', name, e)
                     last_error = e
         raise last_error
 

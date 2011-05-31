@@ -307,8 +307,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         original_key = os.urandom(16)
         self._key = base64.b64encode(original_key)
-        self._logger.debug('Sec-WebSocket-Key: %r (%s)' %
-                           (self._key, util.hexify(original_key)))
+        self._logger.debug('Sec-WebSocket-Key: %r (%s)',
+                           self._key, util.hexify(original_key))
         fields.append('Sec-WebSocket-Key: %s\r\n' % self._key)
 
         fields.append('Sec-WebSocket-Version: 7\r\n')
@@ -366,16 +366,16 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
 
         self._logger.debug(
-            'Response for challenge : %r (%s)' %
-            (accept, util.hexify(binary_accept)))
+            'Response for challenge : %r (%s)',
+            accept, util.hexify(binary_accept))
 
         binary_expected_accept = util.sha1_hash(
             self._key + common.WEBSOCKET_ACCEPT_UUID).digest()
         expected_accept = base64.b64encode(binary_expected_accept)
 
         self._logger.debug(
-            'Expected response for challenge: %r (%s)' %
-            (expected_accept, util.hexify(binary_expected_accept)))
+            'Expected response for challenge: %r (%s)',
+            expected_accept, util.hexify(binary_expected_accept))
 
         if accept != expected_accept:
             raise ClientHandshakeError(
@@ -427,10 +427,10 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
 
         # 4.1 16-23. Add Sec-WebSocket-Key<n> to /fields/.
         self._number1, key1 = self._generate_sec_websocket_key()
-        self._logger.debug('Number1: %d' % self._number1)
+        self._logger.debug('Number1: %d', self._number1)
         fields.append('Sec-WebSocket-Key1: %s\r\n' % key1)
         self._number2, key2 = self._generate_sec_websocket_key()
-        self._logger.debug('Number2: %d' % self._number2)
+        self._logger.debug('Number2: %d', self._number2)
         fields.append('Sec-WebSocket-Key2: %s\r\n' % key2)
 
         fields.append('Sec-WebSocket-Draft: 0\r\n')
@@ -450,7 +450,7 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         # 4.1 27. send /key3/ to the server.
         self._socket.sendall(self._key3)
         self._logger.debug(
-            'Key3: %r (%s)' % (self._key3, util.hexify(self._key3)))
+            'Key3: %r (%s)', self._key3, util.hexify(self._key3))
 
         self._logger.info('Sent handshake')
 
@@ -524,20 +524,20 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         challenge += self._key3
 
         self._logger.debug(
-            'Challenge: %r (%s)' % (challenge, util.hexify(challenge)))
+            'Challenge: %r (%s)', challenge, util.hexify(challenge))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = util.md5_hash(challenge).digest()
         self._logger.debug(
-            'Expected challenge response: %r (%s)' %
-            (expected, util.hexify(expected)))
+            'Expected challenge response: %r (%s)',
+            expected, util.hexify(expected))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
         self._logger.debug(
-            'Actual challenge response: %r (%s)' % (reply, util.hexify(reply)))
+            'Actual challenge response: %r (%s)', reply, util.hexify(reply))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.

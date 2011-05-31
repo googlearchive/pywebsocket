@@ -160,13 +160,13 @@ class Handshaker(object):
         self._request.ws_challenge_md5 = util.md5_hash(
             self._request.ws_challenge).digest()
         self._logger.debug(
-            'Challenge: %r (%s)' %
-            (self._request.ws_challenge,
-             util.hexify(self._request.ws_challenge)))
+            'Challenge: %r (%s)',
+            self._request.ws_challenge,
+            util.hexify(self._request.ws_challenge))
         self._logger.debug(
-            'Challenge response: %r (%s)' %
-            (self._request.ws_challenge_md5,
-             util.hexify(self._request.ws_challenge_md5)))
+            'Challenge response: %r (%s)',
+            self._request.ws_challenge_md5,
+            util.hexify(self._request.ws_challenge_md5))
 
     def _get_key_value(self, key_field):
         key_value = get_mandatory_header(self._request, key_field)

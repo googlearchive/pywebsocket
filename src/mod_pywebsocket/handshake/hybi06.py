@@ -108,8 +108,8 @@ class Handshaker(object):
 
         key = self._get_key()
         (accept, accept_binary) = compute_accept(key)
-        self._logger.debug('Sec-WebSocket-Accept: %r (%s)' %
-                           (accept, util.hexify(accept_binary)))
+        self._logger.debug('Sec-WebSocket-Accept: %r (%s)',
+                           accept, util.hexify(accept_binary))
 
         self._logger.debug('IETF HyBi 07 protocol')
         self._request.ws_version = common.VERSION_HYBI07
@@ -230,8 +230,8 @@ class Handshaker(object):
 
         decoded_key = self._validate_key(key)
 
-        self._logger.debug('Sec-WebSocket-Key: %r (%s)' %
-                           (key, util.hexify(decoded_key)))
+        self._logger.debug('Sec-WebSocket-Key: %r (%s)',
+                           key, util.hexify(decoded_key))
 
         return key
 

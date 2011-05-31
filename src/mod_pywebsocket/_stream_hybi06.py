@@ -425,8 +425,8 @@ class Stream(StreamBase):
                             # inflight_pings contains pings ignored by the
                             # other peer. Just forget them.
                             self._logger.debug(
-                                'Ping %r is acked (%d pings were ignored)' %
-                                (expected_body, len(inflight_pings)))
+                                'Ping %r is acked (%d pings were ignored)',
+                                expected_body, len(inflight_pings))
                             break
                         else:
                             inflight_pings.append(expected_body)

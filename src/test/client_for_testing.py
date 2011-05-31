@@ -260,7 +260,7 @@ class WebSocketHybi07Handshake(object):
         original_key = os.urandom(16)
         key = base64.b64encode(original_key)
         self._logger.debug(
-            'Sec-WebSocket-Key: %s (%s)' % (key, util.hexify(original_key)))
+            'Sec-WebSocket-Key: %s (%s)', key, util.hexify(original_key))
         fields.append('Sec-WebSocket-Key: %s\r\n' % key)
 
         fields.append('Sec-WebSocket-Version: 7\r\n')
@@ -313,7 +313,7 @@ class WebSocketHybi07Handshake(object):
         if ch != '\n':  # 0x0A
             raise Exception('Expected LF but found: %r' % ch)
 
-        self._logger.debug('Opening handshake response headers: %r' % fields)
+        self._logger.debug('Opening handshake response headers: %r', fields)
 
         # Check /fields/
         if len(fields['upgrade']) != 1:
@@ -348,16 +348,16 @@ class WebSocketHybi07Handshake(object):
             raise HandshakeError(
                 'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
 
-        self._logger.debug('Actual Sec-WebSocket-Accept: %r (%s)' %
-                           (accept, util.hexify(decoded_accept)))
+        self._logger.debug('Actual Sec-WebSocket-Accept: %r (%s)',
+                           accept, util.hexify(decoded_accept))
 
         original_expected_accept = util.sha1_hash(
             key + _WEBSOCKET_ACCEPT_UUID).digest()
         expected_accept = base64.b64encode(original_expected_accept)
 
-        self._logger.debug('Expected Sec-WebSocket-Accept: %r (%s)' %
-                           (expected_accept,
-                            util.hexify(original_expected_accept)))
+        self._logger.debug('Expected Sec-WebSocket-Accept: %r (%s)',
+                           expected_accept,
+                           util.hexify(original_expected_accept))
 
         if accept != expected_accept:
             raise Exception(
@@ -557,20 +557,20 @@ class WebSocketHybi00Handshake(object):
         challenge += self._key3
 
         self._logger.debug(
-            'Challenge: %r (%s)' % (challenge, util.hexify(challenge)))
+            'Challenge: %r (%s)', challenge, util.hexify(challenge))
 
         # 4.1 43. let /expected/ be the MD5 fingerprint of /challenge/ as a
         # big-endian 128 bit string.
         expected = util.md5_hash(challenge).digest()
         self._logger.debug(
-            'Expected challenge response: %r (%s)' %
-            (expected, util.hexify(expected)))
+            'Expected challenge response: %r (%s)',
+            expected, util.hexify(expected))
 
         # 4.1 44. read sixteen bytes from the server.
         # let /reply/ be those bytes.
         reply = _receive_bytes(self._socket, 16)
         self._logger.debug(
-            'Actual challenge response: %r (%s)' % (reply, util.hexify(reply)))
+            'Actual challenge response: %r (%s)', reply, util.hexify(reply))
 
         # 4.1 45. if /reply/ does not exactly equal /expected/, then fail
         # the WebSocket connection and abort these steps.

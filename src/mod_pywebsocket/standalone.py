@@ -177,8 +177,8 @@ class _StandaloneRequest(object):
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """HTTPServer specialized for WebSocket."""
 
-    SocketServer.ThreadingMixIn.daemon_threads = True
-    SocketServer.TCPServer.allow_reuse_address = True
+    daemon_threads = True
+    allow_reuse_address = True
 
     def __init__(self, server_address, RequestHandlerClass):
         """Override SocketServer.BaseServer.__init__."""

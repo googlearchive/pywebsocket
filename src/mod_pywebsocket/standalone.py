@@ -181,7 +181,10 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     allow_reuse_address = True
 
     def __init__(self, server_address, RequestHandlerClass):
-        """Override SocketServer.BaseServer.__init__."""
+        """Override SocketServer.TCPServer.__init__ to set SSL enabled socket
+        object to self.socket before server_bind and server_activate, if
+        necessary.
+        """
 
         SocketServer.BaseServer.__init__(
                 self, server_address, RequestHandlerClass)

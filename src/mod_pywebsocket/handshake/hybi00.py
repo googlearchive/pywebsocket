@@ -125,7 +125,7 @@ class Handshaker(object):
 
     def _set_origin(self):
         # |Origin|
-        origin = self._request.headers_in['Origin']
+        origin = self._request.headers_in.get('Origin')
         if origin is not None:
             self._request.ws_origin = origin
 

@@ -163,6 +163,16 @@ class Hybi07HandshakerTest(unittest.TestCase):
         self.assertEqual(
             _EXPECTED_RESPONSE, request.connection.written_data())
 
+    def test_do_handshake_with_multiple_connection_values(self):
+        request_def = _create_good_request_def()
+        request_def.headers['Connection'] = 'Upgrade, keep-alive, , '
+
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(
+            _EXPECTED_RESPONSE, request.connection.written_data())
+
     def test_aborting_handshake(self):
         handshaker = Handshaker(
             _create_request(_create_good_request_def()),

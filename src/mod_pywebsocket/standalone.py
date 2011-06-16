@@ -177,27 +177,36 @@ class _StandaloneRequest(object):
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """HTTPServer specialized for WebSocket."""
 
+    # Overrides SocketServer.ThreadingMixIn.daemon_threads
     daemon_threads = True
+    # Overrides BaseHTTPServer.HTTPServer.allow_reuse_address
     allow_reuse_address = True
 
-    def __init__(self, server_address, RequestHandlerClass):
+    def __init__(self, options):
         """Override SocketServer.TCPServer.__init__ to set SSL enabled socket
         object to self.socket before server_bind and server_activate, if
         necessary.
         """
 
+        self.request_queue_size = options.request_queue_size
+
         SocketServer.BaseServer.__init__(
-                self, server_address, RequestHandlerClass)
+            self, (options.server_host, options.port), WebSocketRequestHandler)
+
+        # Expose the options object to allow handler objects access it. We name
+        # it with websocket_ prefix to avoid conflict.
+        self.websocket_server_options = options
+
         self.socket = self._create_socket()
         self.server_bind()
         self.server_activate()
 
     def _create_socket(self):
         socket_ = socket.socket(self.address_family, self.socket_type)
-        if WebSocketServer.options.use_tls:
+        if self.websocket_server_options.use_tls:
             ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
-            ctx.use_privatekey_file(WebSocketServer.options.private_key)
-            ctx.use_certificate_file(WebSocketServer.options.certificate)
+            ctx.use_privatekey_file(self.websocket_server_options.private_key)
+            ctx.use_certificate_file(self.websocket_server_options.certificate)
             socket_ = OpenSSL.SSL.Connection(ctx, socket_)
         return socket_
 
@@ -217,6 +226,11 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
     def setup(self):
         """Override SocketServer.StreamRequestHandler.setup to wrap rfile with
         MemorizingFile.
+
+        This method will be called by BaseRequestHandler's constructor before
+        calling BaseHTTPRequestHandler.handle. BaseHTTPRequestHandler.handle
+        will call BaseHTTPRequestHandler.handle_one_request and it will call
+        WebSocketRequestHandler.parse_request.
         """
 
         # Call superclass's setup to prepare rfile, wfile, etc. See setup
@@ -228,35 +242,50 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
             self.rfile,
             max_memorized_lines=_MAX_MEMORIZED_LINES)
 
-    def __init__(self, *args, **keywords):
-        self._request = _StandaloneRequest(
-                self, WebSocketRequestHandler.options.use_tls)
-        self._dispatcher = WebSocketRequestHandler.options.dispatcher
-        self._print_warnings_if_any()
-        self._handshaker = handshake.Handshaker(
-                self._request, self._dispatcher,
-                allowDraft75=WebSocketRequestHandler.options.allow_draft75,
-                strict=WebSocketRequestHandler.options.strict)
-        CGIHTTPServer.CGIHTTPRequestHandler.__init__(
-                self, *args, **keywords)
+    def __init__(self, request, client_address, server):
+        self._options = server.websocket_server_options
 
-    def _print_warnings_if_any(self):
-        warnings = self._dispatcher.source_warnings()
-        if warnings:
-            for warning in warnings:
-                logging.warning('mod_pywebsocket: %s' % warning)
+        # Overrides CGIHTTPServerRequestHandler.cgi_directories.
+        self.cgi_directories = self._options.cgi_directories
+        # Replace CGIHTTPRequestHandler.is_executable method.
+        if self._options.is_executable_method is not None:
+            self.is_executable = self._options.is_executable_method
+
+        self._request = _StandaloneRequest(self, self._options.use_tls)
+
+        _print_warnings_if_any(self._options.dispatcher)
+
+        # This actually calls BaseRequestHandler.__init__.
+        CGIHTTPServer.CGIHTTPRequestHandler.__init__(
+            self, request, client_address, server)
 
     def parse_request(self):
         """Override BaseHTTPServer.BaseHTTPRequestHandler.parse_request.
 
         Return True to continue processing for HTTP(S), False otherwise.
+
+        See BaseHTTPRequestHandler.handle_one_request method which calls this
+        method to understand how the return value will be handled.
         """
+
+        # We hook parse_request method, but also call the original
+        # CGIHTTPRequestHandler.parse_request since when we return False,
+        # CGIHTTPRequestHandler.handle_one_request continues processing and
+        # it needs variables set by CGIHTTPRequestHandler.parse_request.
+        #
+        # Variables set by this method will be also used by WebSocket request
+        # handling. See _StandaloneRequest.get_request, etc.
         result = CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self)
         if result:
             try:
-                self._handshaker.do_handshake()
+                handshaker = handshake.Handshaker(
+                    self._request, self._options.dispatcher,
+                    allowDraft75=self._options.allow_draft75,
+                    strict=self._options.strict)
+                handshaker.do_handshake()
+
                 try:
-                    self._dispatcher.transfer_data(self._request)
+                    self._options.dispatcher.transfer_data(self._request)
                 except Exception, e:
                     # Catch exception in transfer_data.
                     # In this case, handshake has been successful, so just log
@@ -420,12 +449,12 @@ def _main():
 
     _configure_logging(options)
 
-    SocketServer.TCPServer.request_queue_size = options.request_queue_size
-    CGIHTTPServer.CGIHTTPRequestHandler.cgi_directories = []
-
+    # TODO(tyoshino): Clean up initialization of CGI related values. Move some
+    # of code here to WebSocketRequestHandler class if it's better.
+    options.cgi_directories = []
+    options.is_executable_method = None
     if options.cgi_paths:
-        CGIHTTPServer.CGIHTTPRequestHandler.cgi_directories = \
-            options.cgi_paths.split(',')
+        options.cgi_directories = options.cgi_paths.split(',')
         if sys.platform in ('cygwin', 'win32'):
             cygwin_path = None
             # For Win32 Python, it is expected that CYGWIN_PATH
@@ -439,7 +468,7 @@ def _main():
             def __check_script(scriptpath):
                 return util.get_script_interp(scriptpath, cygwin_path)
 
-            CGIHTTPServer.executable = __check_script
+            options.is_executable_method = __check_script
 
     if options.use_tls:
         if not _HAS_OPEN_SSL:
@@ -463,11 +492,7 @@ def _main():
                             options.websock_handlers_map_file)
         _print_warnings_if_any(options.dispatcher)
 
-        WebSocketRequestHandler.options = options
-        WebSocketServer.options = options
-
-        server = WebSocketServer((options.server_host, options.port),
-                                 WebSocketRequestHandler)
+        server = WebSocketServer(options)
         server.serve_forever()
     except Exception, e:
         logging.critical('mod_pywebsocket: %s' % e)

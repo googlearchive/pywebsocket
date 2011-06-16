@@ -68,13 +68,8 @@ class Handshaker(object):
 
         self._request = request
         self._dispatcher = dispatcher
+        self._allowDraft75 = allowDraft75
         self._strict = strict
-        self._hybi07Handshaker = hybi06.Handshaker(request, dispatcher)
-        self._hybi00Handshaker = hybi00.Handshaker(request, dispatcher)
-        self._hixie75Handshaker = None
-        if allowDraft75:
-            self._hixie75Handshaker = draft75.Handshaker(
-                request, dispatcher, strict)
 
     def do_handshake(self):
         """Perform WebSocket Handshake."""
@@ -96,21 +91,31 @@ class Handshaker(object):
             'Opening handshake request headers: %r',
             dict(self._request.headers_in))
 
-        handshakers = [
-            ('HyBi 07', self._hybi07Handshaker),
-            ('HyBi 00', self._hybi00Handshaker),
-            ('Hixie 75', self._hixie75Handshaker)]
-        last_error = HandshakeError('No handshaker available')
+        handshakers = []
+        handshakers.append(
+            ('IETF HyBi 07',
+             hybi06.Handshaker(self._request, self._dispatcher)))
+        handshakers.append(
+            ('IETF HyBi 00',
+             hybi00.Handshaker(self._request, self._dispatcher)))
+        if self._allowDraft75:
+            handshakers.append(
+                ('IETF Hixie 75',
+                 draft75.Handshaker(
+                     self._request, self._dispatcher, self._strict)))
+
         for name, handshaker in handshakers:
-            if handshaker:
-                self._logger.info('Trying %s protocol', name)
-                try:
-                    handshaker.do_handshake()
-                    return
-                except HandshakeError, e:
-                    self._logger.info('%s handshake failed: %s', name, e)
-                    last_error = e
-        raise last_error
+            self._logger.info('Trying %s protocol', name)
+            try:
+                handshaker.do_handshake()
+                return
+            except HandshakeError, e:
+                self._logger.info(
+                    'Failed to complete opening handshake as %s protocol: %r',
+                    name, e)
+
+        raise HandshakeError(
+            'Failed to complete opening handshake for all available protocols')
 
 
 # vi:sts=4 sw=4 et

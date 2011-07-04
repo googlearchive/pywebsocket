@@ -36,7 +36,6 @@ successfully established.
 
 import logging
 
-from mod_pywebsocket import util
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake import hybi06
@@ -46,76 +45,61 @@ from mod_pywebsocket.handshake._base import Extension
 from mod_pywebsocket.handshake._base import HandshakeError
 
 
-class Handshaker(object):
-    """This class performs WebSocket handshake."""
+_LOGGER = logging.getLogger(__name__)
 
-    def __init__(self, request, dispatcher, allowDraft75=False, strict=False):
-        """Construct an instance.
 
-        Args:
-            request: mod_python request.
-            dispatcher: Dispatcher (dispatch.Dispatcher).
-            allowDraft75: allow draft 75 handshake protocol.
-            strict: Strictly check handshake request in draft 75.
-                Default: False. If True, request.connection must provide
-                get_memorized_lines method.
+def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
+    """Performs WebSocket handshake.
 
-        Handshaker will add attributes such as ws_resource in performing
-        handshake.
-        """
+    Args:
+        request: mod_python request.
+        dispatcher: Dispatcher (dispatch.Dispatcher).
+        allowDraft75: allow draft 75 handshake protocol.
+        strict: Strictly check handshake request in draft 75.
+            Default: False. If True, request.connection must provide
+            get_memorized_lines method.
 
-        self._logger = util.get_class_logger(self)
+    Handshaker will add attributes such as ws_resource in performing
+    handshake.
+    """
 
-        self._request = request
-        self._dispatcher = dispatcher
-        self._allowDraft75 = allowDraft75
-        self._strict = strict
+    _LOGGER.debug('Opening handshake resource: %r', request.uri)
+    # To print mimetools.Message as escaped one-line string, we converts
+    # headers_in to dict object. Without conversion, if we use %r, it just
+    # prints the type and address, and if we use %s, it prints the original
+    # header string as multiple lines.
+    #
+    # Both mimetools.Message and MpTable_Type of mod_python can be
+    # converted to dict.
+    #
+    # mimetools.Message.__str__ returns the original header string.
+    # dict(mimetools.Message object) returns the map from header names to
+    # header values. While MpTable_Type doesn't have such __str__ but just
+    # __repr__ which formats itself as well as dictionary object.
+    _LOGGER.debug(
+        'Opening handshake request headers: %r', dict(request.headers_in))
 
-    def do_handshake(self):
-        """Perform WebSocket Handshake."""
-
-        self._logger.debug('Opening handshake resource: %r', self._request.uri)
-        # To print mimetools.Message as escaped one-line string, we converts
-        # headers_in to dict object. Without conversion, if we use %r, it just
-        # prints the type and address, and if we use %s, it prints the original
-        # header string as multiple lines.
-        #
-        # Both mimetools.Message and MpTable_Type of mod_python can be
-        # converted to dict.
-        #
-        # mimetools.Message.__str__ returns the original header string.
-        # dict(mimetools.Message object) returns the map from header names to
-        # header values. While MpTable_Type doesn't have such __str__ but just
-        # __repr__ which formats itself as well as dictionary object.
-        self._logger.debug(
-            'Opening handshake request headers: %r',
-            dict(self._request.headers_in))
-
-        handshakers = []
+    handshakers = []
+    handshakers.append(
+        ('IETF HyBi 07', hybi06.Handshaker(request, dispatcher)))
+    handshakers.append(
+        ('IETF HyBi 00', hybi00.Handshaker(request, dispatcher)))
+    if allowDraft75:
         handshakers.append(
-            ('IETF HyBi 07',
-             hybi06.Handshaker(self._request, self._dispatcher)))
-        handshakers.append(
-            ('IETF HyBi 00',
-             hybi00.Handshaker(self._request, self._dispatcher)))
-        if self._allowDraft75:
-            handshakers.append(
-                ('IETF Hixie 75',
-                 draft75.Handshaker(
-                     self._request, self._dispatcher, self._strict)))
+            ('IETF Hixie 75', draft75.Handshaker(request, dispatcher, strict)))
 
-        for name, handshaker in handshakers:
-            self._logger.info('Trying %s protocol', name)
-            try:
-                handshaker.do_handshake()
-                return
-            except HandshakeError, e:
-                self._logger.info(
-                    'Failed to complete opening handshake as %s protocol: %r',
-                    name, e)
+    for name, handshaker in handshakers:
+        _LOGGER.info('Trying %s protocol', name)
+        try:
+            handshaker.do_handshake()
+            return
+        except HandshakeError, e:
+            _LOGGER.info(
+                'Failed to complete opening handshake as %s protocol: %r',
+                name, e)
 
-        raise HandshakeError(
-            'Failed to complete opening handshake for all available protocols')
+    raise HandshakeError(
+        'Failed to complete opening handshake for all available protocols')
 
 
 # vi:sts=4 sw=4 et

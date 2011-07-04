@@ -141,9 +141,8 @@ def headerparserhandler(request):
     try:
         allowDraft75 = apache.main_server.get_options().get(
             _PYOPT_ALLOW_DRAFT75, None)
-        handshaker = handshake.Handshaker(request, _dispatcher,
-                                          allowDraft75=allowDraft75)
-        handshaker.do_handshake()
+        handshake.do_handshake(
+            request, _dispatcher, allowDraft75=allowDraft75)
         request.log_error(
             'mod_pywebsocket: resource: %r' % request.ws_resource,
             apache.APLOG_DEBUG)

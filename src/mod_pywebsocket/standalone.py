@@ -278,11 +278,11 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         result = CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self)
         if result:
             try:
-                handshaker = handshake.Handshaker(
-                    self._request, self._options.dispatcher,
+                handshake.do_handshake(
+                    self._request,
+                    self._options.dispatcher,
                     allowDraft75=self._options.allow_draft75,
                     strict=self._options.strict)
-                handshaker.do_handshake()
 
                 try:
                     self._options.dispatcher.transfer_data(self._request)

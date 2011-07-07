@@ -125,13 +125,13 @@ class Handshaker(object):
 
     def _set_origin(self):
         # |Origin|
-        origin = self._request.headers_in.get('Origin')
+        origin = self._request.headers_in.get(common.ORIGIN_HEADER)
         if origin is not None:
             self._request.ws_origin = origin
 
     def _set_protocol_version(self):
         # |Sec-WebSocket-Draft|
-        draft = self._request.headers_in.get('Sec-WebSocket-Draft')
+        draft = self._request.headers_in.get(common.SEC_WEBSOCKET_DRAFT_HEADER)
         if draft is not None:
             try:
                 draft_int = int(draft)
@@ -147,7 +147,8 @@ class Handshaker(object):
                     raise ValueError
             except ValueError, e:
                 raise HandshakeError(
-                    'Illegal value for Sec-WebSocket-Draft: %s' % draft)
+                    'Illegal value for %s: %s' %
+                    (common.SEC_WEBSOCKET_DRAFT_HEADER, draft))
 
         self._logger.debug('IETF HyBi 00 protocol')
         self._request.ws_version = common.VERSION_HYBI00
@@ -204,8 +205,8 @@ class Handshaker(object):
 
     def _get_challenge(self):
         # 5.2 4-7.
-        key1 = self._get_key_value('Sec-WebSocket-Key1')
-        key2 = self._get_key_value('Sec-WebSocket-Key2')
+        key1 = self._get_key_value(common.SEC_WEBSOCKET_KEY1_HEADER)
+        key2 = self._get_key_value(common.SEC_WEBSOCKET_KEY2_HEADER)
         # 5.2 8. let /challenge/ be the concatenation of /part_1/,
         challenge = ''
         challenge += struct.pack('!I', key1)  # network byteorder int
@@ -225,7 +226,7 @@ class Handshaker(object):
         response.append(format_header(
             common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
         response.append(format_header(
-            'Sec-WebSocket-Location', self._request.ws_location))
+            common.SEC_WEBSOCKET_LOCATION_HEADER, self._request.ws_location))
         response.append(format_header(
             common.SEC_WEBSOCKET_ORIGIN_HEADER, self._request.ws_origin))
         if self._request.ws_protocol:

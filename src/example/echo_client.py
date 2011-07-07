@@ -105,7 +105,7 @@ def _build_method_line(resource):
 def _origin_header(origin):
     # 4.1 13. concatenation of the string "Origin:", a U+0020 SPACE character,
     # and the /origin/ value, converted to ASCII lowercase, to /fields/.
-    return 'Origin: %s\r\n' % origin.lower()
+    return '%s: %s\r\n' % (common.ORIGIN_HEADER, origin.lower())
 
 
 def _format_host_header(host, port, secure):
@@ -122,7 +122,7 @@ def _format_host_header(host, port, secure):
         hostport += ':' + str(port)
     # 4.1 12. concatenation of the string "Host:", a U+0020 SPACE
     # character, and /hostport/, to /fields/.
-    return 'Host: %s\r\n' % hostport
+    return '%s: %s\r\n' % (common.HOST_HEADER, hostport)
 
 
 def _receive_bytes(socket, length):
@@ -307,11 +307,15 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         original_key = os.urandom(16)
         self._key = base64.b64encode(original_key)
-        self._logger.debug('Sec-WebSocket-Key: %r (%s)',
-                           self._key, util.hexify(original_key))
-        fields.append('Sec-WebSocket-Key: %s\r\n' % self._key)
+        self._logger.debug(
+            '%s: %r (%s)',
+            common.SEC_WEBSOCKET_KEY_HEADER,
+            self._key,
+            util.hexify(original_key))
+        fields.append(
+            '%s: %s\r\n' % (common.SEC_WEBSOCKET_KEY_HEADER, self._key))
 
-        fields.append('Sec-WebSocket-Version: 7\r\n')
+        fields.append('%s: 7\r\n' % common.SEC_WEBSOCKET_VERSION_HEADER)
 
         if self._options.deflate:
             fields.append(
@@ -352,24 +356,33 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 'Expected LF but found %r while reading value %r for header '
                 'name %r' % (ch, value, name))
 
-        _validate_mandatory_header(fields, 'Upgrade', 'websocket',
-                                   False)
+        _validate_mandatory_header(
+            fields,
+            common.UPGRADE_HEADER,
+            common.WEBSOCKET_UPGRADE_TYPE,
+            False)
 
-        _validate_mandatory_header(fields, 'Connection', 'Upgrade',
-                                   False)
+        _validate_mandatory_header(
+            fields,
+            common.CONNECTION_HEADER,
+            common.UPGRADE_CONNECTION_TYPE,
+            False)
 
-        accept = _get_mandatory_header(fields, 'Sec-WebSocket-Accept')
+        accept = _get_mandatory_header(
+            fields, common.SEC_WEBSOCKET_ACCEPT_HEADER)
 
         # Validate
         try:
             binary_accept = base64.b64decode(accept)
         except TypeError, e:
             raise HandshakeError(
-                'Illegal value for header Sec-WebSocket-Accept: %r' % accept)
+                'Illegal value for header %s: %r' %
+                (common.SEC_WEBSOCKET_ACCEPT_HEADER, accept))
 
         if len(binary_accept) != 20:
             raise ClientHandshakeError(
-                'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
+                'Decoded value of %s is not 20-byte long' %
+                common.SEC_WEBSOCKET_ACCEPT_HEADER)
 
         self._logger.debug(
             'Response for challenge : %r (%s)',
@@ -385,8 +398,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         if accept != expected_accept:
             raise ClientHandshakeError(
-                'Invalid Sec-WebSocket-Accept header: %r (expected: %s)' %
-                (accept, expected_accept))
+                'Invalid %s header: %r (expected: %s)' %
+                (common.SEC_WEBSOCKET_ACCEPT_HEADER, accept, expected_accept))
 
         if self._options.deflate:
             extensions = _get_mandatory_header(
@@ -449,12 +462,12 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         # 4.1 16-23. Add Sec-WebSocket-Key<n> to /fields/.
         self._number1, key1 = self._generate_sec_websocket_key()
         self._logger.debug('Number1: %d', self._number1)
-        fields.append('Sec-WebSocket-Key1: %s\r\n' % key1)
+        fields.append('%s: %s\r\n' % (common.SEC_WEBSOCKET_KEY1_HEADER, key1))
         self._number2, key2 = self._generate_sec_websocket_key()
         self._logger.debug('Number2: %d', self._number2)
-        fields.append('Sec-WebSocket-Key2: %s\r\n' % key2)
+        fields.append('%s: %s\r\n' % (common.SEC_WEBSOCKET_KEY2_HEADER, key2))
 
-        fields.append('Sec-WebSocket-Draft: 0\r\n')
+        fields.append('%s: 0\r\n' % common.SEC_WEBSOCKET_DRAFT_HEADER)
 
         # 4.1 24. For each string in /fields/, in a random order: send the
         # string, encoded as UTF-8, followed by a UTF-8 encoded U+000D CARRIAGE
@@ -523,16 +536,26 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         # if the entry's name is "upgrade"
         #  if the value is not exactly equal to the string "WebSocket",
         #  then fail the WebSocket connection and abort these steps.
-        _validate_mandatory_header(fields, 'Upgrade', 'WebSocket', True)
+        _validate_mandatory_header(
+            fields,
+            common.UPGRADE_HEADER,
+            common.WEBSOCKET_UPGRADE_TYPE_HIXIE75,
+            True)
         # if the entry's name is "connection"
         #  if the value, converted to ASCII lowercase, is not exactly equal
         #  to the string "upgrade", then fail the WebSocket connection and
         #  abort these steps.
-        _validate_mandatory_header(fields, 'Connection', 'Upgrade', False)
+        _validate_mandatory_header(
+            fields,
+            common.CONNECTION_HEADER,
+            common.UPGRADE_CONNECTION_TYPE,
+            False)
 
-        origin = _get_mandatory_header(fields, 'Sec-WebSocket-Origin')
+        origin = _get_mandatory_header(
+            fields, common.SEC_WEBSOCKET_ORIGIN_HEADER)
 
-        location = _get_mandatory_header(fields, 'Sec-WebSocket-Location')
+        location = _get_mandatory_header(
+            fields, common.SEC_WEBSOCKET_LOCATION_HEADER)
 
         # TODO(ukai): check origin, location, cookie, ..
 

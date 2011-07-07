@@ -128,8 +128,11 @@ class Handshaker(object):
 
         key = self._get_key()
         (accept, accept_binary) = compute_accept(key)
-        self._logger.debug('Sec-WebSocket-Accept: %r (%s)',
-                           accept, util.hexify(accept_binary))
+        self._logger.debug(
+            '%s: %r (%s)',
+            common.SEC_WEBSOCKET_ACCEPT_HEADER,
+            accept,
+            util.hexify(accept_binary))
 
         self._logger.debug('IETF HyBi 07 protocol')
         self._request.ws_version = common.VERSION_HYBI07
@@ -208,7 +211,7 @@ class Handshaker(object):
             extension_name = extension.name()
             # We now support only deflate-stream extension. Any other
             # extension requests are just ignored for now.
-            if (extension_name == 'deflate-stream' and
+            if (extension_name == common.DEFLATE_STREAM_EXTENSION and
                 len(extension.get_parameter_names()) == 0):
                 self._request.ws_extensions.append(extension)
                 self._request.ws_deflate = True
@@ -250,8 +253,11 @@ class Handshaker(object):
 
         decoded_key = self._validate_key(key)
 
-        self._logger.debug('Sec-WebSocket-Key: %r (%s)',
-                           key, util.hexify(decoded_key))
+        self._logger.debug(
+            '%s: %r (%s)',
+            common.SEC_WEBSOCKET_KEY_HEADER,
+            key,
+            util.hexify(decoded_key))
 
         return key
 

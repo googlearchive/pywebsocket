@@ -313,6 +313,12 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         fields.append('Sec-WebSocket-Version: 7\r\n')
 
+        if self._options.deflate:
+            fields.append(
+                '%s: %s\r\n' %
+                (common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
+                 common.DEFLATE_STREAM_EXTENSION))
+
         for field in fields:
             self._socket.sendall(field)
 
@@ -381,6 +387,21 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             raise ClientHandshakeError(
                 'Invalid Sec-WebSocket-Accept header: %r (expected: %s)' %
                 (accept, expected_accept))
+
+        if self._options.deflate:
+            extensions = _get_mandatory_header(
+                fields, common.SEC_WEBSOCKET_EXTENSIONS_HEADER)
+            if extensions != common.DEFLATE_STREAM_EXTENSION:
+                raise ClientHandshakeError(
+                    'Requested %s, but the server rejected it' %
+                    common.DEFLATE_STREAM_EXTENSION)
+        else:
+            extensions = fields.get(
+                common.SEC_WEBSOCKET_EXTENSIONS_HEADER.lower())
+            if extensions != None:
+                raise ClientHandshakeError(
+                    'Unexpected %s field: %r' %
+                    (common.SEC_WEBSOCKET_EXTENSIONS_HEADER, extensions))
 
         # TODO(tyoshino): Handle Sec-WebSocket-Protocol
         # TODO(tyoshino): Handle Cookie, etc.
@@ -666,7 +687,19 @@ class ClientRequest(object):
     """
 
     def __init__(self, socket):
+        self._logger = util.get_class_logger(self)
+
+        self._socket = socket
         self.connection = ClientConnection(socket)
+
+    def _drain_received_data(self):
+        """Drains unread data in the receive buffer."""
+
+        drained_data = util.drain_received_data(self._socket)
+
+        if drained_data:
+            self._logger.debug(
+                'Drained data following close frame: %r', drained_data)
 
 
 class EchoClient(object):
@@ -717,7 +750,7 @@ class EchoClient(object):
                 stream_option = StreamOptions()
                 stream_option.mask_send = True
                 stream_option.unmask_receive = False
-                stream_option.deflate = False
+                stream_option.deflate = self._options.deflate
                 self._stream = Stream(request, stream_option)
             elif version == _PROTOCOL_VERSION_HYBI00:
                 self._stream = StreamHixie75(request, True)
@@ -800,6 +833,11 @@ def main():
                       _PROTOCOL_VERSION_HYBI07 + '\', \'' +
                       _PROTOCOL_VERSION_HYBI00 + '\', \'' +
                       _PROTOCOL_VERSION_HIXIE75 + '\'')
+    parser.add_option('--deflate', dest='deflate',
+                       action='store_true', default=False,
+                      help='use deflate-stream extension. This value will be '
+                      'ignored if used with protocol version that doesn\'t '
+                      'support deflate-stream.')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
                       choices=['debug', 'info', 'warn', 'error', 'critical'],

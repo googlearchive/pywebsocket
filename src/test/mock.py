@@ -198,9 +198,14 @@ class MockRequest(object):
         self.ws_version = common.VERSION_HYBI00
         self.ws_deflate = False
 
+        self.drain_received_data_called = False
+
     def is_https(self):
         """Return whether this request is over SSL."""
         return self.is_https_
+
+    def _drain_received_data(self):
+        self.drain_received_data_called = True
 
 
 class MockDispatcher(object):

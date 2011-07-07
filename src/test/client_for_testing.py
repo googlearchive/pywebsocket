@@ -918,22 +918,6 @@ class Client(object):
     def assert_connection_closed(self):
         try:
             read_data = _receive_bytes(self._socket, 1)
-        except socket.error, e:
-            # recv on normally closed socket returns None. However, when
-            # deflate is enabled, end-of-block symbol or uncompressed block for
-            # sync follows octets containing closing handshake. If we close the
-            # socket without recv-ing, the TCP protocol stack sends out RST.
-            # This except block deals with such cases.
-            #
-            # In Python 2.4, socket.error doesn't have errno field. We cannot
-            # use it.
-            try:
-                error_number, message = e
-            except:
-                raise e
-            if error_number != errno.ECONNRESET:
-                raise
-            return
         except Exception, e:
             if str(e).find(
                 'Connection closed before receiving requested length ') != 0:

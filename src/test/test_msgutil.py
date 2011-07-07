@@ -116,8 +116,6 @@ def _create_blocking_request_hixie75():
 
 
 class MessageTest(unittest.TestCase):
-    # TODO(tyoshino): Add deflate test.
-
     # Tests for Stream
     def test_send_message(self):
         request = _create_request()
@@ -292,10 +290,21 @@ class MessageTest(unittest.TestCase):
 
         data += compress.compress('\x81\x85' + _mask_hybi07('World'))
         data += compress.flush(zlib.Z_SYNC_FLUSH)
+        # Close frame
+        data += compress.compress(
+            '\x88\x8a' + _mask_hybi07(struct.pack('!H', 1000) + 'Good bye'))
+        data += compress.flush(zlib.Z_SYNC_FLUSH)
+
         request = _create_request_from_rawdata(data, True)
         self.assertEqual('Hello', msgutil.receive_message(request))
         self.assertEqual('WebSocket', msgutil.receive_message(request))
         self.assertEqual('World', msgutil.receive_message(request))
+
+        self.assertFalse(request.drain_received_data_called)
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+        self.assertTrue(request.drain_received_data_called)
 
     def test_send_ping(self):
         request = _create_request()

@@ -391,6 +391,9 @@ class Stream(StreamBase):
                     self._request.ws_close_reason = message[2:].decode(
                         'utf-8', 'replace')
 
+                # Drain junk data after the close frame if necessary.
+                self._drain_received_data()
+
                 if self._request.server_terminated:
                     self._logger.debug(
                         'Received ack for server-initiated closing '
@@ -515,6 +518,25 @@ class Stream(StreamBase):
                 'less')
         frame = create_pong_frame(body, self._options.mask_send)
         self._write(frame)
+
+    def _drain_received_data(self):
+        """Drains unread data in the receive buffer to avoid sending out TCP
+        RST packet. This is because when deflate-stream is enabled, some
+        DEFLATE block for flushing data may follow a close frame. If any data
+        remains in the receive buffer of a socket when the socket is closed,
+        it sends out TCP RST packet to the other peer.
+
+        Since mod_python's mp_conn object doesn't support non-blocking read,
+        we perform this only when pywebsocket is running in standalone mode.
+        """
+
+        # If self._options.deflate is true, self._request is DeflateRequest,
+        # so we can get wrapped request object by self._request._request.
+        #
+        # Only _StandaloneRequest has _drain_received_data method.
+        if (self._options.deflate and
+            ('_drain_received_data' in dir(self._request._request))):
+            self._request._request._drain_received_data()
 
 
 # vi:sts=4 sw=4 et

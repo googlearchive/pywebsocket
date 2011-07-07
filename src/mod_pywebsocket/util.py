@@ -33,6 +33,7 @@
 
 
 import array
+import errno
 
 # Import hash classes from a module available and recommended for each Python
 # version and re-export those symbol. Use sha and md5 module in Python 2.4, and
@@ -51,6 +52,7 @@ import StringIO
 import logging
 import os
 import re
+import socket
 import traceback
 import zlib
 
@@ -387,6 +389,56 @@ class DeflateConnection(object):
 
     def write(self, bytes):
         self._connection.write(self._deflater.compress_and_flush(bytes))
+
+
+def _is_ewouldblock_errno(error_number):
+    """Returns True iff error_number indicates that receive operation would
+    block. To make this portable, we check availability of errno and then
+    compare them.
+    """
+
+    for error_name in ['WSAEWOULDBLOCK', 'EWOULDBLOCK', 'EAGAIN']:
+        if (error_name in dir(errno) and
+            error_number == getattr(errno, error_name)):
+            return True
+    return False
+
+
+def drain_received_data(raw_socket):
+    # Set the socket non-blocking.
+    original_timeout = raw_socket.gettimeout()
+    raw_socket.settimeout(0.0)
+
+    drained_data = []
+
+    # Drain until the socket is closed or no data is immediately
+    # available for read.
+    while True:
+        try:
+            data = raw_socket.recv(1)
+            if not data:
+                break
+            drained_data.append(data)
+        except socket.error, e:
+            # e can be either a pair (errno, string) or just a string (or
+            # something else) telling what went wrong. We suppress only
+            # the errors that indicates that the socket blocks. Those
+            # exceptions can be parsed as a pair (errno, string).
+            try:
+                error_number, message = e
+            except:
+                # Failed to parse socket.error.
+                raise e
+
+            if _is_ewouldblock_errno(error_number):
+                break
+            else:
+                raise e
+
+    # Rollback timeout value.
+    raw_socket.settimeout(original_timeout)
+
+    return ''.join(drained_data)
 
 
 # vi:sts=4 sw=4 et

@@ -150,6 +150,9 @@ class _StandaloneRequest(object):
         Args:
             request_handler: A WebSocketRequestHandler instance.
         """
+
+        self._logger = util.get_class_logger(self)
+
         self._request_handler = request_handler
         self.connection = _StandaloneConnection(request_handler)
         self._use_tls = use_tls
@@ -172,6 +175,18 @@ class _StandaloneRequest(object):
     def is_https(self):
         """Mimic request.is_https()."""
         return self._use_tls
+
+    def _drain_received_data(self):
+        """Don't use this method from WebSocket handler. Drains unread data in
+        the receive buffer.
+        """
+
+        raw_socket = self._request_handler.connection
+        drained_data = util.drain_received_data(raw_socket)
+
+        if drained_data:
+            self._logger.debug(
+                'Drained data following close frame: %r', drained_data)
 
 
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):

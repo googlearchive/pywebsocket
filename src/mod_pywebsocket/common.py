@@ -66,6 +66,9 @@ SEC_WEBSOCKET_VERSION_HEADER = 'Sec-WebSocket-Version'
 SEC_WEBSOCKET_PROTOCOL_HEADER = 'Sec-WebSocket-Protocol'
 SEC_WEBSOCKET_EXTENSIONS_HEADER = 'Sec-WebSocket-Extensions'
 
+# Extensions
+DEFLATE_STREAM_EXTENSION = 'deflate-stream'
+
 # Status codes
 STATUS_NORMAL = 1000
 STATUS_GOING_AWAY = 1001

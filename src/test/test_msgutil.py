@@ -54,7 +54,7 @@ from test import mock
 _MASKING_NONCE = 'ABCD'
 
 
-def _mask_hybi07(frame):
+def _mask_hybi(frame):
     frame_key = map(ord, _MASKING_NONCE)
     frame_key_len = len(frame_key)
     result = array.array('B')
@@ -68,7 +68,7 @@ def _mask_hybi07(frame):
 
 def _create_request_from_rawdata(read_data, deflate):
     req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
-    req.ws_version = common.VERSION_HYBI07
+    req.ws_version = common.VERSION_HYBI_LATEST
     stream_options = StreamOptions()
     stream_options.deflate = deflate
     req.ws_stream = Stream(req, stream_options)
@@ -84,7 +84,7 @@ def _create_request(*frames):
 
     read_data = []
     for (header, body) in frames:
-        read_data.append(header + _mask_hybi07(body))
+        read_data.append(header + _mask_hybi(body))
 
     return _create_request_from_rawdata(read_data, False)
 
@@ -97,7 +97,7 @@ def _create_blocking_request():
     """
 
     req = mock.MockRequest(connection=mock.MockBlockingConn())
-    req.ws_version = common.VERSION_HYBI07
+    req.ws_version = common.VERSION_HYBI_LATEST
     stream_options = StreamOptions()
     req.ws_stream = Stream(req, stream_options)
     return req
@@ -280,19 +280,19 @@ class MessageTest(unittest.TestCase):
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
 
-        data = compress.compress('\x81\x85' + _mask_hybi07('Hello'))
+        data = compress.compress('\x81\x85' + _mask_hybi('Hello'))
         data += compress.flush(zlib.Z_SYNC_FLUSH)
-        data += compress.compress('\x81\x89' + _mask_hybi07('WebSocket'))
+        data += compress.compress('\x81\x89' + _mask_hybi('WebSocket'))
         data += compress.flush(zlib.Z_FINISH)
 
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
 
-        data += compress.compress('\x81\x85' + _mask_hybi07('World'))
+        data += compress.compress('\x81\x85' + _mask_hybi('World'))
         data += compress.flush(zlib.Z_SYNC_FLUSH)
         # Close frame
         data += compress.compress(
-            '\x88\x8a' + _mask_hybi07(struct.pack('!H', 1000) + 'Good bye'))
+            '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye'))
         data += compress.flush(zlib.Z_SYNC_FLUSH)
 
         request = _create_request_from_rawdata(data, True)
@@ -425,7 +425,7 @@ class MessageReceiverTest(unittest.TestCase):
 
         self.assertEqual(None, receiver.receive_nowait())
 
-        request.connection.put_bytes('\x81\x86' + _mask_hybi07('Hello!'))
+        request.connection.put_bytes('\x81\x86' + _mask_hybi('Hello!'))
         self.assertEqual('Hello!', receiver.receive())
 
     def test_onmessage(self):
@@ -437,7 +437,7 @@ class MessageReceiverTest(unittest.TestCase):
         request = _create_blocking_request()
         receiver = msgutil.MessageReceiver(request, onmessage_handler)
 
-        request.connection.put_bytes('\x81\x86' + _mask_hybi07('Hello!'))
+        request.connection.put_bytes('\x81\x86' + _mask_hybi('Hello!'))
         self.assertEqual('Hello!', onmessage_queue.get())
 
 

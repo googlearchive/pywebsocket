@@ -130,7 +130,7 @@ class EndToEndTest(unittest.TestCase):
         else:
             os.kill(pid, signal.SIGKILL)
 
-    def _run_hybi07_test(self, test_function):
+    def _run_hybi_test(self, test_function):
         server = self._run_server()
         try:
             # TODO(tyoshino): add some logic to poll the server until it
@@ -145,7 +145,7 @@ class EndToEndTest(unittest.TestCase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi07_deflate_test(self, test_function):
+    def _run_hybi_deflate_test(self, test_function):
         server = self._run_server()
         try:
             time.sleep(0.2)
@@ -160,16 +160,16 @@ class EndToEndTest(unittest.TestCase):
             self._kill_process(server.pid)
 
     def test_echo(self):
-        self._run_hybi07_test(_echo_check_procedure)
+        self._run_hybi_test(_echo_check_procedure)
 
     def test_echo_server_close(self):
-        self._run_hybi07_test(_echo_check_procedure_with_goodbye)
+        self._run_hybi_test(_echo_check_procedure_with_goodbye)
 
     def test_echo_deflate(self):
-        self._run_hybi07_deflate_test(_echo_check_procedure)
+        self._run_hybi_deflate_test(_echo_check_procedure)
 
     def test_echo_deflate_server_close(self):
-        self._run_hybi07_deflate_test(_echo_check_procedure_with_goodbye)
+        self._run_hybi_deflate_test(_echo_check_procedure_with_goodbye)
 
     def test_close_on_protocol_error(self):
         """Tests that the server sends a close frame with protocol error status
@@ -185,7 +185,7 @@ class EndToEndTest(unittest.TestCase):
             client.assert_receive_close(
                 client_for_testing.STATUS_PROTOCOL_ERROR)
 
-        self._run_hybi07_test(test_function)
+        self._run_hybi_test(test_function)
 
     def test_close_on_unsupported_frame(self):
         """Tests that the server sends a close frame with unsupported operation
@@ -201,7 +201,7 @@ class EndToEndTest(unittest.TestCase):
             client.assert_receive_close(
                 client_for_testing.STATUS_UNSUPPORTED)
 
-        self._run_hybi07_test(test_function)
+        self._run_hybi_test(test_function)
 
     def _run_hybi00_test(self, test_function):
         server = self._run_server()

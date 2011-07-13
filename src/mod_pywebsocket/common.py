@@ -29,9 +29,12 @@
 
 
 # Constants indicating WebSocket protocol version.
-VERSION_HYBI07 = 7
-VERSION_HYBI00 = 0
 VERSION_HIXIE75 = -1
+VERSION_HYBI00 = 0
+VERSION_HYBI08 = 8
+
+# Constants indicating WebSocket protocol latest version.
+VERSION_HYBI_LATEST = VERSION_HYBI08
 
 # Port numbers
 DEFAULT_WEB_SOCKET_PORT = 80
@@ -49,7 +52,7 @@ OPCODE_CLOSE = 0x8
 OPCODE_PING = 0x9
 OPCODE_PONG = 0xa
 
-# UUIDs used by HyBi 07 opening handshake and frame masking.
+# UUIDs used by HyBi 04 and later opening handshake and frame masking.
 WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
 # Opening handshake header names and expected values.

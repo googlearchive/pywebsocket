@@ -62,7 +62,7 @@ def _create_good_request_def():
          'Connection': 'Upgrade',
          'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
          'Sec-WebSocket-Origin': 'http://example.com',
-         'Sec-WebSocket-Version': '7'})
+         'Sec-WebSocket-Version': '8'})
 
 
 def _create_request(request_def):
@@ -123,9 +123,9 @@ _EXPECTED_RESPONSE = (
     'Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n')
 
 
-class Hybi07HandshakerTest(unittest.TestCase):
-    """A unittest for draft-ietf-hybi-thewebsocketprotocol-06 handshake
-    processor.
+class HandshakerTest(unittest.TestCase):
+    """A unittest for draft-ietf-hybi-thewebsocketprotocol-06 and later
+    handshake processor.
     """
 
     def test_do_handshake(self):
@@ -142,7 +142,7 @@ class Hybi07HandshakerTest(unittest.TestCase):
         self.assertEqual('http://example.com', request.ws_origin)
         self.assertEqual(None, request.ws_protocol)
         self.assertEqual(None, request.ws_extensions)
-        self.assertEqual(common.VERSION_HYBI07, request.ws_version)
+        self.assertEqual(common.VERSION_HYBI_LATEST, request.ws_version)
 
     def test_do_handshake_with_capitalized_value(self):
         request_def = _create_good_request_def()

@@ -225,8 +225,8 @@ class _TLSSocket(object):
         pass
 
 
-class WebSocketHybi07Handshake(object):
-    """WebSocket handshake processor for IETF HyBi 07."""
+class WebSocketHandshake(object):
+    """WebSocket handshake processor for IETF HyBi latest protocol."""
 
     def __init__(self, options):
         self._logger = util.get_class_logger(self)
@@ -263,7 +263,7 @@ class WebSocketHybi07Handshake(object):
             'Sec-WebSocket-Key: %s (%s)', key, util.hexify(original_key))
         fields.append('Sec-WebSocket-Key: %s\r\n' % key)
 
-        fields.append('Sec-WebSocket-Version: 7\r\n')
+        fields.append('Sec-WebSocket-Version: 8\r\n')
 
         # Setting up extensions.
         extensions = []
@@ -672,7 +672,7 @@ class WebSocketHixie75Handshake(object):
 
 
 class WebSocketStream(object):
-    """WebSocket frame processor for IETF HyBi 07."""
+    """WebSocket frame processor for IETF HyBi latest protocol."""
 
     def __init__(self, socket, handshake):
         self._handshake = handshake
@@ -683,7 +683,7 @@ class WebSocketStream(object):
 
         self._fragmented = False
 
-    def _mask_hybi07(self, s):
+    def _mask_hybi(self, s):
         # TODO(tyoshino): os.urandom does open/read/close for every call. If
         # performance matters, change this to some library call that generates
         # cryptographically secure pseudo random number sequence.
@@ -696,7 +696,7 @@ class WebSocketStream(object):
         return ''.join(result)
 
     def send_frame_of_arbitrary_bytes(self, header, body):
-        self._socket.sendall(header + self._mask_hybi07(body))
+        self._socket.sendall(header + self._mask_hybi(body))
 
     def send_text(self, payload, end=True):
         encoded_payload = payload.encode('utf-8')
@@ -725,7 +725,7 @@ class WebSocketStream(object):
             header += chr(mask_bit | 127) + struct.pack('!Q', payload_length)
         else:
             raise Exception('Too long payload (%d byte)' % payload_length)
-        self._socket.sendall(header + self._mask_hybi07(encoded_payload))
+        self._socket.sendall(header + self._mask_hybi(encoded_payload))
 
     def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
                             rsv1=0, rsv2=0, rsv3=0):
@@ -795,7 +795,7 @@ class WebSocketStream(object):
         else:
             body = ''
         if mask:
-            frame += chr(1 << 7 | len(body)) + self._mask_hybi07(body)
+            frame += chr(1 << 7 | len(body)) + self._mask_hybi(body)
         else:
             frame += chr(len(body)) + body
         return frame
@@ -929,7 +929,7 @@ class Client(object):
 
 def create_client(options):
     return Client(
-        options, WebSocketHybi07Handshake(options), WebSocketStream)
+        options, WebSocketHandshake(options), WebSocketStream)
 
 
 def create_client_hybi00(options):

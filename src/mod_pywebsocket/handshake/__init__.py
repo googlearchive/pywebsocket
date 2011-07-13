@@ -81,7 +81,7 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
 
     handshakers = []
     handshakers.append(
-        ('IETF HyBi 07', hybi.Handshaker(request, dispatcher)))
+        ('IETF HyBi latest', hybi.Handshaker(request, dispatcher)))
     handshakers.append(
         ('IETF HyBi 00', hybi00.Handshaker(request, dispatcher)))
     if allowDraft75:

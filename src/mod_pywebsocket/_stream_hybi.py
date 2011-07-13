@@ -28,7 +28,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Stream class for IETF HyBi 07 WebSocket protocol.
+"""Stream class for IETF HyBi latest WebSocket protocol.
 """
 
 

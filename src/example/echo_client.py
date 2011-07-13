@@ -89,7 +89,7 @@ _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 # Special message that tells the echo server to start closing handshake
 _GOODBYE_MESSAGE = 'Goodbye'
 
-_PROTOCOL_VERSION_HYBI07 = 'hybi07'
+_PROTOCOL_VERSION_HYBI08 = 'hybi08'
 _PROTOCOL_VERSION_HYBI00 = 'hybi00'
 _PROTOCOL_VERSION_HIXIE75 = 'hixie75'
 
@@ -275,7 +275,7 @@ class ClientHandshakeBase(object):
 
 class ClientHandshakeProcessor(ClientHandshakeBase):
     """WebSocket opening handshake processor for
-    draft-ietf-hybi-thewebsocketprotocol-06.
+    draft-ietf-hybi-thewebsocketprotocol-06 and later.
     """
 
     def __init__(self, socket, options):
@@ -315,7 +315,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         fields.append(
             '%s: %s\r\n' % (common.SEC_WEBSOCKET_KEY_HEADER, self._key))
 
-        fields.append('%s: 7\r\n' % common.SEC_WEBSOCKET_VERSION_HEADER)
+        fields.append('%s: %s\r\n' % (common.SEC_WEBSOCKET_VERSION_HEADER,
+                                      common.VERSION_HYBI_LATEST))
 
         if self._options.deflate:
             fields.append(
@@ -750,7 +751,7 @@ class EchoClient(object):
 
             version = self._options.protocol_version
 
-            if version == _PROTOCOL_VERSION_HYBI07:
+            if version == _PROTOCOL_VERSION_HYBI08:
                 self._handshake = ClientHandshakeProcessor(
                     self._socket, self._options)
             elif version == _PROTOCOL_VERSION_HYBI00:
@@ -769,7 +770,7 @@ class EchoClient(object):
 
             request = ClientRequest(self._socket)
 
-            if version == _PROTOCOL_VERSION_HYBI07:
+            if version == _PROTOCOL_VERSION_HYBI08:
                 stream_option = StreamOptions()
                 stream_option.mask_send = True
                 stream_option.unmask_receive = False
@@ -851,9 +852,9 @@ def main():
                       'protocol-version flag')
     parser.add_option('--protocol-version', '--protocol_version',
                       dest='protocol_version',
-                      type='string', default=_PROTOCOL_VERSION_HYBI07,
+                      type='string', default=_PROTOCOL_VERSION_HYBI08,
                       help='WebSocket protocol version to use. One of \'' +
-                      _PROTOCOL_VERSION_HYBI07 + '\', \'' +
+                      _PROTOCOL_VERSION_HYBI08 + '\', \'' +
                       _PROTOCOL_VERSION_HYBI00 + '\', \'' +
                       _PROTOCOL_VERSION_HIXIE75 + '\'')
     parser.add_option('--deflate', dest='deflate',

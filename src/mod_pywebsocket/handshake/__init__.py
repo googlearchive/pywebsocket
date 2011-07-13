@@ -38,7 +38,7 @@ import logging
 
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
-from mod_pywebsocket.handshake import hybi06
+from mod_pywebsocket.handshake import hybi
 # Export Extension symbol from this module.
 from mod_pywebsocket.handshake._base import Extension
 # Export HandshakeError symbol from this module.
@@ -81,7 +81,7 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
 
     handshakers = []
     handshakers.append(
-        ('IETF HyBi 07', hybi06.Handshaker(request, dispatcher)))
+        ('IETF HyBi 07', hybi.Handshaker(request, dispatcher)))
     handshakers.append(
         ('IETF HyBi 00', hybi00.Handshaker(request, dispatcher)))
     if allowDraft75:

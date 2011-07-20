@@ -269,6 +269,7 @@ class EndToEndTest(unittest.TestCase):
 
     def test_example_echo_client(self):
         """Tests that the echo_client.py example can talk with the server."""
+
         server = self._run_server()
         try:
             time.sleep(0.2)

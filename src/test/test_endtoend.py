@@ -104,7 +104,8 @@ class EndToEndTest(unittest.TestCase):
         self._options.server_port = self.test_port
 
     def _run_python_command(self, commandline):
-        return subprocess.Popen([sys.executable] + commandline, close_fds=True)
+        return subprocess.Popen([sys.executable] + commandline, close_fds=True,
+                                stdout=sys.stdout, stderr=sys.stderr)
 
     def _run_server(self, allow_draft75=False):
         args = [self.standalone_command,

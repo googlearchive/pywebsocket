@@ -277,9 +277,9 @@ class EndToEndTest(unittest.TestCase):
                 self.top_dir, 'example', 'echo_client.py')
             args = [client_command,
                     '-p', str(self.test_port)]
-            pipe_recv, pipe_send = os.pipe()
-            self._run_python_command(args, stdout=pipe_send)
-            actual = os.read(pipe_recv, 4096).decode("utf-8")
+            client = self._run_python_command(args, stdout=subprocess.PIPE)
+            stdoutdata, stderrdata = client.communicate()
+            actual = stdoutdata.decode("utf-8")
             expected = ('Send: Hello\n' 'Recv: Hello\n'
                 u'Send: \u65e5\u672c\n' u'Recv: \u65e5\u672c\n'
                 'Send close\n' 'Recv ack\n')
@@ -287,6 +287,9 @@ class EndToEndTest(unittest.TestCase):
                 raise Exception('Unexpected result on example echo client: '
                                 '%r (expected) vs %r (actual)' %
                                 (expected, actual))
+            if stderrdata is not None:
+                raise Exception('Unexpected error message on example echo '
+                                'client: %r' % stderrdata)
         finally:
             self._kill_process(server.pid)
 

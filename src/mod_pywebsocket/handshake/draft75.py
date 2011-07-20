@@ -131,7 +131,7 @@ class Handshaker(object):
     def _set_subprotocol(self):
         subprotocol = self._request.headers_in.get('WebSocket-Protocol')
         if subprotocol is not None:
-            validate_subprotocol(subprotocol)
+            validate_subprotocol(subprotocol, hixie=True)
         self._request.ws_protocol = subprotocol
 
     def _set_protocol_version(self):

@@ -90,23 +90,35 @@ def get_default_port(is_secure):
         return common.DEFAULT_WEB_SOCKET_PORT
 
 
-# TODO(tyoshino): Have stricter validator for HyBi 07.
-def validate_subprotocol(subprotocol):
+def validate_subprotocol(subprotocol, hixie):
     """Validate a value in subprotocol fields such as WebSocket-Protocol,
     Sec-WebSocket-Protocol.
 
     See
-    - HyBi 06: Section 5.2.2.
+    - HyBi 10: Section 5.1. and 5.2.2.
     - HyBi 00: Section 4.1. Opening handshake
     - Hixie 75: Section 4.1. Handshake
     """
 
     if not subprotocol:
         raise HandshakeError('Invalid subprotocol name: empty')
-    for c in subprotocol:
-        if not 0x20 <= ord(c) <= 0x7e:
-            raise HandshakeError(
-                'Illegal character in subprotocol name: %r' % c)
+    if hixie:
+        # Parameter should be in the range U+0020 to U+007E.
+        for c in subprotocol:
+            if not 0x20 <= ord(c) <= 0x7e:
+                raise HandshakeError(
+                    'Illegal character in subprotocol name: %r' % c)
+    else:
+        # Parameter should be encoded HTTP token.
+        state = http_header_util.ParsingState(subprotocol)
+        token = http_header_util.consume_token(state)
+        rest = http_header_util.peek(state)
+        # If |rest| is not None, |subprotocol| is not one token or invalid. If
+        # |rest| is None, |token| must not be None because |subprotocol| is
+        # concatenation of |token| and |rest| and is not None.
+        if rest is not None:
+            raise HandshakeError('Invalid non-token string in subprotocol '
+                                 'name: %r' % rest)
 
 
 def parse_host_header(request):

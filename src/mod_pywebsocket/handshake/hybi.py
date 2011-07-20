@@ -55,6 +55,7 @@ from mod_pywebsocket.handshake._base import HandshakeError
 from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.handshake._base import parse_token_list
 from mod_pywebsocket.handshake._base import validate_mandatory_header
+from mod_pywebsocket.handshake._base import validate_subprotocol
 
 
 _BASE64_REGEX = re.compile('^[+/0-9A-Za-z]*=*$')
@@ -150,8 +151,7 @@ class Handshaker(object):
                 raise HandshakeError(
                     'do_extra_handshake must choose one subprotocol from '
                     'ws_requested_protocols and set it to ws_protocol')
-
-            # TODO(tyoshino): Validate selected subprotocol value.
+            validate_subprotocol(self._request.ws_protocol, hixie=False)
 
             self._logger.debug(
                 'Subprotocol accepted: %r',
@@ -186,13 +186,10 @@ class Handshaker(object):
             self._request.ws_requested_protocols = None
             return
 
-        # TODO(tyoshino): Validate the header value.
-
-        requested_protocols = protocol_header.split(',')
-        self._request.ws_requested_protocols = [
-            s.strip() for s in requested_protocols]
-
-        self._logger.debug('Subprotocols requested: %r', requested_protocols)
+        self._request.ws_requested_protocols = parse_token_list(
+            protocol_header)
+        self._logger.debug('Subprotocols requested: %r',
+                           self._request.ws_requested_protocols)
 
     def _set_extensions(self):
         self._request.ws_deflate = False
@@ -273,8 +270,6 @@ class Handshaker(object):
             common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
         response.append(format_header(
             common.SEC_WEBSOCKET_ACCEPT_HEADER, accept))
-        # TODO(tyoshino): Encode value of protocol and extensions if any
-        # special character that we have to encode by some manner.
         if self._request.ws_protocol is not None:
             response.append(format_header(
                 common.SEC_WEBSOCKET_PROTOCOL_HEADER,

@@ -48,23 +48,60 @@ class HandshakerTest(unittest.TestCase):
     """A unittest for handshake module."""
 
     def test_validate_subprotocol(self):
-        validate_subprotocol('sample')  # should succeed.
-        validate_subprotocol('Sample')  # should succeed.
-        validate_subprotocol('sample\x20protocol')  # should succeed.
-        validate_subprotocol('sample\x7eprotocol')  # should succeed.
+        # should succeed.
+        validate_subprotocol('sample', hixie=True)
+        validate_subprotocol('Sample', hixie=True)
+        validate_subprotocol('sample\x7eprotocol', hixie=True)
+        validate_subprotocol('sample\x20protocol', hixie=True)
+        validate_subprotocol('sample', hixie=False)
+        validate_subprotocol('Sample', hixie=False)
+        validate_subprotocol('sample\x7eprotocol', hixie=False)
+
+        # should fail.
         self.assertRaises(HandshakeError,
                           validate_subprotocol,
-                          '')
+                          '',
+                          hixie=True)
         self.assertRaises(HandshakeError,
                           validate_subprotocol,
-                          'sample\x19protocol')
+                          'sample\x19protocol',
+                          hixie=True)
         self.assertRaises(HandshakeError,
                           validate_subprotocol,
-                          'sample\x7fprotocol')
+                          'sample\x7fprotocol',
+                          hixie=True)
         self.assertRaises(HandshakeError,
                           validate_subprotocol,
                           # "Japan" in Japanese
-                          u'\u65e5\u672c')
+                          u'\u65e5\u672c',
+                          hixie=True)
+        self.assertRaises(HandshakeError,
+                          validate_subprotocol,
+                          '',
+                          hixie=False)
+        self.assertRaises(HandshakeError,
+                          validate_subprotocol,
+                          'sample\x09protocol',
+                          hixie=False)
+        self.assertRaises(HandshakeError,
+                          validate_subprotocol,
+                          'sample\x19protocol',
+                          hixie=False)
+        self.assertRaises(HandshakeError,
+                          validate_subprotocol,
+                          'sample\x20protocol',
+                          hixie=False)
+        self.assertRaises(HandshakeError,
+                          validate_subprotocol,
+                          'sample\x7fprotocol',
+                          hixie=False)
+        self.assertRaises(HandshakeError,
+                          validate_subprotocol,
+                          # "Japan" in Japanese
+                          u'\u65e5\u672c',
+                          hixie=False)
+
+
 _TEST_EXTENSION_DATA = [
     ('foo', [('foo', [])]),
     ('foo; bar', [('foo', [('bar', None)])]),
@@ -84,6 +121,7 @@ _TEST_EXTENSION_DATA = [
 
 
 class ExtensionsParserTest(unittest.TestCase):
+
     def _verify_extension_list(self, expected_list, actual_list):
         """Verifies that Extension objects in actual_list have the same members
         as extension definitions in expected_list. Extension definition used
@@ -134,6 +172,7 @@ class ExtensionsParserTest(unittest.TestCase):
 
 
 class FormatExtensionsTest(unittest.TestCase):
+
     def test_format_extensions(self):
         for formatted_string, definitions in _TEST_EXTENSION_DATA:
             extensions = []

@@ -233,7 +233,7 @@ class Dispatcher(object):
         # Catch non-critical exceptions the handler didn't handle.
         except msgutil.BadOperationException, e:
             self._logger.debug('%s', e)
-            request.ws_stream.close_connection(common.STATUS_GOING_AWAY)
+            request.ws_stream.close_connection(common.STATUS_ABNORMAL_CLOSE)
         except msgutil.InvalidFrameException, e:
             # InvalidFrameException must be caught before
             # ConnectionTerminatedException that catches InvalidFrameException.

@@ -78,11 +78,17 @@ SEC_WEBSOCKET_LOCATION_HEADER = 'Sec-WebSocket-Location'
 DEFLATE_STREAM_EXTENSION = 'deflate-stream'
 
 # Status codes
+# Code STATUS_CODE_NOT_AVAILABLE should not be used in actual frames. This code
+# is exposed to JavaScript API as pseudo status code which represent actual
+# frame does not have status code.
 STATUS_NORMAL = 1000
 STATUS_GOING_AWAY = 1001
 STATUS_PROTOCOL_ERROR = 1002
 STATUS_UNSUPPORTED = 1003
 STATUS_TOO_LARGE = 1004
+STATUS_CODE_NOT_AVAILABLE = 1005
+STATUS_ABNORMAL_CLOSE = 1006
+STATUS_INVALID_UTF8 = 1007
 
 
 # vi:sts=4 sw=4 et

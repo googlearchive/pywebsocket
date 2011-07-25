@@ -778,7 +778,7 @@ class WebSocketStream(object):
         if payload_length != len(payload):
             raise Exception(
                 'Unexpected payload length: %d (expected) vs %d (actual)' %
-                (payload_length, len(payload)))
+                (len(payload), payload_length))
 
         received = _receive_bytes(self._socket, payload_length)
 

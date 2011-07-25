@@ -78,7 +78,8 @@ def consume(state, amount=1):
 
 def consume_string(state, expected):
     """Given a parsing state and a expected string, consumes the string from
-    the head. Returns True if consumed successfully. Otherwise, returns False.
+    the head. Returns True if consumed successfully. Otherwise, returns
+    False.
     """
 
     pos = 0

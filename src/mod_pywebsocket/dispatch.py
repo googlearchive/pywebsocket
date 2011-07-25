@@ -153,9 +153,10 @@ class Dispatcher(object):
                       placed.
             scan_dir: The directory where handler definition files are
                       searched. scan_dir must be a directory under root_dir,
-                      including root_dir itself.  If scan_dir is None, root_dir
-                      is used as scan_dir. scan_dir can be useful in saving
-                      scan time when root_dir contains many subdirectories.
+                      including root_dir itself.  If scan_dir is None,
+                      root_dir is used as scan_dir. scan_dir can be useful
+                      in saving scan time when root_dir contains many
+                      subdirectories.
         """
 
         self._logger = util.get_class_logger(self)

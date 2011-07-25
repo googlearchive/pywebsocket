@@ -165,8 +165,8 @@ class NoopMasker(object):
 class RepeatedXorMasker(object):
     """A masking object that applies XOR on the string given to mask method
     with the masking bytes given to the constructor repeatedly. This object
-    remembers the position in the masking bytes the last mask method call ended
-    and resumes from that point on the next mask method call.
+    remembers the position in the masking bytes the last mask method call
+    ended and resumes from that point on the next mask method call.
     """
 
     def __init__(self, mask):
@@ -312,8 +312,8 @@ class DeflateSocket(object):
 
     def recv(self, size):
         """Receives data from the socket specified on the construction up
-        to the specified size. Once any data is available, returns it even if
-        it's smaller than the specified size.
+        to the specified size. Once any data is available, returns it even
+        if it's smaller than the specified size.
         """
 
         # TODO(tyoshino): Allow call with size=0. It should block until any

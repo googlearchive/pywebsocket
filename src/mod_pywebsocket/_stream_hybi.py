@@ -297,8 +297,8 @@ class Stream(StreamBase):
             InvalidFrameException: when the frame contains invalid
                 data.
             UnsupportedFrameException: when the received frame has
-                flags, opcode we cannot handle. You can ignore this exception
-                and continue receiving the next frame.
+                flags, opcode we cannot handle. You can ignore this
+                exception and continue receiving the next frame.
         """
 
         if self._request.client_terminated:

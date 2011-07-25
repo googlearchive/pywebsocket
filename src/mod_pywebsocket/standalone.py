@@ -49,8 +49,8 @@ Usage:
 See __init__.py for details of <websock_handlers> and how to write WebSocket
 handlers. If this path is relative, <document_root> is used as the base.
 
-<scan_dir> is a path under the root directory. If specified, only the handlers
-under scan_dir are scanned. This is useful in saving scan time.
+<scan_dir> is a path under the root directory. If specified, only the
+handlers under scan_dir are scanned. This is useful in saving scan time.
 
 Note:
 This server is derived from SocketServer.ThreadingMixIn. Hence a thread is
@@ -177,8 +177,8 @@ class _StandaloneRequest(object):
         return self._use_tls
 
     def _drain_received_data(self):
-        """Don't use this method from WebSocket handler. Drains unread data in
-        the receive buffer.
+        """Don't use this method from WebSocket handler. Drains unread data
+        in the receive buffer.
         """
 
         raw_socket = self._request_handler.connection
@@ -198,9 +198,9 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     allow_reuse_address = True
 
     def __init__(self, options):
-        """Override SocketServer.TCPServer.__init__ to set SSL enabled socket
-        object to self.socket before server_bind and server_activate, if
-        necessary.
+        """Override SocketServer.TCPServer.__init__ to set SSL enabled
+        socket object to self.socket before server_bind and server_activate,
+        if necessary.
         """
 
         self.request_queue_size = options.request_queue_size
@@ -239,12 +239,13 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
     """CGIHTTPRequestHandler specialized for WebSocket."""
 
     def setup(self):
-        """Override SocketServer.StreamRequestHandler.setup to wrap rfile with
-        MemorizingFile.
+        """Override SocketServer.StreamRequestHandler.setup to wrap rfile
+        with MemorizingFile.
 
-        This method will be called by BaseRequestHandler's constructor before
-        calling BaseHTTPRequestHandler.handle. BaseHTTPRequestHandler.handle
-        will call BaseHTTPRequestHandler.handle_one_request and it will call
+        This method will be called by BaseRequestHandler's constructor
+        before calling BaseHTTPRequestHandler.handle.
+        BaseHTTPRequestHandler.handle will call
+        BaseHTTPRequestHandler.handle_one_request and it will call
         WebSocketRequestHandler.parse_request.
         """
 
@@ -279,8 +280,8 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
 
         Return True to continue processing for HTTP(S), False otherwise.
 
-        See BaseHTTPRequestHandler.handle_one_request method which calls this
-        method to understand how the return value will be handled.
+        See BaseHTTPRequestHandler.handle_one_request method which calls
+        this method to understand how the return value will be handled.
         """
 
         # We hook parse_request method, but also call the original

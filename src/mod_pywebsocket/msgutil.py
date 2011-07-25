@@ -31,9 +31,10 @@
 """Message related utilities.
 
 Note: request.connection.write/read are used in this module, even though
-mod_python document says that they should be used only in connection handlers.
-Unfortunately, we have no other options. For example, request.write/read are
-not suitable because they don't allow direct raw bytes writing/reading.
+mod_python document says that they should be used only in connection
+handlers. Unfortunately, we have no other options. For example,
+request.write/read are not suitable because they don't allow direct raw
+bytes writing/reading.
 """
 
 
@@ -64,9 +65,9 @@ def send_message(request, message, end=True):
     Args:
         request: mod_python request.
         message: unicode string to send.
-        end: False to send message as a fragment. All messages until the first
-             call with end=True (inclusive) will be delivered to the client
-             in separate frames but as one WebSocket message.
+        end: False to send message as a fragment. All messages until the
+             first call with end=True (inclusive) will be delivered to the
+             client in separate frames but as one WebSocket message.
     Raises:
         BadOperationException: when server already terminated.
     """
@@ -91,8 +92,8 @@ def send_ping(request, body=''):
 class MessageReceiver(threading.Thread):
     """This class receives messages from the client.
 
-    This class provides three ways to receive messages: blocking, non-blocking,
-    and via callback. Callback has the highest precedence.
+    This class provides three ways to receive messages: blocking,
+    non-blocking, and via callback. Callback has the highest precedence.
 
     Note: This class should not be used with the standalone server for wss
     because pyOpenSSL used by the server raises a fatal error if the socket
@@ -107,8 +108,8 @@ class MessageReceiver(threading.Thread):
             onmessage: a function to be called when a message is received.
                        May be None. If not None, the function is called on
                        another thread. In that case, MessageReceiver.receive
-                       and MessageReceiver.receive_nowait are useless because
-                       they will never return any messages.
+                       and MessageReceiver.receive_nowait are useless
+                       because they will never return any messages.
         """
 
         threading.Thread.__init__(self)

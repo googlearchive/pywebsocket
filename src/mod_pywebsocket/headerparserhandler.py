@@ -134,8 +134,8 @@ def headerparserhandler(request):
     Args:
         request: mod_python request.
 
-    This function is named headerparserhandler because it is the default name
-    for a PythonHeaderParserHandler.
+    This function is named headerparserhandler because it is the default
+    name for a PythonHeaderParserHandler.
     """
 
     try:

@@ -139,6 +139,8 @@ class Handshaker(object):
         self._request.ws_version = common.VERSION_HYBI_LATEST
         stream_options = StreamOptions()
         stream_options.deflate = self._request.ws_deflate
+        stream_options.deflate_application_data = (
+            self._request.ws_deflate_application_data)
         self._request.ws_stream = Stream(self._request, stream_options)
 
         self._request.ws_close_code = None
@@ -193,6 +195,7 @@ class Handshaker(object):
 
     def _set_extensions(self):
         self._request.ws_deflate = False
+        self._request.ws_deflate_application_data = False
 
         extensions_header = self._request.headers_in.get(
             common.SEC_WEBSOCKET_EXTENSIONS_HEADER)
@@ -207,12 +210,15 @@ class Handshaker(object):
 
         for extension in requested_extensions:
             extension_name = extension.name()
-            # We now support only deflate-stream extension. Any other
-            # extension requests are just ignored for now.
+            # Unknown extension requests are just ignored.
             if (extension_name == common.DEFLATE_STREAM_EXTENSION and
                 len(extension.get_parameter_names()) == 0):
                 self._request.ws_extensions.append(extension)
                 self._request.ws_deflate = True
+            if (extension_name == common.DEFLATE_APPLICATION_DATA_EXTENSION and
+                len(extension.get_parameter_names()) == 0):
+                self._request.ws_extensions.append(extension)
+                self._request.ws_deflate_application_data = True
 
         self._request.ws_requested_extensions = requested_extensions
 

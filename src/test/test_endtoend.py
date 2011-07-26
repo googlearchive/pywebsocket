@@ -151,7 +151,21 @@ class EndToEndTest(unittest.TestCase):
         try:
             time.sleep(0.2)
 
-            self._options.use_deflate = True
+            self._options.use_deflate_stream = True
+            client = client_for_testing.create_client(self._options)
+            try:
+                test_function(client)
+            finally:
+                client.close_socket()
+        finally:
+            self._kill_process(server.pid)
+
+    def _run_hybi_deflate_application_data_test(self, test_function):
+        server = self._run_server()
+        try:
+            time.sleep(0.2)
+
+            self._options.use_deflate_application_data = True
             client = client_for_testing.create_client(self._options)
             try:
                 test_function(client)
@@ -171,6 +185,13 @@ class EndToEndTest(unittest.TestCase):
 
     def test_echo_deflate_server_close(self):
         self._run_hybi_deflate_test(_echo_check_procedure_with_goodbye)
+
+    def test_echo_deflate_application_data(self):
+        self._run_hybi_deflate_application_data_test(_echo_check_procedure)
+
+    def test_echo_deflate_application_data_server_close(self):
+        self._run_hybi_deflate_application_data_test(
+            _echo_check_procedure_with_goodbye)
 
     def test_close_on_protocol_error(self):
         """Tests that the server sends a close frame with protocol error status

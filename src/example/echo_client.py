@@ -73,6 +73,9 @@ import struct
 import sys
 
 from mod_pywebsocket import common
+from mod_pywebsocket.handshake._base import Extension
+from mod_pywebsocket.handshake._base import format_extensions
+from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket.stream import StreamOptions
@@ -318,11 +321,21 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         fields.append('%s: %s\r\n' % (common.SEC_WEBSOCKET_VERSION_HEADER,
                                       common.VERSION_HYBI_LATEST))
 
-        if self._options.deflate:
+        extensions_to_request = []
+
+        if self._options.deflate_stream:
+            extensions_to_request.append(
+                Extension(common.DEFLATE_STREAM_EXTENSION))
+
+        if self._options.deflate_application_data:
+            extensions_to_request.append(
+                Extension(common.DEFLATE_APPLICATION_DATA_EXTENSION))
+
+        if len(extensions_to_request) != 0:
             fields.append(
                 '%s: %s\r\n' %
                 (common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
-                 common.DEFLATE_STREAM_EXTENSION))
+                 format_extensions(extensions_to_request)))
 
         for field in fields:
             self._socket.sendall(field)
@@ -402,20 +415,42 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 'Invalid %s header: %r (expected: %s)' %
                 (common.SEC_WEBSOCKET_ACCEPT_HEADER, accept, expected_accept))
 
-        if self._options.deflate:
-            extensions = _get_mandatory_header(
-                fields, common.SEC_WEBSOCKET_EXTENSIONS_HEADER)
-            if extensions != common.DEFLATE_STREAM_EXTENSION:
-                raise ClientHandshakeError(
-                    'Requested %s, but the server rejected it' %
-                    common.DEFLATE_STREAM_EXTENSION)
-        else:
-            extensions = fields.get(
-                common.SEC_WEBSOCKET_EXTENSIONS_HEADER.lower())
-            if extensions != None:
-                raise ClientHandshakeError(
-                    'Unexpected %s field: %r' %
-                    (common.SEC_WEBSOCKET_EXTENSIONS_HEADER, extensions))
+        deflate_stream_accepted = False
+        deflate_application_data_accepted = False
+
+        extensions_header = fields.get(
+            common.SEC_WEBSOCKET_EXTENSIONS_HEADER.lower())
+        accepted_extensions = []
+        if extensions_header is not None and len(extensions_header) != 0:
+            accepted_extensions = parse_extensions(extensions_header[0])
+        for extension in accepted_extensions:
+            extension_name = extension.name()
+            if (extension_name == common.DEFLATE_STREAM_EXTENSION and
+                len(extension.get_parameter_names()) == 0 and
+                self._options.deflate_stream):
+                deflate_stream_accepted = True
+                continue
+
+            if (extension_name ==
+                common.DEFLATE_APPLICATION_DATA_EXTENSION and
+                len(extension.get_parameter_names()) == 0 and
+                self._options.deflate_application_data):
+                deflate_application_data_accepted = True
+                continue
+
+            raise ClientHandshakeError(
+                'Unexpected extension %r' % extension_name)
+
+        if (self._options.deflate_stream and not deflate_stream_accepted):
+            raise ClientHandshakeError(
+                'Requested %s, but the server rejected it' %
+                common.DEFLATE_STREAM_EXTENSION)
+
+        if (self._options.deflate_application_data and
+            not deflate_application_data_accepted):
+            raise ClientHandshakeError(
+                'Requested %s, but the server rejected it' %
+                common.DEFLATE_APPLICATION_DATA_EXTENSION)
 
         # TODO(tyoshino): Handle Sec-WebSocket-Protocol
         # TODO(tyoshino): Handle Cookie, etc.
@@ -774,7 +809,9 @@ class EchoClient(object):
                 stream_option = StreamOptions()
                 stream_option.mask_send = True
                 stream_option.unmask_receive = False
-                stream_option.deflate = self._options.deflate
+                stream_option.deflate = self._options.deflate_stream
+                stream_option.deflate_application_data = (
+                    self._options.deflate_application_data)
                 self._stream = Stream(request, stream_option)
             elif version == _PROTOCOL_VERSION_HYBI00:
                 self._stream = StreamHixie75(request, True)
@@ -857,11 +894,17 @@ def main():
                       _PROTOCOL_VERSION_HYBI08 + '\', \'' +
                       _PROTOCOL_VERSION_HYBI00 + '\', \'' +
                       _PROTOCOL_VERSION_HIXIE75 + '\'')
-    parser.add_option('--deflate', dest='deflate',
+    parser.add_option('--deflate', dest='deflate_stream',
                        action='store_true', default=False,
                       help='use deflate-stream extension. This value will be '
                       'ignored if used with protocol version that doesn\'t '
                       'support deflate-stream.')
+    parser.add_option('--deflate_application_data',
+                      dest='deflate_application_data',
+                       action='store_true', default=False,
+                      help='use x-deflate-application-data extension. This '
+                      'value will be ignored if used with protocol version '
+                      'that doesn\'t support x-deflate-application-data.')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
                       choices=['debug', 'info', 'warn', 'error', 'critical'],

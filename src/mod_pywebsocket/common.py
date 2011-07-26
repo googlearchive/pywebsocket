@@ -76,6 +76,7 @@ SEC_WEBSOCKET_LOCATION_HEADER = 'Sec-WebSocket-Location'
 
 # Extensions
 DEFLATE_STREAM_EXTENSION = 'deflate-stream'
+DEFLATE_APPLICATION_DATA_EXTENSION = 'x-deflate-application-data'
 
 # Status codes
 # Code STATUS_CODE_NOT_AVAILABLE should not be used in actual frames. This code

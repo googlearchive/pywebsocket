@@ -78,6 +78,10 @@ STATUS_GOING_AWAY = 1001
 STATUS_PROTOCOL_ERROR = 1002
 STATUS_UNSUPPORTED = 1003
 
+# Extension tokens
+_DEFLATE_STREAM_EXTENSION = 'deflate-stream'
+_DEFLATE_APPLICATION_DATA_EXTENSION = 'x-deflate-application-data'
+
 
 def _method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
@@ -268,9 +272,13 @@ class WebSocketHandshake(object):
         # Setting up extensions.
         extensions = []
 
-        deflate_accepted = False
-        if self._options.use_deflate:
-            extensions.append('deflate-stream')
+        deflate_stream_accepted = False
+        if self._options.use_deflate_stream:
+            extensions.append(_DEFLATE_STREAM_EXTENSION)
+
+        deflate_application_data_accepted = False
+        if self._options.use_deflate_application_data:
+            extensions.append(_DEFLATE_APPLICATION_DATA_EXTENSION)
 
         if len(extensions) > 0:
             fields.append('Sec-WebSocket-Extensions: %s\r\n' %
@@ -376,26 +384,32 @@ class WebSocketHandshake(object):
         # Scan accepted extension list to check if there is any unrecognized
         # extensions or extensions we didn't request in it. Then, for
         # extensions we request, parse them and store parameters. They will be
-        # used later by each extension. For now, only deflate_accepted is
-        # created.
+        # used later by each extension.
         for extension in accepted_extensions:
             if extension == '':
                 continue
-            elif extension == 'deflate-stream':
-                if not self._options.use_deflate:
-                    raise Exception(
-                        'deflate-stream extension which we didn\'t request '
-                        'found in handshake response')
-                else:
-                    deflate_accepted = True
-            else:
-                raise Exception(
-                    'Received unrecognized extension: %s' % extension)
+            if extension == _DEFLATE_STREAM_EXTENSION:
+                if self._options.use_deflate_stream:
+                    deflate_stream_accepted = True
+                    continue
+            if extension == _DEFLATE_APPLICATION_DATA_EXTENSION:
+                if self._options.use_deflate_application_data:
+                    deflate_application_data_accepted = True
+                    continue
 
-        # Let all extensions check the response for extension request. For now,
-        # just let deflate-stream check if it's accepted.
-        if self._options.use_deflate and not deflate_accepted:
-            raise Exception('deflate-stream extension not accepted')
+            raise Exception(
+                'Received unrecognized extension: %s' % extension)
+
+        # Let all extensions check the response for extension request.
+
+        if self._options.use_deflate_stream and not deflate_stream_accepted:
+            raise Exception('%s extension not accepted' %
+                            _DEFLATE_STREAM_EXTENSION)
+
+        if (self._options.use_deflate_application_data and
+            not deflate_application_data_accepted):
+            raise Exception('%s extension not accepted' %
+                            _DEFLATE_APPLICATION_DATA_EXTENSION)
 
 
 class WebSocketHybi00Handshake(object):
@@ -676,10 +690,18 @@ class WebSocketStream(object):
 
     def __init__(self, socket, handshake):
         self._handshake = handshake
-        if self._handshake._options.use_deflate:
+        if self._handshake._options.use_deflate_stream:
             self._socket = util.DeflateSocket(socket)
         else:
             self._socket = socket
+
+        # Filters applied to application data part of data frames.
+        self._outgoing_application_data_filter = None
+        self._incoming_application_data_filter = None
+
+        if self._handshake._options.use_deflate_application_data:
+            self._outgoing_application_data_filter = util._RFC1979Deflater()
+            self._incoming_application_data_filter = util._RFC1979Inflater()
 
         self._fragmented = False
 
@@ -700,6 +722,10 @@ class WebSocketStream(object):
 
     def send_text(self, payload, end=True):
         encoded_payload = payload.encode('utf-8')
+
+        if self._outgoing_application_data_filter is not None:
+            encoded_payload = self._outgoing_application_data_filter.filter(
+                encoded_payload)
 
         if self._fragmented:
             opcode = _OPCODE_CONTINUATION
@@ -775,12 +801,15 @@ class WebSocketStream(object):
             payload_length = struct.unpack(
                 '!H', extended_payload_length)[0]
 
-        if payload_length != len(payload):
+        received = _receive_bytes(self._socket, payload_length)
+
+        if self._incoming_application_data_filter is not None:
+            received = self._incoming_application_data_filter.filter(received)
+
+        if len(received) != len(payload):
             raise Exception(
                 'Unexpected payload length: %d (expected) vs %d (actual)' %
-                (len(payload), payload_length))
-
-        received = _receive_bytes(self._socket, payload_length)
+                (len(payload), len(received)))
 
         if payload != received:
             raise Exception(
@@ -867,7 +896,10 @@ class ClientOptions(object):
         self.server_port = -1
         self.socket_timeout = 1000
         self.use_tls = False
-        self.use_deflate = False
+        # Enable deflate-stream.
+        self.use_deflate_stream = False
+        # Enable deflate-application-data.
+        self.use_deflate_application_data = False
 
 
 class Client(object):

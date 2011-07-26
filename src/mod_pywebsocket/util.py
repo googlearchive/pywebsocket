@@ -294,6 +294,35 @@ class _Inflater(object):
         self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
 
 
+class _RFC1979Deflater(object):
+    """A compressor class that applies DEFLATE to given byte sequence and
+    flushes using the algorithm described in the RFC1979 section 2.1.
+    """
+
+    def __init__(self):
+        self._deflater = _Deflater()
+
+    def filter(self, bytes):
+        # Strip last 4 octets which is LEN and NLEN field of a non-compressed
+        # block added for Z_SYNC_FLUSH.
+        return self._deflater.compress_and_flush(bytes)[:-4]
+
+
+class _RFC1979Inflater(object):
+    """A decompressor class for byte sequence compressed and flushed following
+    the algorithm described in the RFC1979 section 2.1.
+    """
+
+    def __init__(self):
+        self._inflater = _Inflater()
+
+    def filter(self, bytes):
+        # Restore stripped LEN and NLEN field of a non-compressed block added
+        # for Z_SYNC_FLUSH.
+        self._inflater.append(bytes + '\x00\x00\xff\xff')
+        return self._inflater.decompress(-1)
+
+
 class DeflateSocket(object):
     """A wrapper class for socket object to intercept send and recv to perform
     deflate compression and decompression transparently.

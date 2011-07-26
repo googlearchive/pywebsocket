@@ -121,10 +121,14 @@ def _build_frame(header, body, mask):
     return header + masking_nonce + masker.mask(body)
 
 
-def create_text_frame(message, opcode=common.OPCODE_TEXT, fin=1, mask=False):
+def create_text_frame(
+    message, opcode=common.OPCODE_TEXT, fin=1, mask=False,
+    application_data_filter=None):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
+    if application_data_filter is not None:
+        encoded_message = application_data_filter.filter(encoded_message)
     header = create_header(opcode, len(encoded_message), fin, 0, 0, 0, mask)
     return _build_frame(header, encoded_message, mask)
 
@@ -132,10 +136,11 @@ def create_text_frame(message, opcode=common.OPCODE_TEXT, fin=1, mask=False):
 class FragmentedTextFrameBuilder(object):
     """A stateful class to send a message as fragments."""
 
-    def __init__(self, mask):
+    def __init__(self, mask, application_data_filter=None):
         """Constructs an instance."""
 
         self._mask = mask
+        self._application_data_filter = application_data_filter
 
         self._started = False
 
@@ -152,7 +157,8 @@ class FragmentedTextFrameBuilder(object):
             self._started = True
             fin = 0
 
-        return create_text_frame(message, opcode, fin, self._mask)
+        return create_text_frame(
+            message, opcode, fin, self._mask, self._application_data_filter)
 
 
 def create_ping_frame(body, mask=False):
@@ -176,7 +182,10 @@ class StreamOptions(object):
     def __init__(self):
         """Constructs StreamOptions."""
 
+        # Enables deflate-stream extension.
         self.deflate = False
+        # Enables x-deflate-application-data extension.
+        self.deflate_application_data = False
         self.mask_send = False
         self.unmask_receive = True
 
@@ -201,6 +210,16 @@ class Stream(StreamBase):
             self._logger.debug('Deflated stream')
             self._request = util.DeflateRequest(self._request)
 
+        # Filters applied to application data part of data frames.
+        self._outgoing_application_data_filter = None
+        self._incoming_application_data_filter = None
+
+        if self._options.deflate_application_data:
+            self._logger.debug(
+                'Enable %s' % common.DEFLATE_APPLICATION_DATA_EXTENSION)
+            self._outgoing_application_data_filter = util._RFC1979Deflater()
+            self._incoming_application_data_filter = util._RFC1979Inflater()
+
         self._request.client_terminated = False
         self._request.server_terminated = False
 
@@ -209,7 +228,8 @@ class Stream(StreamBase):
         # Holds the opcode of the first fragment.
         self._original_opcode = None
 
-        self._writer = FragmentedTextFrameBuilder(self._options.mask_send)
+        self._writer = FragmentedTextFrameBuilder(
+            self._options.mask_send, self._outgoing_application_data_filter)
 
         self._ping_queue = deque()
 
@@ -327,6 +347,10 @@ class Stream(StreamBase):
                             'Received an intermediate frame but '
                             'fragmentation not started')
 
+                if self._incoming_application_data_filter:
+                    bytes = self._incoming_application_data_filter.filter(
+                        bytes)
+
                 if fin:
                     # End of fragmentation frame
                     self._received_fragments.append(bytes)
@@ -346,6 +370,11 @@ class Stream(StreamBase):
                         raise InvalidFrameException(
                             'New fragmentation started without terminating '
                             'existing fragmentation')
+
+                if (not is_control_opcode(opcode) and
+                    self._incoming_application_data_filter):
+                    bytes = self._incoming_application_data_filter.filter(
+                        bytes)
 
                 if fin:
                     # Unfragmented frame
@@ -530,8 +559,8 @@ class Stream(StreamBase):
         we perform this only when pywebsocket is running in standalone mode.
         """
 
-        # If self._options.deflate is true, self._request is DeflateRequest,
-        # so we can get wrapped request object by self._request._request.
+        # If self._options.deflate is true, self._request is DeflateRequest, so
+        # we can get wrapped request object by self._request._request.
         #
         # Only _StandaloneRequest has _drain_received_data method.
         if (self._options.deflate and

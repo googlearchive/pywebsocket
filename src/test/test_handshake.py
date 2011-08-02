@@ -39,7 +39,7 @@ import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket.handshake._base import Extension
 from mod_pywebsocket.handshake._base import format_extensions
-from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.handshake._base import validate_subprotocol
 
@@ -58,44 +58,44 @@ class HandshakerTest(unittest.TestCase):
         validate_subprotocol('sample\x7eprotocol', hixie=False)
 
         # should fail.
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           '',
                           hixie=True)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           'sample\x19protocol',
                           hixie=True)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           'sample\x7fprotocol',
                           hixie=True)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           # "Japan" in Japanese
                           u'\u65e5\u672c',
                           hixie=True)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           '',
                           hixie=False)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           'sample\x09protocol',
                           hixie=False)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           'sample\x19protocol',
                           hixie=False)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           'sample\x20protocol',
                           hixie=False)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           'sample\x7fprotocol',
                           hixie=False)
-        self.assertRaises(HandshakeError,
+        self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           # "Japan" in Japanese
                           u'\u65e5\u672c',
@@ -168,7 +168,7 @@ class ExtensionsParserTest(unittest.TestCase):
 
         for formatted_string in _TEST_BAD_EXTENSION_DATA:
             self.assertRaises(
-                HandshakeError, parse_extensions, formatted_string)
+                HandshakeException, parse_extensions, formatted_string)
 
 
 class FormatExtensionsTest(unittest.TestCase):

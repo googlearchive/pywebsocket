@@ -51,7 +51,7 @@ from mod_pywebsocket.handshake._base import Extension
 from mod_pywebsocket.handshake._base import format_extensions
 from mod_pywebsocket.handshake._base import format_header
 from mod_pywebsocket.handshake._base import get_mandatory_header
-from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.handshake._base import parse_token_list
 from mod_pywebsocket.handshake._base import validate_mandatory_header
@@ -104,8 +104,8 @@ class Handshaker(object):
 
         try:
             connection_tokens = parse_token_list(connection)
-        except HandshakeError, e:
-            raise HandshakeError(
+        except HandshakeException, e:
+            raise HandshakeException(
                 'Failed to parse %s: %s' % (common.CONNECTION_HEADER, e))
 
         connection_is_valid = False
@@ -114,7 +114,7 @@ class Handshaker(object):
                 connection_is_valid = True
                 break
         if not connection_is_valid:
-            raise HandshakeError(
+            raise HandshakeException(
                 '%s header doesn\'t contain "%s"' %
                 (common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
 
@@ -150,7 +150,7 @@ class Handshaker(object):
 
         if self._request.ws_requested_protocols is not None:
             if self._request.ws_protocol is None:
-                raise HandshakeError(
+                raise HandshakeException(
                     'do_extra_handshake must choose one subprotocol from '
                     'ws_requested_protocols and set it to ws_protocol')
             validate_subprotocol(self._request.ws_protocol, hixie=False)
@@ -160,7 +160,7 @@ class Handshaker(object):
                 self._request.ws_protocol)
         else:
             if self._request.ws_protocol is not None:
-                raise HandshakeError(
+                raise HandshakeException(
                     'ws_protocol must be None when the client didn\'t request '
                     'any subprotocol')
 
@@ -245,7 +245,7 @@ class Handshaker(object):
             pass
 
         if not key_is_valid:
-            raise HandshakeError(
+            raise HandshakeException(
                 'Illegal value for header %s: %r' %
                 (common.SEC_WEBSOCKET_KEY_HEADER, key))
 

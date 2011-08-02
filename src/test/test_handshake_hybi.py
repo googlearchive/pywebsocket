@@ -37,7 +37,7 @@ import unittest
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 from mod_pywebsocket import common
-from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake.hybi import Handshaker
 
 import mock
@@ -204,9 +204,9 @@ class HandshakerTest(unittest.TestCase):
         request = _create_request(request_def)
         handshaker = Handshaker(
             request, SubprotocolChoosingDispatcher(-1, 'foobar'))
-        # No request has been made but ws_protocol is set. HandshakeError must
-        # be raised.
-        self.assertRaises(HandshakeError, handshaker.do_handshake)
+        # No request has been made but ws_protocol is set. HandshakeException
+        # must be raised.
+        self.assertRaises(HandshakeException, handshaker.do_handshake)
 
     def test_do_handshake_with_protocol_no_protocol_selection(self):
         request_def = _create_good_request_def()
@@ -214,8 +214,8 @@ class HandshakerTest(unittest.TestCase):
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
-        # ws_protocol is not set. HandshakeError must be raised.
-        self.assertRaises(HandshakeError, handshaker.do_handshake)
+        # ws_protocol is not set. HandshakeException must be raised.
+        self.assertRaises(HandshakeException, handshaker.do_handshake)
 
     def test_do_handshake_with_extensions(self):
         request_def = _create_good_request_def()
@@ -345,7 +345,7 @@ class HandshakerTest(unittest.TestCase):
             try:
                 handshaker.do_handshake()
                 self.fail('No exception thrown for \'%s\' case' % case_name)
-            except HandshakeError:
+            except HandshakeException:
                 pass
 
 

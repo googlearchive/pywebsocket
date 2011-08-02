@@ -349,11 +349,11 @@ class WebSocketHandshake(object):
         try:
             decoded_accept = base64.b64decode(accept)
         except TypeError, e:
-            raise HandshakeError(
+            raise HandshakeException(
                 'Illegal value for header Sec-WebSocket-Accept: ' + accept)
 
         if len(decoded_accept) != 20:
-            raise HandshakeError(
+            raise HandshakeException(
                 'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
 
         self._logger.debug('Actual Sec-WebSocket-Accept: %r (%s)',

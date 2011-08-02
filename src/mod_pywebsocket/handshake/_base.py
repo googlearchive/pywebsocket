@@ -76,11 +76,14 @@ class Extension(object):
         return '; '.join(formatted_params)
 
 
-class HandshakeError(Exception):
+class HandshakeException(Exception):
     """This exception will be raised when an error occurred while processing
     WebSocket initial handshake.
     """
-    pass
+
+    def __init__(self, name, status=400):
+        super(HandshakeException, self).__init__(name)
+        self.status = status
 
 
 def get_default_port(is_secure):
@@ -101,12 +104,12 @@ def validate_subprotocol(subprotocol, hixie):
     """
 
     if not subprotocol:
-        raise HandshakeError('Invalid subprotocol name: empty')
+        raise HandshakeException('Invalid subprotocol name: empty')
     if hixie:
         # Parameter should be in the range U+0020 to U+007E.
         for c in subprotocol:
             if not 0x20 <= ord(c) <= 0x7e:
-                raise HandshakeError(
+                raise HandshakeException(
                     'Illegal character in subprotocol name: %r' % c)
     else:
         # Parameter should be encoded HTTP token.
@@ -117,8 +120,8 @@ def validate_subprotocol(subprotocol, hixie):
         # |rest| is None, |token| must not be None because |subprotocol| is
         # concatenation of |token| and |rest| and is not None.
         if rest is not None:
-            raise HandshakeError('Invalid non-token string in subprotocol '
-                                 'name: %r' % rest)
+            raise HandshakeException('Invalid non-token string in subprotocol '
+                                     'name: %r' % rest)
 
 
 def parse_host_header(request):
@@ -128,7 +131,7 @@ def parse_host_header(request):
     try:
         return fields[0], int(fields[1])
     except ValueError, e:
-        raise HandshakeError('Invalid port number format: %r' % e)
+        raise HandshakeException('Invalid port number format: %r' % e)
 
 
 def format_header(name, value):
@@ -146,8 +149,8 @@ def build_location(request):
     host, port = parse_host_header(request)
     connection_port = request.connection.local_addr[1]
     if port != connection_port:
-        raise HandshakeError('Header/connection port mismatch: %d/%d' %
-                             (port, connection_port))
+        raise HandshakeException('Header/connection port mismatch: %d/%d' %
+                                 (port, connection_port))
     location_parts.append(host)
     if (port != get_default_port(request.is_https())):
         location_parts.append(':')
@@ -159,7 +162,7 @@ def build_location(request):
 def get_mandatory_header(request, key):
     value = request.headers_in.get(key)
     if value is None:
-        raise HandshakeError('Header %s is not defined' % key)
+        raise HandshakeException('Header %s is not defined' % key)
     return value
 
 
@@ -167,7 +170,7 @@ def validate_mandatory_header(request, key, expected_value):
     value = get_mandatory_header(request, key)
 
     if value.lower() != expected_value.lower():
-        raise HandshakeError(
+        raise HandshakeException(
             'Expected %r for header %s but found %r (case-insensitive)' %
             (expected_value, key, value))
 
@@ -176,7 +179,7 @@ def check_request_line(request):
     # 5.1 1. The three character UTF-8 string "GET".
     # 5.1 2. A UTF-8-encoded U+0020 SPACE character (0x20 byte).
     if request.method != 'GET':
-        raise HandshakeError('Method is not GET')
+        raise HandshakeException('Method is not GET')
 
 
 def check_header_lines(request, mandatory_headers):
@@ -211,13 +214,13 @@ def parse_token_list(data):
             break
 
         if not http_header_util.consume_string(state, ','):
-            raise HandshakeError(
+            raise HandshakeException(
                 'Expected a comma but found %r' % http_header_util.peek(state))
 
         http_header_util.consume_lwses(state)
 
     if len(token_list) == 0:
-        raise HandshakeError('No valid token found')
+        raise HandshakeException('No valid token found')
 
     return token_list
 
@@ -226,7 +229,7 @@ def _parse_extension_param(state, definition):
     param_name = http_header_util.consume_token(state)
 
     if param_name is None:
-        raise HandshakeError('No valid parameter name found')
+        raise HandshakeException('No valid parameter name found')
 
     http_header_util.consume_lwses(state)
 
@@ -238,7 +241,7 @@ def _parse_extension_param(state, definition):
 
     param_value = http_header_util.consume_token_or_quoted_string(state)
     if param_value is None:
-        raise HandshakeError(
+        raise HandshakeException(
             'No valid parameter value found on the right-hand side of '
             'parameter %r' % param_name)
 
@@ -262,8 +265,8 @@ def _parse_extension(state):
 
         try:
             _parse_extension_param(state, extension)
-        except HandshakeError, e:
-            raise HandshakeError(
+        except HandshakeException, e:
+            raise HandshakeException(
                 'Failed to parse Sec-WebSocket-Extensions header: '
                 'Failed to parse parameter for %r (%r)' %
                 (extension_token, e))
@@ -292,7 +295,7 @@ def parse_extensions(data):
             break
 
         if not http_header_util.consume_string(state, ','):
-            raise HandshakeError(
+            raise HandshakeException(
                 'Failed to parse Sec-WebSocket-Extensions header: '
                 'Expected a comma but found %r' %
                 http_header_util.peek(state))
@@ -300,7 +303,7 @@ def parse_extensions(data):
         http_header_util.consume_lwses(state)
 
     if len(extension_list) == 0:
-        raise HandshakeError(
+        raise HandshakeException(
             'Sec-WebSocket-Extensions header contains no valid extension')
 
     return extension_list

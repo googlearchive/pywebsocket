@@ -37,7 +37,7 @@ import unittest
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
-from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake import hybi00 as handshake
 from test import mock
 
@@ -429,7 +429,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
         for request in map(_create_request, _BAD_REQUESTS):
             handshaker = handshake.Handshaker(request,
                                               mock.MockDispatcher())
-            self.assertRaises(HandshakeError, handshaker.do_handshake)
+            self.assertRaises(HandshakeException, handshaker.do_handshake)
 
 
 if __name__ == '__main__':

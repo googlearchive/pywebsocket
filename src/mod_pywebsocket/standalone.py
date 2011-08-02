@@ -293,6 +293,11 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         # handling. See _StandaloneRequest.get_request, etc.
         result = CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self)
         if result:
+            # Fallback to default http handler for request paths for which
+            # we don't have request handlers.
+            if not self._options.dispatcher.get_handler_suite(self.path):
+                logging.info('No handlers for request: %s' % self.path)
+                return True
             try:
                 handshake.do_handshake(
                     self._request,
@@ -310,10 +315,11 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                     logging.info(
                         'mod_pywebsocket: %s' % util.get_stack_trace())
                 return False
-            except handshake.HandshakeError, e:
+            except handshake.HandshakeException, e:
                 # Handshake for ws(s) failed. Assume http(s).
                 logging.info('mod_pywebsocket: %s' % e)
-                return True
+                self.send_error(e.status)
+                return False
             except dispatch.DispatchError, e:
                 logging.warning('mod_pywebsocket: %s' % e)
                 return False

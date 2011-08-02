@@ -41,8 +41,8 @@ from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake import hybi
 # Export Extension symbol from this module.
 from mod_pywebsocket.handshake._base import Extension
-# Export HandshakeError symbol from this module.
-from mod_pywebsocket.handshake._base import HandshakeError
+# Export HandshakeException symbol from this module.
+from mod_pywebsocket.handshake._base import HandshakeException
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -93,12 +93,12 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
         try:
             handshaker.do_handshake()
             return
-        except HandshakeError, e:
+        except HandshakeException, e:
             _LOGGER.info(
                 'Failed to complete opening handshake as %s protocol: %r',
                 name, e)
 
-    raise HandshakeError(
+    raise HandshakeException(
         'Failed to complete opening handshake for all available protocols')
 
 

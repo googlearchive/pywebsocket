@@ -203,8 +203,10 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        do_extra_handshake_ = self._get_handler_suite(
-            request).do_extra_handshake
+        handler_suite = self.get_handler_suite(request.ws_resource)
+        if handler_suite is None:
+            raise DispatchError('No handler for: %r' % request.ws_resource)
+        do_extra_handshake_ = handler_suite.do_extra_handshake
         try:
             do_extra_handshake_(request)
         except Exception, e:
@@ -225,7 +227,10 @@ class Dispatcher(object):
             request: mod_python request.
         """
 
-        transfer_data_ = self._get_handler_suite(request).transfer_data
+        handler_suite = self.get_handler_suite(request.ws_resource)
+        if handler_suite is None:
+            raise DispatchError('No handler for: %r' % request.ws_resource)
+        transfer_data_ = handler_suite.transfer_data
         # TODO(tyoshino): Terminate underlying TCP connection if possible.
         try:
             transfer_data_(request)
@@ -252,16 +257,13 @@ class Dispatcher(object):
                 e)
             raise
 
-    def _get_handler_suite(self, request):
+    def get_handler_suite(self, resource):
         """Retrieves two handlers (one for extra handshake processing, and one
         for data transfer) for the given request as a HandlerSuite object.
         """
 
-        try:
-            ws_resource_path = request.ws_resource.split('?', 1)[0]
-            return self._handler_suite_map[ws_resource_path]
-        except KeyError:
-            raise DispatchError('No handler for: %r' % request.ws_resource)
+        ws_resource_path = resource.split('?', 1)[0]
+        return self._handler_suite_map.get(ws_resource_path)
 
     def _source_handler_files_in_dir(self, root_dir, scan_dir):
         """Source all the handler source files in the scan_dir directory.

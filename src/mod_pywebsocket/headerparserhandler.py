@@ -153,14 +153,14 @@ def headerparserhandler(request):
             # In this case, handshake has been successful, so just log the
             # exception and return apache.DONE
             request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
-    except handshake.HandshakeError, e:
+    except handshake.HandshakeException, e:
         # Handshake for ws/wss failed.
-        # But the request can be valid http/https request.
+        # The request handling fallback into http/https.
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
-        return apache.DECLINED
+        return e.status
     except dispatch.DispatchError, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
-        return apache.DECLINED
+        return apache.HTTP_NOT_FOUND
     # Set assbackwards to suppress response header generation by Apache.
     request.assbackwards = 1
     return apache.DONE  # Return DONE such that no other handlers are invoked.

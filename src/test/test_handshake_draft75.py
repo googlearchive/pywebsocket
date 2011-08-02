@@ -461,7 +461,7 @@ class HandshakerTest(unittest.TestCase):
             handshaker = handshake.Handshaker(request,
                                               mock.MockDispatcher())
             self.assertRaises(
-                handshake.HandshakeError, handshaker.do_handshake)
+                handshake.HandshakeException, handshaker.do_handshake)
 
     def test_strictly_good_requests(self):
         for request in _create_requests_with_lines(_STRICTLY_GOOD_REQUESTS):
@@ -476,7 +476,7 @@ class HandshakerTest(unittest.TestCase):
             strict_handshaker = handshake.Handshaker(request,
                                                      mock.MockDispatcher(),
                                                      True)
-            self.assertRaises(handshake.HandshakeError,
+            self.assertRaises(handshake.HandshakeException,
                               strict_handshaker.do_handshake)
 
 

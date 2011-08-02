@@ -45,7 +45,7 @@ import struct
 from mod_pywebsocket import common
 from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket import util
-from mod_pywebsocket.handshake._base import HandshakeError
+from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake._base import build_location
 from mod_pywebsocket.handshake._base import check_header_lines
 from mod_pywebsocket.handshake._base import format_header
@@ -142,11 +142,11 @@ class Handshaker(object):
                 # to mean HyBi 01 by somebody but we no longer support it.
 
                 if draft_int == 1 or draft_int == 2:
-                    raise HandshakeError('HyBi 01-03 are not supported')
+                    raise HandshakeException('HyBi 01-03 are not supported')
                 elif draft_int != 0:
                     raise ValueError
             except ValueError, e:
-                raise HandshakeError(
+                raise HandshakeException(
                     'Illegal value for %s: %s' %
                     (common.SEC_WEBSOCKET_DRAFT_HEADER, draft))
 
@@ -181,12 +181,12 @@ class Handshaker(object):
         try:
             key_number = int(re.sub("\\D", "", key_value))
         except:
-            raise HandshakeError('%s field contains no digit' % key_field)
+            raise HandshakeException('%s field contains no digit' % key_field)
         # 5.2 5. let /spaces_n/ be the number of U+0020 SPACE characters
         # in /key_n/.
         spaces = re.subn(" ", "", key_value)[1]
         if spaces == 0:
-            raise HandshakeError('%s field contains no space' % key_field)
+            raise HandshakeException('%s field contains no space' % key_field)
 
         self._logger.debug(
             '%s: Key-number is %d and number of spaces is %d',
@@ -195,7 +195,7 @@ class Handshaker(object):
         # 5.2 6. if /key-number_n/ is not an integral multiple of /spaces_n/
         # then abort the WebSocket connection.
         if key_number % spaces != 0:
-            raise HandshakeError(
+            raise HandshakeException(
                 '%s: Key-number (%d) is not an integral multiple of spaces '
                 '(%d)' % (key_field, key_number, spaces))
         # 5.2 7. let /part_n/ be /key-number_n/ divided by /spaces_n/.

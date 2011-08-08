@@ -85,6 +85,7 @@ except ImportError:
 from mod_pywebsocket import common
 from mod_pywebsocket import dispatch
 from mod_pywebsocket import handshake
+from mod_pywebsocket import http_header_util
 from mod_pywebsocket import memorizingfile
 from mod_pywebsocket import util
 
@@ -397,12 +398,32 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         # handling. See _StandaloneRequest.get_request, etc.
         result = CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self)
         if result:
-            # Fallback to default http handler for request paths for which
-            # we don't have request handlers.
-            if not self._options.dispatcher.get_handler_suite(self.path):
-                logging.info('No handlers for request: %s' % self.path)
+            host, port, resource = http_header_util.parse_uri(self.path)
+            if resource is None:
+                logging.info('mod_pywebsocket: invalid uri %r' % self.path)
                 return True
+            server_options = self.server.websocket_server_options
+            if host is not None:
+                validation_host = server_options.validation_host
+                if validation_host is not None and host != validation_host:
+                    logging.info('mod_pywebsocket: invalid host %r '
+                                 '(expected: %r)' % (host, validation_host))
+                    return True
+            if port is not None:
+                validation_port = server_options.validation_port
+                if validation_port is not None and port != validation_port:
+                    logging.info('mod_pywebsocket: invalid port %r '
+                                 '(expected: %r)' % (port, validation_port))
+                    return True
+            self.path = resource
+
             try:
+                # Fallback to default http handler for request paths for which
+                # we don't have request handlers.
+                if not self._options.dispatcher.get_handler_suite(self.path):
+                    logging.info('No handlers for request: %s' % self.path)
+                    return True
+
                 handshake.do_handshake(
                     self._request,
                     self._options.dispatcher,
@@ -424,8 +445,9 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 logging.info('mod_pywebsocket: %s' % e)
                 self.send_error(e.status)
                 return False
-            except dispatch.DispatchError, e:
+            except dispatch.DispatchException, e:
                 logging.warning('mod_pywebsocket: %s' % e)
+                self.send_error(e.status)
                 return False
             except Exception, e:
                 logging.warning('mod_pywebsocket: %s' % e)
@@ -444,7 +466,8 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
 
         # Despite the name, this method is for warnings than for errors.
         # For example, HTTP status code is logged by this method.
-        logging.warn('%s - %s' % (self.address_string(), (args[0] % args[1:])))
+        logging.warning('%s - %s' %
+                        (self.address_string(), (args[0] % args[1:])))
 
     def is_cgi(self):
         """Test whether self.path corresponds to a CGI script.
@@ -504,7 +527,7 @@ def _alias_handlers(dispatcher, websock_handlers_map_file):
             try:
                 dispatcher.add_resource_path_alias(
                     m.group(1), m.group(2))
-            except dispatch.DispatchError, e:
+            except dispatch.DispatchException, e:
                 logging.error(str(e))
     finally:
         fp.close()
@@ -516,9 +539,17 @@ def _main():
                       dest='server_host',
                       default='',
                       help='server hostname to listen to')
+    parser.add_option('-V', '--validation-host', '--validation_host',
+                      dest='validation_host',
+                      default=None,
+                      help='server hostname to validate in absolute path.')
     parser.add_option('-p', '--port', dest='port', type='int',
                       default=common.DEFAULT_WEB_SOCKET_PORT,
                       help='port to listen to')
+    parser.add_option('-P', '--validation-port', '--validation_port',
+                      dest='validation_port', type='int',
+                      default=None,
+                      help='server port to validate in absolute path.')
     parser.add_option('-w', '--websock-handlers', '--websock_handlers',
                       dest='websock_handlers',
                       default='.',

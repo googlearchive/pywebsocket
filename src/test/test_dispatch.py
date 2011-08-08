@@ -105,11 +105,11 @@ class DispatcherTest(unittest.TestCase):
 
     def test_source_handler_file(self):
         self.assertRaises(
-            dispatch.DispatchError, dispatch._source_handler_file, '')
+            dispatch.DispatchException, dispatch._source_handler_file, '')
         self.assertRaises(
-            dispatch.DispatchError, dispatch._source_handler_file, 'def')
+            dispatch.DispatchException, dispatch._source_handler_file, 'def')
         self.assertRaises(
-            dispatch.DispatchError, dispatch._source_handler_file, '1/0')
+            dispatch.DispatchException, dispatch._source_handler_file, '1/0')
         self.failUnless(dispatch._source_handler_file(
                 'def web_socket_do_extra_handshake(request):pass\n'
                 'def web_socket_transfer_data(request):pass\n'))
@@ -190,7 +190,7 @@ class DispatcherTest(unittest.TestCase):
             try:
                 dispatcher.transfer_data(request)
                 self.fail()
-            except dispatch.DispatchError, e:
+            except dispatch.DispatchException, e:
                 self.failUnless(str(e).find('No handler') != -1)
             except Exception:
                 self.fail()
@@ -236,7 +236,7 @@ class DispatcherTest(unittest.TestCase):
     def test_scan_dir_must_under_root(self):
         dispatch.Dispatcher('a/b', 'a/b/c')  # OK
         dispatch.Dispatcher('a/b///', 'a/b')  # OK
-        self.assertRaises(dispatch.DispatchError,
+        self.assertRaises(dispatch.DispatchException,
                           dispatch.Dispatcher, 'a/b/c', 'a/b')
 
     def test_resource_path_alias(self):
@@ -248,7 +248,7 @@ class DispatcherTest(unittest.TestCase):
             '/sub/exception_in_transfer' in disp._handler_suite_map)
         self.failUnless('/sub/plain' in disp._handler_suite_map)
         self.failUnless('/' in disp._handler_suite_map)
-        self.assertRaises(dispatch.DispatchError,
+        self.assertRaises(dispatch.DispatchException,
                           disp.add_resource_path_alias, '/alias', '/not-exist')
 
 

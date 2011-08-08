@@ -158,9 +158,9 @@ def headerparserhandler(request):
         # The request handling fallback into http/https.
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
         return e.status
-    except dispatch.DispatchError, e:
+    except dispatch.DispatchException, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
-        return apache.HTTP_NOT_FOUND
+        return e.status
     # Set assbackwards to suppress response header generation by Apache.
     request.assbackwards = 1
     return apache.DONE  # Return DONE such that no other handlers are invoked.

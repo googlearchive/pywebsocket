@@ -109,7 +109,10 @@ class EndToEndTest(unittest.TestCase):
 
     def _run_server(self, allow_draft75=False):
         args = [self.standalone_command,
+                '-H', 'localhost',
+                '-V', 'localhost',
                 '-p', str(self.test_port),
+                '-P', str(self.test_port),
                 '-d', self.document_root]
 
         # Inherit the level set to the root logger by test runner.
@@ -131,20 +134,23 @@ class EndToEndTest(unittest.TestCase):
         else:
             os.kill(pid, signal.SIGKILL)
 
-    def _run_hybi_test(self, test_function):
+    def _run_hybi_test_with_client_options(self, test_function, options):
         server = self._run_server()
         try:
             # TODO(tyoshino): add some logic to poll the server until it
             # becomes ready
             time.sleep(0.2)
 
-            client = client_for_testing.create_client(self._options)
+            client = client_for_testing.create_client(options)
             try:
                 test_function(client)
             finally:
                 client.close_socket()
         finally:
             self._kill_process(server.pid)
+
+    def _run_hybi_test(self, test_function):
+        self._run_hybi_test_with_client_options(test_function, self._options)
 
     def _run_hybi_deflate_test(self, test_function):
         server = self._run_server()
@@ -287,6 +293,17 @@ class EndToEndTest(unittest.TestCase):
             client.assert_receive(_GOODBYE_MESSAGE)
 
         self._run_hixie75_test(test_function)
+
+    # TODO(toyoshim): Add tests to verify invalid absolute uri handling like
+    # host unmatch, port unmatch and invalid port description (':' without port
+    # number).
+    def test_absolute_uri(self):
+        """Tests absolute uri request."""
+
+        options = self._options
+        options.resource = 'ws://localhost:%d/echo' % self.test_port
+        self._run_hybi_test_with_client_options(_echo_check_procedure, options)
+
 
     def test_example_echo_client(self):
         """Tests that the echo_client.py example can talk with the server."""

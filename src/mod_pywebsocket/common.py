@@ -92,4 +92,41 @@ STATUS_ABNORMAL_CLOSE = 1006
 STATUS_INVALID_UTF8 = 1007
 
 
+class Extension(object):
+    """Holds information about an extension which is exchanged on extension
+    negotiation in opening handshake.
+    """
+
+    def __init__(self, name):
+        self._name = name
+        # TODO(tyoshino): Change the data structure to more efficient one such
+        # as dict when the spec changes to say like
+        # - Parameter names must be unique
+        # - The order of parameters is not significant
+        self._parameters = []
+
+    def name(self):
+        return self._name
+
+    def add_parameter(self, name, value):
+        self._parameters.append((name, value))
+
+    def get_parameters(self):
+        return self._parameters
+
+    def get_parameter_names(self):
+        return [name for name, unused_value in self._parameters]
+
+    def has_parameter(self, name):
+        for param_name, param_value in self._parameters:
+            if param_name == name:
+                return True
+        return False
+
+    def get_parameter_value(self, name):
+        for param_name, param_value in self._parameters:
+            if param_name == name:
+                return param_value
+
+
 # vi:sts=4 sw=4 et

@@ -255,9 +255,9 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual('unknown', second_extension.name())
         self.assertEqual(
             ['e', 'ma', 'pv'], second_extension.get_parameter_names())
-        self.assertEqual('mc^2', second_extension.get_parameter('e'))
-        self.assertEqual(' \rf ', second_extension.get_parameter('ma'))
-        self.assertEqual('nrt', second_extension.get_parameter('pv'))
+        self.assertEqual('mc^2', second_extension.get_parameter_value('e'))
+        self.assertEqual(' \rf ', second_extension.get_parameter_value('ma'))
+        self.assertEqual('nrt', second_extension.get_parameter_value('pv'))
 
     def test_do_handshake_with_optional_headers(self):
         request_def = _create_good_request_def()

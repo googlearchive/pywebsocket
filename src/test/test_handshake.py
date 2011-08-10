@@ -37,7 +37,7 @@ import unittest
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
-from mod_pywebsocket.handshake._base import Extension
+from mod_pywebsocket.common import Extension
 from mod_pywebsocket.handshake._base import format_extensions
 from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake._base import parse_extensions

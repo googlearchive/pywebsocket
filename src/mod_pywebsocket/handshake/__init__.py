@@ -39,8 +39,6 @@ import logging
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake import hybi
-# Export Extension symbol from this module.
-from mod_pywebsocket.handshake._base import Extension
 # Export HandshakeException symbol from this module.
 from mod_pywebsocket.handshake._base import HandshakeException
 

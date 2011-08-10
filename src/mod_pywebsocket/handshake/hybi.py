@@ -43,11 +43,7 @@ import os
 import re
 
 from mod_pywebsocket import common
-from mod_pywebsocket.stream import Stream
-from mod_pywebsocket.stream import StreamOptions
-from mod_pywebsocket import util
 from mod_pywebsocket.handshake._base import check_request_line
-from mod_pywebsocket.handshake._base import Extension
 from mod_pywebsocket.handshake._base import format_extensions
 from mod_pywebsocket.handshake._base import format_header
 from mod_pywebsocket.handshake._base import get_mandatory_header
@@ -56,6 +52,9 @@ from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.handshake._base import parse_token_list
 from mod_pywebsocket.handshake._base import validate_mandatory_header
 from mod_pywebsocket.handshake._base import validate_subprotocol
+from mod_pywebsocket.stream import Stream
+from mod_pywebsocket.stream import StreamOptions
+from mod_pywebsocket import util
 
 
 _BASE64_REGEX = re.compile('^[+/0-9A-Za-z]*=*$')
@@ -224,10 +223,10 @@ class Handshaker(object):
 
         self._logger.debug(
             'Extensions requested: %r',
-            map(Extension.name, self._request.ws_requested_extensions))
+            map(common.Extension.name, self._request.ws_requested_extensions))
         self._logger.debug(
             'Extensions accepted: %r',
-            map(Extension.name, self._request.ws_extensions))
+            map(common.Extension.name, self._request.ws_extensions))
 
     def _validate_key(self, key):
         # Validate

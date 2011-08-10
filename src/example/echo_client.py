@@ -73,7 +73,6 @@ import struct
 import sys
 
 from mod_pywebsocket import common
-from mod_pywebsocket.handshake._base import Extension
 from mod_pywebsocket.handshake._base import format_extensions
 from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.stream import Stream
@@ -325,11 +324,11 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         if self._options.deflate_stream:
             extensions_to_request.append(
-                Extension(common.DEFLATE_STREAM_EXTENSION))
+                common.Extension(common.DEFLATE_STREAM_EXTENSION))
 
         if self._options.deflate_application_data:
             extensions_to_request.append(
-                Extension(common.DEFLATE_APPLICATION_DATA_EXTENSION))
+                common.Extension(common.DEFLATE_APPLICATION_DATA_EXTENSION))
 
         if len(extensions_to_request) != 0:
             fields.append(

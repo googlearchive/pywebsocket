@@ -37,45 +37,6 @@ from mod_pywebsocket import common
 from mod_pywebsocket import http_header_util
 
 
-class Extension(object):
-    """Holds information about an extension which is exchanged on extension
-    negotiation in opening handshake.
-    """
-
-    def __init__(self, name):
-        self._name = name
-        # TODO(tyoshino): Change the data structure to more efficient one such
-        # as dict when the spec changes to say like
-        # - Parameter names must be unique
-        # - The order of parameters is not significant
-        self._parameters = []
-
-    def name(self):
-        return self._name
-
-    def add_parameter(self, name, value):
-        self._parameters.append((name, value))
-
-    def get_parameter(self, name):
-        for param_name, param_value in self._parameters:
-            if param_name == name:
-                return param_value
-
-    def get_parameter_names(self):
-        return [name for name, unused_value in self._parameters]
-
-    def get_formatted_string(self):
-        formatted_params = [self._name]
-        for param_name, param_value in self._parameters:
-            if param_value is None:
-                formatted_params.append(param_name)
-            else:
-                quoted_value = http_header_util.quote_if_necessary(param_value)
-                formatted_params.append('%s=%s' % (param_name, quoted_value))
-
-        return '; '.join(formatted_params)
-
-
 class HandshakeException(Exception):
     """This exception will be raised when an error occurred while processing
     WebSocket initial handshake.
@@ -253,7 +214,7 @@ def _parse_extension(state):
     if extension_token is None:
         return None
 
-    extension = Extension(extension_token)
+    extension = common.Extension(extension_token)
 
     while True:
         http_header_util.consume_lwses(state)
@@ -312,7 +273,15 @@ def parse_extensions(data):
 def format_extensions(extension_list):
     formatted_extension_list = []
     for extension in extension_list:
-        formatted_extension_list.append(extension.get_formatted_string())
+        formatted_params = [extension.name()]
+        for param_name, param_value in extension.get_parameters():
+            if param_value is None:
+                formatted_params.append(param_name)
+            else:
+                quoted_value = http_header_util.quote_if_necessary(param_value)
+                formatted_params.append('%s=%s' % (param_name, quoted_value))
+
+        formatted_extension_list.append('; '.join(formatted_params))
 
     return ', '.join(formatted_extension_list)
 

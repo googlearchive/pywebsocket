@@ -64,6 +64,7 @@ _DEFAULT_SECURE_PORT = 443
 _OPCODE_CONTINUATION = 0x0
 _OPCODE_CLOSE = 0x8
 _OPCODE_TEXT = 0x1
+_OPCODE_BINARY = 0x2
 
 # Strings used for handshake
 _UPGRADE_HEADER = 'Upgrade: websocket\r\n'
@@ -720,17 +721,14 @@ class WebSocketStream(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._socket.sendall(header + self._mask_hybi(body))
 
-    def send_text(self, payload, end=True):
-        encoded_payload = payload.encode('utf-8')
-
+    def _send_data(self, payload, frame_type, end=True):
         if self._outgoing_application_data_filter is not None:
-            encoded_payload = self._outgoing_application_data_filter.filter(
-                encoded_payload)
+            payload = self._outgoing_application_data_filter.filter(payload)
 
         if self._fragmented:
             opcode = _OPCODE_CONTINUATION
         else:
-            opcode = _OPCODE_TEXT
+            opcode = frame_type
 
         if end:
             self._fragmented = False
@@ -742,7 +740,7 @@ class WebSocketStream(object):
         mask_bit = 1 << 7
 
         header = chr(fin << 7 | opcode)
-        payload_length = len(encoded_payload)
+        payload_length = len(payload)
         if payload_length <= 125:
             header += chr(mask_bit | payload_length)
         elif payload_length < 1 << 16:
@@ -751,9 +749,15 @@ class WebSocketStream(object):
             header += chr(mask_bit | 127) + struct.pack('!Q', payload_length)
         else:
             raise Exception('Too long payload (%d byte)' % payload_length)
-        self._socket.sendall(header + self._mask_hybi(encoded_payload))
+        self._socket.sendall(header + self._mask_hybi(payload))
 
-    def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
+    def send_binary(self, payload, end=True):
+        self._send_data(payload, _OPCODE_BINARY, end)
+
+    def send_text(self, payload, end=True):
+        self._send_data(payload.encode('utf-8'), _OPCODE_TEXT, end)
+
+    def _assert_receive_data(self, payload, opcode=_OPCODE_TEXT, fin=1,
                             rsv1=0, rsv2=0, rsv3=0):
         received = _receive_bytes(self._socket, 2)
 
@@ -816,6 +820,15 @@ class WebSocketStream(object):
                 'Unexpected payload: %r (expected) vs %r (actual)' %
                 (payload, received))
 
+    def assert_receive_binary(self, payload, opcode=_OPCODE_BINARY, fin=1,
+                              rsv1=0, rsv2=0, rsv3=0):
+        self._assert_receive_data(payload, opcode, fin, rsv1, rsv2, rsv3)
+
+    def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
+                            rsv1=0, rsv2=0, rsv3=0):
+        self._assert_receive_data(payload.encode('utf-8'), opcode, fin, rsv1,
+                                  rsv2, rsv3)
+
     def _build_close_frame(self, code, reason, mask):
         frame = chr(1 << 7 | _OPCODE_CLOSE)
 
@@ -853,10 +866,17 @@ class WebSocketStreamHixie75(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._socket.sendall(header + body)
 
+    def send_binary(self, unused_payload, unused_end):
+        pass
+
     def send_text(self, payload, unused_end):
         encoded_payload = payload.encode('utf-8')
         frame = ''.join(['\x00', encoded_payload, '\xff'])
         self._socket.sendall(frame)
+
+    def assert_receive_binary(self, payload, opcode=_OPCODE_BINARY, fin=1,
+                              rsv1=0, rsv2=0, rsv3=0):
+        raise Exception('Binary frame is not supported in hixie75')
 
     def assert_receive_text(self, payload):
         received = _receive_bytes(self._socket, 1)
@@ -932,11 +952,17 @@ class Client(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._stream.send_frame_of_arbitrary_bytes(header, body)
 
-    def send_message(self, message, end=True):
-        self._stream.send_text(message, end)
+    def send_message(self, message, end=True, binary=False):
+        if binary:
+            self._stream.send_binary(message, end)
+        else:
+            self._stream.send_text(message, end)
 
-    def assert_receive(self, payload):
-        self._stream.assert_receive_text(payload)
+    def assert_receive(self, payload, binary=False):
+        if binary:
+            self._stream.assert_receive_binary(payload)
+        else:
+            self._stream.assert_receive_text(payload)
 
     def send_close(self):
         self._stream.send_close()

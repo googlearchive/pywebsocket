@@ -64,6 +64,20 @@ def _echo_check_procedure(client):
     client.assert_connection_closed()
 
 
+def _echo_check_procedure_with_binary(client):
+    client.connect()
+
+    client.send_message('binary', binary=True)
+    client.assert_receive('binary', binary=True)
+    client.send_message('\x00\x80\xfe\xff\x00\x80', binary=True)
+    client.assert_receive('\x00\x80\xfe\xff\x00\x80', binary=True)
+
+    client.send_close()
+    client.assert_receive_close()
+
+    client.assert_connection_closed()
+
+
 def _echo_check_procedure_with_goodbye(client):
     client.connect()
 
@@ -182,6 +196,9 @@ class EndToEndTest(unittest.TestCase):
 
     def test_echo(self):
         self._run_hybi_test(_echo_check_procedure)
+
+    def test_echo_binary(self):
+        self._run_hybi_test(_echo_check_procedure_with_binary)
 
     def test_echo_server_close(self):
         self._run_hybi_test(_echo_check_procedure_with_goodbye)

@@ -47,6 +47,7 @@ from mod_pywebsocket._stream_hybi import create_header
 from mod_pywebsocket._stream_hybi import create_length_header
 from mod_pywebsocket._stream_hybi import create_ping_frame
 from mod_pywebsocket._stream_hybi import create_pong_frame
+from mod_pywebsocket._stream_hybi import create_binary_frame
 from mod_pywebsocket._stream_hybi import create_text_frame
 
 

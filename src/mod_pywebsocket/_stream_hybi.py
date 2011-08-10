@@ -121,19 +121,28 @@ def _build_frame(header, body, mask):
     return header + masking_nonce + masker.mask(body)
 
 
+def create_binary_frame(
+    message, opcode=common.OPCODE_BINARY, fin=1, mask=False,
+    application_data_filter=None):
+    """Creates a simple binary frame with no extension, reserved bit."""
+
+    if application_data_filter is not None:
+        message = application_data_filter.filter(message)
+    header = create_header(opcode, len(message), fin, 0, 0, 0, mask)
+    return _build_frame(header, message, mask)
+
+
 def create_text_frame(
     message, opcode=common.OPCODE_TEXT, fin=1, mask=False,
     application_data_filter=None):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
-    if application_data_filter is not None:
-        encoded_message = application_data_filter.filter(encoded_message)
-    header = create_header(opcode, len(encoded_message), fin, 0, 0, 0, mask)
-    return _build_frame(header, encoded_message, mask)
+    return create_binary_frame(encoded_message, opcode, fin, mask,
+                               application_data_filter)
 
 
-class FragmentedTextFrameBuilder(object):
+class FragmentedFrameBuilder(object):
     """A stateful class to send a message as fragments."""
 
     def __init__(self, mask, application_data_filter=None):
@@ -144,11 +153,23 @@ class FragmentedTextFrameBuilder(object):
 
         self._started = False
 
-    def build(self, message, end):
+        # Hold opcode of the first frame in messages to verify types of other
+        # frames in the message are all the same.
+        self._opcode = common.OPCODE_TEXT
+
+    def build(self, message, end, binary):
+        if binary:
+            frame_type = common.OPCODE_BINARY
+        else:
+            frame_type = common.OPCODE_TEXT
         if self._started:
+            if self._opcode != frame_type:
+                raise ValueError('Message types are different in frames for '
+                                 'the same message')
             opcode = common.OPCODE_CONTINUATION
         else:
-            opcode = common.OPCODE_TEXT
+            opcode = frame_type
+            self._opcode = frame_type
 
         if end:
             self._started = False
@@ -157,8 +178,14 @@ class FragmentedTextFrameBuilder(object):
             self._started = True
             fin = 0
 
-        return create_text_frame(
-            message, opcode, fin, self._mask, self._application_data_filter)
+        if binary:
+            return create_binary_frame(
+                message, opcode, fin, self._mask,
+                self._application_data_filter)
+        else:
+            return create_text_frame(
+                message, opcode, fin, self._mask,
+                self._application_data_filter)
 
 
 def create_ping_frame(body, mask=False):
@@ -228,7 +255,7 @@ class Stream(StreamBase):
         # Holds the opcode of the first fragment.
         self._original_opcode = None
 
-        self._writer = FragmentedTextFrameBuilder(
+        self._writer = FragmentedFrameBuilder(
             self._options.mask_send, self._outgoing_application_data_filter)
 
         self._ping_queue = deque()
@@ -286,22 +313,31 @@ class Stream(StreamBase):
 
         return opcode, bytes, fin, rsv1, rsv2, rsv3
 
-    def send_message(self, message, end=True):
+    def send_message(self, message, end=True, binary=False):
         """Send message.
 
         Args:
-            message: unicode string to send.
+            message: text in unicode or binary in str to send.
+            binary: send message as binary frame.
 
         Raises:
             BadOperationException: when called on a server-terminated
-                connection.
+                connection or called with inconsistent message type or binary
+                parameter.
         """
 
         if self._request.server_terminated:
             raise BadOperationException(
                 'Requested send_message after sending out a closing handshake')
 
-        self._write(self._writer.build(message, end))
+        if binary and isinstance(message, unicode):
+            raise BadOperationException(
+                'Message for binary frame must be instance of str')
+
+        try:
+            self._write(self._writer.build(message, end, binary))
+        except ValueError, e:
+            raise BadOperationException(e)
 
     def receive_message(self):
         """Receive a WebSocket frame and return its payload an unicode string.
@@ -397,10 +433,13 @@ class Stream(StreamBase):
                     continue
 
             if self._original_opcode == common.OPCODE_TEXT:
-                # The WebSocket protocol section 4.4 specifies that invalid
-                # characters must be replaced with U+fffd REPLACEMENT
-                # CHARACTER.
-                return message.decode('utf-8', 'replace')
+                # TODO(toyoshim): Latest specification requires that invalid
+                # UTF-8 string results in closing connection. So we should
+                # change 'replace' to 'strict' and handle exception to close
+                # connection.
+                return unicode(message, 'utf-8', 'replace')
+            elif self._original_opcode == common.OPCODE_BINARY:
+                return message
             elif self._original_opcode == common.OPCODE_CLOSE:
                 self._request.client_terminated = True
 

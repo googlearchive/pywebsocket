@@ -46,10 +46,6 @@ from mod_pywebsocket._stream_base import StreamBase
 from mod_pywebsocket._stream_base import UnsupportedFrameException
 
 
-def is_control_opcode(opcode):
-    return (opcode >> 3) == 1
-
-
 _NOOP_MASKER = util.NoopMasker()
 
 
@@ -408,7 +404,7 @@ class Stream(StreamBase):
                             'New fragmentation started without terminating '
                             'existing fragmentation')
 
-                if (not is_control_opcode(opcode) and
+                if (not common.is_control_opcode(opcode) and
                     self._incoming_application_data_filter):
                     bytes = self._incoming_application_data_filter.filter(
                         bytes)
@@ -418,14 +414,14 @@ class Stream(StreamBase):
                     self._original_opcode = opcode
                     message = bytes
 
-                    if is_control_opcode(opcode) and len(message) > 125:
+                    if common.is_control_opcode(opcode) and len(message) > 125:
                         raise InvalidFrameException(
                             'Application data size of control frames must be '
                             '125 bytes or less')
                 else:
                     # Start of fragmentation frame
 
-                    if is_control_opcode(opcode):
+                    if common.is_control_opcode(opcode):
                         raise InvalidFrameException(
                             'Control frames must not be fragmented')
 

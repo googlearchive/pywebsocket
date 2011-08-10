@@ -92,6 +92,10 @@ STATUS_ABNORMAL_CLOSE = 1006
 STATUS_INVALID_UTF8 = 1007
 
 
+def is_control_opcode(opcode):
+    return (opcode >> 3) == 1
+
+
 class Extension(object):
     """Holds information about an extension which is exchanged on extension
     negotiation in opening handshake.

@@ -1,5 +1,5 @@
 <!--
-Copyright 2010, Google Inc.
+Copyright 2011, Google Inc.
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -55,13 +55,24 @@ function addToLog(log) {
 }
 
 function send() {
+  if (!socket) {
+    addToLog('Not connected');
+    return;
+  }
+
   socket.send(messageBox.value);
   addToLog('> ' + messageBox.value);
   messageBox.value = '';
 }
 
 function connect() {
-  socket = new WebSocket(addressBox.value);
+  if ('WebSocket' in window) {
+    socket = new WebSocket(addressBox.value);
+  } else if ('MozWebSocket' in window) {
+    socket = new MozWebSocket(addressBox.value);
+  } else {
+    return;
+  }
 
   socket.onopen = function () {
     addToLog('Opened');
@@ -95,7 +106,24 @@ function connect() {
 }
 
 function closeSocket() {
+  if (!socket) {
+    addToLog('Not connected');
+    return;
+  }
+
   socket.close();
+}
+
+function printState() {
+  if (!socket) {
+    addToLog('Not connected');
+    return;
+  }
+
+  addToLog(
+      'url = ' + socket.url +
+      ', readyState = ' + socket.readyState +
+      ', bufferedAmount = ' + socket.bufferedAmount);
 }
 
 function init() {
@@ -108,7 +136,9 @@ function init() {
 
   addressBox.value = defaultAddress;
 
-  if (!('WebSocket' in window)) {
+  if ('MozWebSocket' in window) {
+    addToLog('Use MozWebSocket');
+  } else if (!('WebSocket' in window)) {
     addToLog('WebSocket is not available');
   }
 }
@@ -120,6 +150,7 @@ function init() {
 <input type="text" id="address" size="40">
 <input type="submit" value="connect">
 <input type="button" value="close" onclick="closeSocket();">
+<input type="button" value="print state" onclick="printState();">
 </form>
 
 <textarea id="log" rows="10" cols="40" readonly></textarea>

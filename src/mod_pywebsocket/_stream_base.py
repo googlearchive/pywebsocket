@@ -79,6 +79,14 @@ class UnsupportedFrameException(Exception):
     pass
 
 
+class InvalidUTF8Exception(Exception):
+    """This exception will be raised when we receive a text frame which
+    contains invalid UTF-8 strings.
+    """
+
+    pass
+
+
 class StreamBase(object):
     """Base stream class."""
 

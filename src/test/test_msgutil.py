@@ -43,6 +43,7 @@ import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
+from mod_pywebsocket.stream import InvalidUTF8Exception
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket.stream import StreamOptions
@@ -241,9 +242,10 @@ class MessageTest(unittest.TestCase):
     def test_receive_message_erroneous_unicode(self):
         # \x80 and \x81 are invalid as UTF-8.
         request = _create_request(('\x81\x82', '\x80\x81'))
-        # Invalid characters should be replaced with
-        # U+fffd REPLACEMENT CHARACTER
-        self.assertEqual(u'\ufffd\ufffd', msgutil.receive_message(request))
+        # Invalid characters should raise InvalidUTF8Exception
+        self.assertRaises(InvalidUTF8Exception,
+                          msgutil.receive_message,
+                          request)
 
     def test_receive_fragments(self):
         request = _create_request(

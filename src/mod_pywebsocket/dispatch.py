@@ -38,6 +38,7 @@ import re
 
 from mod_pywebsocket import common
 from mod_pywebsocket import msgutil
+from mod_pywebsocket import stream
 from mod_pywebsocket import util
 
 
@@ -251,6 +252,9 @@ class Dispatcher(object):
         except msgutil.UnsupportedFrameException, e:
             self._logger.debug('%s', e)
             request.ws_stream.close_connection(common.STATUS_UNSUPPORTED)
+        except stream.InvalidUTF8Exception, e:
+            self._logger_debug('%s', e)
+            request.ws_stream.close_connection(common.STATUS_INVALID_UTF8)
         except msgutil.ConnectionTerminatedException, e:
             self._logger.debug('%s', e)
         except Exception, e:

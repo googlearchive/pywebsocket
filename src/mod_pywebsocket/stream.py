@@ -35,6 +35,7 @@
 from mod_pywebsocket._stream_base import BadOperationException
 from mod_pywebsocket._stream_base import ConnectionTerminatedException
 from mod_pywebsocket._stream_base import InvalidFrameException
+from mod_pywebsocket._stream_base import InvalidUTF8Exception
 from mod_pywebsocket._stream_base import UnsupportedFrameException
 from mod_pywebsocket._stream_hixie75 import StreamHixie75
 from mod_pywebsocket._stream_hybi import Stream

@@ -41,6 +41,7 @@ from mod_pywebsocket import util
 from mod_pywebsocket._stream_base import BadOperationException
 from mod_pywebsocket._stream_base import ConnectionTerminatedException
 from mod_pywebsocket._stream_base import InvalidFrameException
+from mod_pywebsocket._stream_base import InvalidUTF8Exception
 from mod_pywebsocket._stream_base import StreamBase
 from mod_pywebsocket._stream_base import UnsupportedFrameException
 
@@ -433,11 +434,13 @@ class Stream(StreamBase):
                     continue
 
             if self._original_opcode == common.OPCODE_TEXT:
-                # TODO(toyoshim): Latest specification requires that invalid
-                # UTF-8 string results in closing connection. So we should
-                # change 'replace' to 'strict' and handle exception to close
-                # connection.
-                return unicode(message, 'utf-8', 'replace')
+                # The WebSocket protocol section 4.4 specifies that invalid
+                # characters must be replaced with U+fffd REPLACEMENT
+                # CHARACTER.
+                try:
+                    return message.decode('utf-8')
+                except UnicodeDecodeError, e:
+                    raise InvalidUTF8Exception(e)
             elif self._original_opcode == common.OPCODE_BINARY:
                 return message
             elif self._original_opcode == common.OPCODE_CLOSE:

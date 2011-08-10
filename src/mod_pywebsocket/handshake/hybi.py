@@ -90,14 +90,7 @@ class Handshaker(object):
         self._request = request
         self._dispatcher = dispatcher
 
-    def do_handshake(self):
-        check_request_line(self._request)
-
-        validate_mandatory_header(
-            self._request,
-            common.UPGRADE_HEADER,
-            common.WEBSOCKET_UPGRADE_TYPE)
-
+    def _validate_connection_header(self):
         connection = get_mandatory_header(
             self._request, common.CONNECTION_HEADER)
 
@@ -116,6 +109,16 @@ class Handshaker(object):
             raise HandshakeException(
                 '%s header doesn\'t contain "%s"' %
                 (common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
+
+    def do_handshake(self):
+        check_request_line(self._request)
+
+        validate_mandatory_header(
+            self._request,
+            common.UPGRADE_HEADER,
+            common.WEBSOCKET_UPGRADE_TYPE)
+
+        self._validate_connection_header()
 
         self._request.ws_resource = self._request.uri
 

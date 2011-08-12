@@ -37,7 +37,7 @@ import unittest
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
-from mod_pywebsocket.common import Extension
+from mod_pywebsocket.common import ExtensionParameter
 from mod_pywebsocket.handshake._base import format_extensions
 from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake._base import parse_extensions
@@ -123,9 +123,10 @@ _TEST_EXTENSION_DATA = [
 class ExtensionsParserTest(unittest.TestCase):
 
     def _verify_extension_list(self, expected_list, actual_list):
-        """Verifies that Extension objects in actual_list have the same members
-        as extension definitions in expected_list. Extension definition used
-        in this test is a pair of an extension name and a parameter dictionary.
+        """Verifies that ExtensionParameter objects in actual_list have the
+        same members as extension definitions in expected_list. Extension
+        definition used in this test is a pair of an extension name and a
+        parameter dictionary.
         """
 
         self.assertEqual(len(expected_list), len(actual_list))
@@ -178,7 +179,7 @@ class FormatExtensionsTest(unittest.TestCase):
             extensions = []
             for definition in definitions:
                 (name, parameters) = definition
-                extension = Extension(name)
+                extension = ExtensionParameter(name)
                 extension._parameters = parameters
                 extensions.append(extension)
             self.assertEqual(

@@ -214,7 +214,7 @@ def _parse_extension(state):
     if extension_token is None:
         return None
 
-    extension = common.Extension(extension_token)
+    extension = common.ExtensionParameter(extension_token)
 
     while True:
         http_header_util.consume_lwses(state)
@@ -237,7 +237,7 @@ def _parse_extension(state):
 
 def parse_extensions(data):
     """Parses Sec-WebSocket-Extensions header value returns a list of
-    common.Extension objects.
+    common.ExtensionParameter objects.
 
     Leading LWSes must be trimmed.
     """

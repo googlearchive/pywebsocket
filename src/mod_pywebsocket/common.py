@@ -96,7 +96,7 @@ def is_control_opcode(opcode):
     return (opcode >> 3) == 1
 
 
-class Extension(object):
+class ExtensionParameter(object):
     """Holds information about an extension which is exchanged on extension
     negotiation in opening handshake.
     """

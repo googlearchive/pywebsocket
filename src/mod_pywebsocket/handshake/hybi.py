@@ -226,10 +226,12 @@ class Handshaker(object):
 
         self._logger.debug(
             'Extensions requested: %r',
-            map(common.Extension.name, self._request.ws_requested_extensions))
+            map(common.ExtensionParameter.name,
+                self._request.ws_requested_extensions))
         self._logger.debug(
             'Extensions accepted: %r',
-            map(common.Extension.name, self._request.ws_extensions))
+            map(common.ExtensionParameter.name,
+                self._request.ws_extensions))
 
     def _validate_key(self, key):
         # Validate

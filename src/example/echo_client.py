@@ -324,11 +324,13 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         if self._options.deflate_stream:
             extensions_to_request.append(
-                common.Extension(common.DEFLATE_STREAM_EXTENSION))
+                common.ExtensionParameter(
+                    common.DEFLATE_STREAM_EXTENSION))
 
         if self._options.deflate_application_data:
             extensions_to_request.append(
-                common.Extension(common.DEFLATE_APPLICATION_DATA_EXTENSION))
+                common.ExtensionParameter(
+                    common.DEFLATE_APPLICATION_DATA_EXTENSION))
 
         if len(extensions_to_request) != 0:
             fields.append(

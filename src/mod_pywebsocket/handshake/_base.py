@@ -42,7 +42,7 @@ class HandshakeException(Exception):
     WebSocket initial handshake.
     """
 
-    def __init__(self, name, status=400):
+    def __init__(self, name, status=None):
         super(HandshakeException, self).__init__(name)
         self.status = status
 
@@ -127,13 +127,13 @@ def get_mandatory_header(request, key):
     return value
 
 
-def validate_mandatory_header(request, key, expected_value):
+def validate_mandatory_header(request, key, expected_value, fail_status=None):
     value = get_mandatory_header(request, key)
 
     if value.lower() != expected_value.lower():
         raise HandshakeException(
             'Expected %r for header %s but found %r (case-insensitive)' %
-            (expected_value, key, value))
+            (expected_value, key, value), status=fail_status)
 
 
 def check_request_line(request):

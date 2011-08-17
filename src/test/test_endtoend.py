@@ -101,6 +101,7 @@ class EndToEndTest(unittest.TestCase):
     """
 
     def setUp(self):
+        self.server_stderr = None
         self.top_dir = os.path.join(os.path.split(__file__)[0], '..')
         os.putenv('PYTHONPATH', os.path.pathsep.join(sys.path))
         self.standalone_command = os.path.join(
@@ -117,9 +118,9 @@ class EndToEndTest(unittest.TestCase):
         self._options.resource = '/echo'
         self._options.server_port = self.test_port
 
-    def _run_python_command(self, commandline, stdout=None):
+    def _run_python_command(self, commandline, stdout=None, stderr=None):
         return subprocess.Popen([sys.executable] + commandline, close_fds=True,
-                                stdout=stdout)
+                                stdout=stdout, stderr=stderr)
 
     def _run_server(self, allow_draft75=False):
         args = [self.standalone_command,
@@ -139,7 +140,8 @@ class EndToEndTest(unittest.TestCase):
         if allow_draft75:
             args.append('--allow-draft75')
 
-        return self._run_python_command(args)
+        return self._run_python_command(args,
+                                        stderr=self.server_stderr)
 
     def _kill_process(self, pid):
         if sys.platform in ('win32', 'cygwin'):
@@ -189,6 +191,24 @@ class EndToEndTest(unittest.TestCase):
             client = client_for_testing.create_client(self._options)
             try:
                 test_function(client)
+            finally:
+                client.close_socket()
+        finally:
+            self._kill_process(server.pid)
+
+    def _run_hybi_http_fallback_test(self, options, status):
+        server = self._run_server()
+        try:
+            time.sleep(0.2)
+
+            client = client_for_testing.create_client(options)
+            try:
+                client.connect()
+                self.fail('Could not catch HttpStatusException')
+            except client_for_testing.HttpStatusException, e:
+                self.assertEqual(status, e.status)
+            except Exception, e:
+                self.fail('Catch unexpected exception')
             finally:
                 client.close_socket()
         finally:
@@ -321,6 +341,23 @@ class EndToEndTest(unittest.TestCase):
         options.resource = 'ws://localhost:%d/echo' % self.test_port
         self._run_hybi_test_with_client_options(_echo_check_procedure, options)
 
+    def test_origin_check(self):
+        """Tests http fallback on origin check fail."""
+
+        options = self._options
+        options.resource = '/origin_check'
+        # Server shows warning message for http 403 fallback. This warning
+        # message is confusing. Following pipe disposes warning messages.
+        self.server_stderr = subprocess.PIPE
+        self._run_hybi_http_fallback_test(options, 403)
+
+    def test_version_check(self):
+        """Tests http fallback on version check fail."""
+
+        options = self._options
+        options.version = 99
+        self.server_stderr = subprocess.PIPE
+        self._run_hybi_http_fallback_test(options, 426)
 
     def test_example_echo_client(self):
         """Tests that the echo_client.py example can talk with the server."""

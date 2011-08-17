@@ -37,6 +37,7 @@ import os
 import re
 
 from mod_pywebsocket import common
+from mod_pywebsocket import handshake
 from mod_pywebsocket import msgutil
 from mod_pywebsocket import stream
 from mod_pywebsocket import util
@@ -219,7 +220,7 @@ class Dispatcher(object):
                             _DO_EXTRA_HANDSHAKE_HANDLER_NAME,
                             request.ws_resource),
                     e)
-            raise
+            raise handshake.HandshakeException(e, 403)
 
     def transfer_data(self, request):
         """Let a handler transfer_data with a WebSocket client.

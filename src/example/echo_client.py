@@ -104,10 +104,10 @@ def _build_method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
 
 
-def _origin_header(origin):
+def _origin_header(header, origin):
     # 4.1 13. concatenation of the string "Origin:", a U+0020 SPACE character,
     # and the /origin/ value, converted to ASCII lowercase, to /fields/.
-    return '%s: %s\r\n' % (common.ORIGIN_HEADER, origin.lower())
+    return '%s: %s\r\n' % (header, origin.lower())
 
 
 def _format_host_header(host, port, secure):
@@ -305,7 +305,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         fields.append(_UPGRADE_HEADER)
         fields.append(_CONNECTION_HEADER)
         if self._options.origin is not None:
-            fields.append(_origin_header(self._options.origin))
+            fields.append(_origin_header(common.SEC_WEBSOCKET_ORIGIN_HEADER,
+                                         self._options.origin))
 
         original_key = os.urandom(16)
         self._key = base64.b64encode(original_key)
@@ -492,7 +493,8 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         if not self._options.origin:
             raise ClientHandshakeError(
                 'Specify the origin of the connection by --origin flag')
-        fields.append(_origin_header(self._options.origin))
+        fields.append(_origin_header(common.ORIGIN_HEADER,
+                                     self._options.origin))
         # TODO: 4.1 14 Add Sec-WebSocket-Protocol: field to /fields/.
         # TODO: 4.1 15 Add cookie headers to /fields/.
 
@@ -711,7 +713,8 @@ class ClientHandshakeProcessorHixie75(object):
         if not self._options.origin:
             raise ClientHandshakeError(
                 'Specify the origin of the connection by --origin flag')
-        self._socket.sendall(_origin_header(self._options.origin))
+        self._socket.sendall(_origin_header(common.ORIGIN_HEAER,
+                                            self._options.origin))
         self._socket.sendall('\r\n')
 
         self._logger.info('Sent handshake')
@@ -895,6 +898,10 @@ def main():
                       _PROTOCOL_VERSION_HYBI08 + '\', \'' +
                       _PROTOCOL_VERSION_HYBI00 + '\', \'' +
                       _PROTOCOL_VERSION_HIXIE75 + '\'')
+    parser.add_option('--version-header', '--version_header',
+                      dest='version_header',
+                      type='int', default=common.VERSION_HYBI_LATEST,
+                      help='specify Sec-WebSocket-Version header value')
     parser.add_option('--deflate', dest='deflate_stream',
                        action='store_true', default=False,
                       help='use deflate-stream extension. This value will be '

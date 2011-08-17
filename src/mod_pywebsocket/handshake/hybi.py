@@ -124,51 +124,61 @@ class Handshaker(object):
 
         unused_host = get_mandatory_header(self._request, common.HOST_HEADER)
 
-        self._get_origin()
         self._check_version()
-        self._set_protocol()
-        self._set_extensions()
 
-        key = self._get_key()
-        (accept, accept_binary) = compute_accept(key)
-        self._logger.debug(
-            '%s: %r (%s)',
-            common.SEC_WEBSOCKET_ACCEPT_HEADER,
-            accept,
-            util.hexify(accept_binary))
+        # This handshake must be based on latest hybi. We are responsible to
+        # fallback to HTTP on handshake failure as latest hybi handshake
+        # specifies.
+        try:
+            self._get_origin()
+            self._set_protocol()
+            self._set_extensions()
 
-        self._logger.debug('IETF HyBi protocol')
-        self._request.ws_version = common.VERSION_HYBI_LATEST
-        stream_options = StreamOptions()
-        stream_options.deflate = self._request.ws_deflate
-        stream_options.deflate_application_data = (
-            self._request.ws_deflate_application_data)
-        self._request.ws_stream = Stream(self._request, stream_options)
-
-        self._request.ws_close_code = None
-        self._request.ws_close_reason = None
-
-        self._dispatcher.do_extra_handshake(self._request)
-
-        if self._request.ws_requested_protocols is not None:
-            if self._request.ws_protocol is None:
-                raise HandshakeException(
-                    'do_extra_handshake must choose one subprotocol from '
-                    'ws_requested_protocols and set it to ws_protocol')
-            validate_subprotocol(self._request.ws_protocol, hixie=False)
-
+            key = self._get_key()
+            (accept, accept_binary) = compute_accept(key)
             self._logger.debug(
-                'Subprotocol accepted: %r',
-                self._request.ws_protocol)
-        else:
-            if self._request.ws_protocol is not None:
-                raise HandshakeException(
-                    'ws_protocol must be None when the client didn\'t request '
-                    'any subprotocol')
+                '%s: %r (%s)',
+                common.SEC_WEBSOCKET_ACCEPT_HEADER,
+                accept,
+                util.hexify(accept_binary))
 
-        self._send_handshake(accept)
+            self._logger.debug('IETF HyBi protocol')
+            self._request.ws_version = common.VERSION_HYBI_LATEST
+            stream_options = StreamOptions()
+            stream_options.deflate = self._request.ws_deflate
+            stream_options.deflate_application_data = (
+                self._request.ws_deflate_application_data)
+            self._request.ws_stream = Stream(self._request, stream_options)
 
-        self._logger.debug('Sent opening handshake response')
+            self._request.ws_close_code = None
+            self._request.ws_close_reason = None
+
+            self._dispatcher.do_extra_handshake(self._request)
+
+            if self._request.ws_requested_protocols is not None:
+                if self._request.ws_protocol is None:
+                    raise HandshakeException(
+                        'do_extra_handshake must choose one subprotocol from '
+                        'ws_requested_protocols and set it to ws_protocol')
+                validate_subprotocol(self._request.ws_protocol, hixie=False)
+
+                self._logger.debug(
+                    'Subprotocol accepted: %r',
+                    self._request.ws_protocol)
+            else:
+                if self._request.ws_protocol is not None:
+                    raise HandshakeException(
+                        'ws_protocol must be None when the client didn\'t '
+                        'request any subprotocol')
+
+            self._send_handshake(accept)
+
+            self._logger.debug('Sent opening handshake response')
+        except HandshakeException, e:
+            if not e.status:
+                # Fallback to 400 bad request by default.
+                e.status = 400
+            raise e
 
     def _get_origin(self):
         origin = self._request.headers_in.get(
@@ -178,7 +188,7 @@ class Handshaker(object):
     def _check_version(self):
         unused_value = validate_mandatory_header(
             self._request, common.SEC_WEBSOCKET_VERSION_HEADER,
-            str(common.VERSION_HYBI_LATEST))
+            str(common.VERSION_HYBI_LATEST), fail_status=426)
 
     def _set_protocol(self):
         self._request.ws_protocol = None

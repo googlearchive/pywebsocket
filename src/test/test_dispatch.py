@@ -39,6 +39,7 @@ import unittest
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket import dispatch
+from mod_pywebsocket import handshake
 from test import mock
 
 
@@ -143,7 +144,12 @@ class DispatcherTest(unittest.TestCase):
         dispatcher.do_extra_handshake(request)  # Must not raise exception.
 
         request.ws_origin = 'http://bad.example.com'
-        self.assertRaises(Exception, dispatcher.do_extra_handshake, request)
+        try:
+            dispatcher.do_extra_handshake(request)
+        except handshake.HandshakeException, e:
+            self.assertEquals(403, e.status)
+        except Exception, e:
+            self.fail('Unexpected exception: %r' % e)
 
     def test_transfer_data(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)

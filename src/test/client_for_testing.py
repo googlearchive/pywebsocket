@@ -230,6 +230,16 @@ class _TLSSocket(object):
         pass
 
 
+class HttpStatusException(Exception):
+    """This exception will be raised when unexpected http status code was
+    received as a result of handshake.
+    """
+
+    def __init__(self, name, status):
+        super(HttpStatusException, self).__init__(name)
+        self.status = status
+
+
 class WebSocketHandshake(object):
     """WebSocket handshake processor for IETF HyBi latest protocol."""
 
@@ -268,7 +278,7 @@ class WebSocketHandshake(object):
             'Sec-WebSocket-Key: %s (%s)', key, util.hexify(original_key))
         fields.append('Sec-WebSocket-Key: %s\r\n' % key)
 
-        fields.append('Sec-WebSocket-Version: 8\r\n')
+        fields.append('Sec-WebSocket-Version: %d\r\n' % self._options.version)
 
         # Setting up extensions.
         extensions = []
@@ -314,9 +324,9 @@ class WebSocketHandshake(object):
                 'HTTP status code %r is not three digit in status line: %r' %
                 (code, field))
         if code != '101':
-            raise Exception(
+            raise HttpStatusException(
                 'Expected HTTP status code 101 but found %r in status line: '
-                '%r' % (code, field))
+                '%r' % (code, field), int(code))
         fields = _read_fields(self._socket)
         ch = _receive_bytes(self._socket, 1)
         if ch != '\n':  # 0x0A
@@ -518,9 +528,9 @@ class WebSocketHybi00Handshake(object):
         # 4.1 31. if /code/, interpreted as UTF-8, is "101", then move to the
         # next step.
         if code != '101':
-            raise Exception(
+            raise HttpStatusException(
                 'Expected HTTP status code 101 but found %r in status line: '
-                '%r' % (code, field))
+                '%r' % (code, field), int(code))
         # 4.1 32-39. read fields into /fields/
         fields = _read_fields(self._socket)
 
@@ -910,6 +920,7 @@ class ClientOptions(object):
     """Holds option values to configure the Client object."""
 
     def __init__(self):
+        self.version = 8
         self.server_host = ''
         self.origin = ''
         self.resource = ''

@@ -95,6 +95,8 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
             _LOGGER.info(
                 'Failed to complete opening handshake as %s protocol: %r',
                 name, e)
+            if e.status:
+                raise e
 
     raise HandshakeException(
         'Failed to complete opening handshake for all available protocols')

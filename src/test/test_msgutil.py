@@ -242,11 +242,11 @@ class MessageTest(unittest.TestCase):
 
         expected += '\x81\x05Hello'
 
-        compressed_world = compress.compress('Hello')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        expected += '\xc1%c' % len(compressed_world)
-        expected += compressed_world
+        compressed_2nd_hello = compress.compress('Hello')
+        compressed_2nd_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_2nd_hello = compressed_2nd_hello[:-4]
+        expected += '\xc1%c' % len(compressed_2nd_hello)
+        expected += compressed_2nd_hello
 
         self.assertEqual(expected, request.connection.written_data())
 
@@ -497,11 +497,11 @@ class MessageTest(unittest.TestCase):
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
 
-        compressed_world = compress.compress('Hello')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        data += '\xc1%c' % (len(compressed_world) | 0x80)
-        data += _mask_hybi(compressed_world)
+        compressed_2nd_hello = compress.compress('Hello')
+        compressed_2nd_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_2nd_hello = compressed_2nd_hello[:-4]
+        data += '\xc1%c' % (len(compressed_2nd_hello) | 0x80)
+        data += _mask_hybi(compressed_2nd_hello)
 
         extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
         request = _create_request_from_rawdata(

@@ -81,7 +81,7 @@ STATUS_UNSUPPORTED = 1003
 
 # Extension tokens
 _DEFLATE_STREAM_EXTENSION = 'deflate-stream'
-_DEFLATE_APPLICATION_DATA_EXTENSION = 'x-deflate-application-data'
+_DEFLATE_FRAME_EXTENSION = 'deflate-frame'
 
 
 def _method_line(resource):
@@ -287,9 +287,9 @@ class WebSocketHandshake(object):
         if self._options.use_deflate_stream:
             extensions.append(_DEFLATE_STREAM_EXTENSION)
 
-        deflate_application_data_accepted = False
-        if self._options.use_deflate_application_data:
-            extensions.append(_DEFLATE_APPLICATION_DATA_EXTENSION)
+        deflate_frame_accepted = False
+        if self._options.use_deflate_frame:
+            extensions.append(_DEFLATE_FRAME_EXTENSION)
 
         if len(extensions) > 0:
             fields.append('Sec-WebSocket-Extensions: %s\r\n' %
@@ -403,9 +403,9 @@ class WebSocketHandshake(object):
                 if self._options.use_deflate_stream:
                     deflate_stream_accepted = True
                     continue
-            if extension == _DEFLATE_APPLICATION_DATA_EXTENSION:
-                if self._options.use_deflate_application_data:
-                    deflate_application_data_accepted = True
+            if extension == _DEFLATE_FRAME_EXTENSION:
+                if self._options.use_deflate_frame:
+                    deflate_frame_accepted = True
                     continue
 
             raise Exception(
@@ -417,10 +417,10 @@ class WebSocketHandshake(object):
             raise Exception('%s extension not accepted' %
                             _DEFLATE_STREAM_EXTENSION)
 
-        if (self._options.use_deflate_application_data and
-            not deflate_application_data_accepted):
+        if (self._options.use_deflate_frame and
+            not deflate_frame_accepted):
             raise Exception('%s extension not accepted' %
-                            _DEFLATE_APPLICATION_DATA_EXTENSION)
+                            _DEFLATE_FRAME_EXTENSION)
 
 
 class WebSocketHybi00Handshake(object):
@@ -707,12 +707,13 @@ class WebSocketStream(object):
             self._socket = socket
 
         # Filters applied to application data part of data frames.
-        self._outgoing_application_data_filter = None
-        self._incoming_application_data_filter = None
+        self._outgoing_frame_filter = None
+        self._incoming_frame_filter = None
 
-        if self._handshake._options.use_deflate_application_data:
-            self._outgoing_application_data_filter = util._RFC1979Deflater()
-            self._incoming_application_data_filter = util._RFC1979Inflater()
+        if self._handshake._options.use_deflate_frame:
+            self._outgoing_frame_filter = (
+                util._RFC1979Deflater(None, False))
+            self._incoming_frame_filter = util._RFC1979Inflater()
 
         self._fragmented = False
 
@@ -732,8 +733,8 @@ class WebSocketStream(object):
         self._socket.sendall(header + self._mask_hybi(body))
 
     def _send_data(self, payload, frame_type, end=True):
-        if self._outgoing_application_data_filter is not None:
-            payload = self._outgoing_application_data_filter.filter(payload)
+        if self._outgoing_frame_filter is not None:
+            payload = self._outgoing_frame_filter.filter(payload)
 
         if self._fragmented:
             opcode = _OPCODE_CONTINUATION
@@ -747,9 +748,13 @@ class WebSocketStream(object):
             self._fragmented = True
             fin = 0
 
+        rsv1 = 0
+        if self._handshake._options.use_deflate_frame:
+            rsv1 = 1
+
         mask_bit = 1 << 7
 
-        header = chr(fin << 7 | opcode)
+        header = chr(fin << 7 | rsv1 << 6 | opcode)
         payload_length = len(payload)
         if payload_length <= 125:
             header += chr(mask_bit | payload_length)
@@ -767,8 +772,7 @@ class WebSocketStream(object):
     def send_text(self, payload, end=True):
         self._send_data(payload.encode('utf-8'), _OPCODE_TEXT, end)
 
-    def _assert_receive_data(self, payload, opcode=_OPCODE_TEXT, fin=1,
-                            rsv1=0, rsv2=0, rsv3=0):
+    def _assert_receive_data(self, payload, opcode, fin, rsv1, rsv2, rsv3):
         received = _receive_bytes(self._socket, 2)
 
         first_byte = ord(received[0])
@@ -792,13 +796,31 @@ class WebSocketStream(object):
         mask = second_byte >> 7 & 1
         payload_length = second_byte & 0x7f
 
-        actual_rsv = (actual_rsv1, actual_rsv2, actual_rsv3)
-        rsv = (rsv1, rsv2, rsv3)
+        if rsv1 is None:
+            rsv1 = 0
+            if self._handshake._options.use_deflate_frame:
+                rsv1 = 1
 
-        if actual_rsv != rsv:
+        if rsv2 is None:
+            rsv2 = 0
+
+        if rsv3 is None:
+            rsv3 = 0
+
+        if actual_rsv1 != rsv1:
             raise Exception(
-                'Unexpected rsv: %r (expected) vs %r (actual)' %
-                (rsv, actual_rsv))
+                'Unexpected rsv1: %r (expected) vs %r (actual)' %
+                (rsv1, actual_rsv1))
+
+        if actual_rsv2 != rsv2:
+            raise Exception(
+                'Unexpected rsv2: %r (expected) vs %r (actual)' %
+                (rsv2, actual_rsv2))
+
+        if actual_rsv3 != rsv3:
+            raise Exception(
+                'Unexpected rsv3: %r (expected) vs %r (actual)' %
+                (rsv3, actual_rsv3))
 
         if mask != 0:
             raise Exception(
@@ -817,8 +839,8 @@ class WebSocketStream(object):
 
         received = _receive_bytes(self._socket, payload_length)
 
-        if self._incoming_application_data_filter is not None:
-            received = self._incoming_application_data_filter.filter(received)
+        if self._incoming_frame_filter is not None:
+            received = self._incoming_frame_filter.filter(received)
 
         if len(received) != len(payload):
             raise Exception(
@@ -831,11 +853,11 @@ class WebSocketStream(object):
                 (payload, received))
 
     def assert_receive_binary(self, payload, opcode=_OPCODE_BINARY, fin=1,
-                              rsv1=0, rsv2=0, rsv3=0):
+                              rsv1=None, rsv2=None, rsv3=None):
         self._assert_receive_data(payload, opcode, fin, rsv1, rsv2, rsv3)
 
     def assert_receive_text(self, payload, opcode=_OPCODE_TEXT, fin=1,
-                            rsv1=0, rsv2=0, rsv3=0):
+                            rsv1=None, rsv2=None, rsv3=None):
         self._assert_receive_data(payload.encode('utf-8'), opcode, fin, rsv1,
                                   rsv2, rsv3)
 
@@ -930,7 +952,7 @@ class ClientOptions(object):
         # Enable deflate-stream.
         self.use_deflate_stream = False
         # Enable deflate-application-data.
-        self.use_deflate_application_data = False
+        self.use_deflate_frame = False
 
 
 class Client(object):

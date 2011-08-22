@@ -218,11 +218,11 @@ class DeflateRequest(object):
 
 
 class _Deflater(object):
-    def __init__(self):
+    def __init__(self, window_bits):
         self._logger = get_class_logger(self)
 
         self._compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -window_bits)
 
     def compress_and_flush(self, bytes):
         compressed_bytes = self._compress.compress(bytes)
@@ -294,15 +294,25 @@ class _Inflater(object):
         self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
 
 
+# Compresses/decompresses given octets using the method introduced in RFC1979.
+
+
 class _RFC1979Deflater(object):
     """A compressor class that applies DEFLATE to given byte sequence and
     flushes using the algorithm described in the RFC1979 section 2.1.
     """
 
-    def __init__(self):
-        self._deflater = _Deflater()
+    def __init__(self, window_bits, no_context_takeover):
+        self._deflater = None
+        if window_bits is None:
+            window_bits = zlib.MAX_WBITS
+        self._window_bits = window_bits
+        self._no_context_takeover = no_context_takeover
 
     def filter(self, bytes):
+        if self._deflater is None or self._no_context_takeover:
+            self._deflater = _Deflater(self._window_bits)
+
         # Strip last 4 octets which is LEN and NLEN field of a non-compressed
         # block added for Z_SYNC_FLUSH.
         return self._deflater.compress_and_flush(bytes)[:-4]
@@ -336,7 +346,7 @@ class DeflateSocket(object):
 
         self._logger = get_class_logger(self)
 
-        self._deflater = _Deflater()
+        self._deflater = _Deflater(zlib.MAX_WBITS)
         self._inflater = _Inflater()
 
     def recv(self, size):
@@ -377,7 +387,7 @@ class DeflateConnection(object):
 
         self._logger = get_class_logger(self)
 
-        self._deflater = _Deflater()
+        self._deflater = _Deflater(zlib.MAX_WBITS)
         self._inflater = _Inflater()
 
     def put_bytes(self, bytes):

@@ -73,6 +73,7 @@ import struct
 import sys
 
 from mod_pywebsocket import common
+from mod_pywebsocket.extensions import DeflateFrameExtensionProcessor
 from mod_pywebsocket.handshake._base import format_extensions
 from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.stream import Stream
@@ -328,10 +329,9 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 common.ExtensionParameter(
                     common.DEFLATE_STREAM_EXTENSION))
 
-        if self._options.deflate_application_data:
+        if self._options.deflate_frame:
             extensions_to_request.append(
-                common.ExtensionParameter(
-                    common.DEFLATE_APPLICATION_DATA_EXTENSION))
+                common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION))
 
         if len(extensions_to_request) != 0:
             fields.append(
@@ -418,7 +418,7 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 (common.SEC_WEBSOCKET_ACCEPT_HEADER, accept, expected_accept))
 
         deflate_stream_accepted = False
-        deflate_application_data_accepted = False
+        deflate_frame_accepted = False
 
         extensions_header = fields.get(
             common.SEC_WEBSOCKET_EXTENSIONS_HEADER.lower())
@@ -433,11 +433,12 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 deflate_stream_accepted = True
                 continue
 
-            if (extension_name ==
-                common.DEFLATE_APPLICATION_DATA_EXTENSION and
-                len(extension.get_parameter_names()) == 0 and
-                self._options.deflate_application_data):
-                deflate_application_data_accepted = True
+            if (extension_name == common.DEFLATE_FRAME_EXTENSION and
+                self._options.deflate_frame):
+                deflate_frame_accepted = True
+                processor = DeflateFrameExtensionProcessor(extension)
+                unused_extension_response = processor.get_extension_response()
+                self._options.deflate_frame = processor
                 continue
 
             raise ClientHandshakeError(
@@ -448,11 +449,10 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 'Requested %s, but the server rejected it' %
                 common.DEFLATE_STREAM_EXTENSION)
 
-        if (self._options.deflate_application_data and
-            not deflate_application_data_accepted):
+        if (self._options.deflate_frame and not deflate_frame_accepted):
             raise ClientHandshakeError(
                 'Requested %s, but the server rejected it' %
-                common.DEFLATE_APPLICATION_DATA_EXTENSION)
+                common.DEFLATE_FRAME_EXTENSION)
 
         # TODO(tyoshino): Handle Sec-WebSocket-Protocol
         # TODO(tyoshino): Handle Cookie, etc.
@@ -813,9 +813,14 @@ class EchoClient(object):
                 stream_option = StreamOptions()
                 stream_option.mask_send = True
                 stream_option.unmask_receive = False
-                stream_option.deflate = self._options.deflate_stream
-                stream_option.deflate_application_data = (
-                    self._options.deflate_application_data)
+
+                if self._options.deflate_stream:
+                    stream_option.deflate_stream = True
+
+                if self._options.deflate_frame is not False:
+                    processor = self._options.deflate_frame
+                    processor.setup_stream_options(stream_option)
+
                 self._stream = Stream(request, stream_option)
             elif version == _PROTOCOL_VERSION_HYBI00:
                 self._stream = StreamHixie75(request, True)
@@ -866,6 +871,8 @@ def main():
     sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
 
     parser = OptionParser()
+    # We accept --command_line_flag style flags which is the same as Google
+    # gflags in addition to common --command-line-flag style flags.
     parser.add_option('-s', '--server-host', '--server_host',
                       dest='server_host', type='string',
                       default='localhost', help='server host')
@@ -902,17 +909,18 @@ def main():
                       dest='version_header',
                       type='int', default=common.VERSION_HYBI_LATEST,
                       help='specify Sec-WebSocket-Version header value')
-    parser.add_option('--deflate', dest='deflate_stream',
-                       action='store_true', default=False,
+    parser.add_option('--deflate-stream', '--deflate_stream',
+                      dest='deflate_stream',
+                      action='store_true', default=False,
                       help='use deflate-stream extension. This value will be '
                       'ignored if used with protocol version that doesn\'t '
                       'support deflate-stream.')
-    parser.add_option('--deflate_application_data',
-                      dest='deflate_application_data',
-                       action='store_true', default=False,
-                      help='use x-deflate-application-data extension. This '
-                      'value will be ignored if used with protocol version '
-                      'that doesn\'t support x-deflate-application-data.')
+    parser.add_option('--deflate-frame', '--deflate_frame',
+                      dest='deflate_frame',
+                      action='store_true', default=False,
+                      help='use deflate-frame extension. This value will be '
+                      'ignored if used with protocol version that doesn\'t '
+                      'support deflate-frame.')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
                       choices=['debug', 'info', 'warn', 'error', 'critical'],

@@ -182,12 +182,12 @@ class EndToEndTest(unittest.TestCase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi_deflate_application_data_test(self, test_function):
+    def _run_hybi_deflate_frame_test(self, test_function):
         server = self._run_server()
         try:
             time.sleep(0.2)
 
-            self._options.use_deflate_application_data = True
+            self._options.use_deflate_frame = True
             client = client_for_testing.create_client(self._options)
             try:
                 test_function(client)
@@ -229,11 +229,11 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_deflate_server_close(self):
         self._run_hybi_deflate_test(_echo_check_procedure_with_goodbye)
 
-    def test_echo_deflate_application_data(self):
-        self._run_hybi_deflate_application_data_test(_echo_check_procedure)
+    def test_echo_deflate_frame(self):
+        self._run_hybi_deflate_frame_test(_echo_check_procedure)
 
-    def test_echo_deflate_application_data_server_close(self):
-        self._run_hybi_deflate_application_data_test(
+    def test_echo_deflate_frame_server_close(self):
+        self._run_hybi_deflate_frame_test(
             _echo_check_procedure_with_goodbye)
 
     def test_close_on_protocol_error(self):

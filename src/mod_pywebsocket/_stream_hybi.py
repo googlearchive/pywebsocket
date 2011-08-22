@@ -49,6 +49,17 @@ from mod_pywebsocket._stream_base import UnsupportedFrameException
 _NOOP_MASKER = util.NoopMasker()
 
 
+class Frame(object):
+    def __init__(self, fin=1, rsv1=0, rsv2=0, rsv3=0,
+                 opcode=None, payload=''):
+        self.fin = fin
+        self.rsv1 = rsv1
+        self.rsv2 = rsv2
+        self.rsv3 = rsv3
+        self.opcode = opcode
+        self.payload = payload
+
+
 # Helper functions made public to be used for writing unittests for WebSocket
 # clients.
 
@@ -118,35 +129,41 @@ def _build_frame(header, body, mask):
     return header + masking_nonce + masker.mask(body)
 
 
+def _filter_and_format_frame_object(frame, mask, frame_filters):
+    for frame_filter in frame_filters:
+        frame_filter.filter(frame)
+
+    header = create_header(
+        frame.opcode, len(frame.payload), frame.fin,
+        frame.rsv1, frame.rsv2, frame.rsv3, mask)
+    return _build_frame(header, frame.payload, mask)
+
+
 def create_binary_frame(
-    message, opcode=common.OPCODE_BINARY, fin=1, mask=False,
-    application_data_filter=None):
+    message, opcode=common.OPCODE_BINARY, fin=1, mask=False, frame_filters=[]):
     """Creates a simple binary frame with no extension, reserved bit."""
 
-    if application_data_filter is not None:
-        message = application_data_filter.filter(message)
-    header = create_header(opcode, len(message), fin, 0, 0, 0, mask)
-    return _build_frame(header, message, mask)
+    frame = Frame(fin=fin, opcode=opcode, payload=message)
+    return _filter_and_format_frame_object(frame, mask, frame_filters)
 
 
 def create_text_frame(
-    message, opcode=common.OPCODE_TEXT, fin=1, mask=False,
-    application_data_filter=None):
+    message, opcode=common.OPCODE_TEXT, fin=1, mask=False, frame_filters=[]):
     """Creates a simple text frame with no extension, reserved bit."""
 
     encoded_message = message.encode('utf-8')
     return create_binary_frame(encoded_message, opcode, fin, mask,
-                               application_data_filter)
+                               frame_filters)
 
 
 class FragmentedFrameBuilder(object):
     """A stateful class to send a message as fragments."""
 
-    def __init__(self, mask, application_data_filter=None):
+    def __init__(self, mask, frame_filters=[]):
         """Constructs an instance."""
 
         self._mask = mask
-        self._application_data_filter = application_data_filter
+        self._frame_filters = frame_filters
 
         self._started = False
 
@@ -177,27 +194,29 @@ class FragmentedFrameBuilder(object):
 
         if binary:
             return create_binary_frame(
-                message, opcode, fin, self._mask,
-                self._application_data_filter)
+                message, opcode, fin, self._mask, self._frame_filters)
         else:
             return create_text_frame(
-                message, opcode, fin, self._mask,
-                self._application_data_filter)
+                message, opcode, fin, self._mask, self._frame_filters)
 
 
-def create_ping_frame(body, mask=False):
-    header = create_header(common.OPCODE_PING, len(body), 1, 0, 0, 0, mask)
-    return _build_frame(header, body, mask)
+def _create_control_frame(opcode, body, mask, frame_filters):
+    frame = Frame(opcode=opcode, payload=body)
+
+    return _filter_and_format_frame_object(frame, mask, frame_filters)
 
 
-def create_pong_frame(body, mask=False):
-    header = create_header(common.OPCODE_PONG, len(body), 1, 0, 0, 0, mask)
-    return _build_frame(header, body, mask)
+def create_ping_frame(body, mask=False, frame_filters=[]):
+    return _create_control_frame(common.OPCODE_PING, body, mask, frame_filters)
 
 
-def create_close_frame(body, mask=False):
-    header = create_header(common.OPCODE_CLOSE, len(body), 1, 0, 0, 0, mask)
-    return _build_frame(header, body, mask)
+def create_pong_frame(body, mask=False, frame_filters=[]):
+    return _create_control_frame(common.OPCODE_PONG, body, mask, frame_filters)
+
+
+def create_close_frame(body, mask=False, frame_filters=[]):
+    return _create_control_frame(
+        common.OPCODE_CLOSE, body, mask, frame_filters)
 
 
 class StreamOptions(object):
@@ -207,9 +226,12 @@ class StreamOptions(object):
         """Constructs StreamOptions."""
 
         # Enables deflate-stream extension.
-        self.deflate = False
-        # Enables x-deflate-application-data extension.
-        self.deflate_application_data = False
+        self.deflate_stream = False
+
+        # Filters applied to frames.
+        self.outgoing_frame_filters = []
+        self.incoming_frame_filters = []
+
         self.mask_send = False
         self.unmask_receive = True
 
@@ -230,19 +252,9 @@ class Stream(StreamBase):
 
         self._options = options
 
-        if self._options.deflate:
-            self._logger.debug('Deflated stream')
+        if self._options.deflate_stream:
+            self._logger.debug('Setup filter for deflate-stream')
             self._request = util.DeflateRequest(self._request)
-
-        # Filters applied to application data part of data frames.
-        self._outgoing_application_data_filter = None
-        self._incoming_application_data_filter = None
-
-        if self._options.deflate_application_data:
-            self._logger.debug(
-                'Enable %s' % common.DEFLATE_APPLICATION_DATA_EXTENSION)
-            self._outgoing_application_data_filter = util._RFC1979Deflater()
-            self._incoming_application_data_filter = util._RFC1979Inflater()
 
         self._request.client_terminated = False
         self._request.server_terminated = False
@@ -253,7 +265,7 @@ class Stream(StreamBase):
         self._original_opcode = None
 
         self._writer = FragmentedFrameBuilder(
-            self._options.mask_send, self._outgoing_application_data_filter)
+            self._options.mask_send, self._options.outgoing_frame_filters)
 
         self._ping_queue = deque()
 
@@ -364,14 +376,21 @@ class Stream(StreamBase):
             # Timeout is controlled by TimeOut directive of Apache.
 
             opcode, bytes, fin, rsv1, rsv2, rsv3 = self._receive_frame()
-            if rsv1 or rsv2 or rsv3:
+
+            frame = Frame(fin=fin, rsv1=rsv1, rsv2=rsv2, rsv3=rsv3,
+                          opcode=opcode, payload=bytes)
+
+            for frame_filter in self._options.incoming_frame_filters:
+                frame_filter.filter(frame)
+
+            if frame.rsv1 or frame.rsv2 or frame.rsv3:
                 raise UnsupportedFrameException(
                     'Unsupported flag is set (rsv = %d%d%d)' %
-                    (rsv1, rsv2, rsv3))
+                    (frame.rsv1, frame.rsv2, frame.rsv3))
 
-            if opcode == common.OPCODE_CONTINUATION:
+            if frame.opcode == common.OPCODE_CONTINUATION:
                 if not self._received_fragments:
-                    if fin:
+                    if frame.fin:
                         raise InvalidFrameException(
                             'Received a termination frame but fragmentation '
                             'not started')
@@ -380,22 +399,18 @@ class Stream(StreamBase):
                             'Received an intermediate frame but '
                             'fragmentation not started')
 
-                if self._incoming_application_data_filter:
-                    bytes = self._incoming_application_data_filter.filter(
-                        bytes)
-
-                if fin:
+                if frame.fin:
                     # End of fragmentation frame
-                    self._received_fragments.append(bytes)
+                    self._received_fragments.append(frame.payload)
                     message = ''.join(self._received_fragments)
                     self._received_fragments = []
                 else:
                     # Intermediate frame
-                    self._received_fragments.append(bytes)
+                    self._received_fragments.append(frame.payload)
                     continue
             else:
                 if self._received_fragments:
-                    if fin:
+                    if frame.fin:
                         raise InvalidFrameException(
                             'Received an unfragmented frame without '
                             'terminating existing fragmentation')
@@ -404,29 +419,26 @@ class Stream(StreamBase):
                             'New fragmentation started without terminating '
                             'existing fragmentation')
 
-                if (not common.is_control_opcode(opcode) and
-                    self._incoming_application_data_filter):
-                    bytes = self._incoming_application_data_filter.filter(
-                        bytes)
-
-                if fin:
+                if frame.fin:
                     # Unfragmented frame
-                    self._original_opcode = opcode
-                    message = bytes
 
-                    if common.is_control_opcode(opcode) and len(message) > 125:
+                    if (common.is_control_opcode(frame.opcode) and
+                        len(frame.payload) > 125):
                         raise InvalidFrameException(
                             'Application data size of control frames must be '
                             '125 bytes or less')
+
+                    self._original_opcode = frame.opcode
+                    message = frame.payload
                 else:
                     # Start of fragmentation frame
 
-                    if common.is_control_opcode(opcode):
+                    if common.is_control_opcode(frame.opcode):
                         raise InvalidFrameException(
                             'Control frames must not be fragmented')
 
-                    self._original_opcode = opcode
-                    self._received_fragments.append(bytes)
+                    self._original_opcode = frame.opcode
+                    self._received_fragments.append(frame.payload)
                     continue
 
             if self._original_opcode == common.OPCODE_TEXT:
@@ -531,7 +543,9 @@ class Stream(StreamBase):
                 'less')
 
         frame = create_close_frame(
-            struct.pack('!H', code) + encoded_reason, self._options.mask_send)
+            struct.pack('!H', code) + encoded_reason,
+            self._options.mask_send,
+            self._options.outgoing_frame_filters)
 
         self._request.server_terminated = True
 
@@ -573,7 +587,10 @@ class Stream(StreamBase):
             raise ValueError(
                 'Application data size of control frames must be 125 bytes or '
                 'less')
-        frame = create_ping_frame(body, self._options.mask_send)
+        frame = create_ping_frame(
+            body,
+            self._options.mask_send,
+            self._options.outgoing_frame_filters)
         self._write(frame)
 
         self._ping_queue.append(body)
@@ -583,7 +600,10 @@ class Stream(StreamBase):
             raise ValueError(
                 'Application data size of control frames must be 125 bytes or '
                 'less')
-        frame = create_pong_frame(body, self._options.mask_send)
+        frame = create_pong_frame(
+            body,
+            self._options.mask_send,
+            self._options.outgoing_frame_filters)
         self._write(frame)
 
     def _drain_received_data(self):
@@ -597,11 +617,12 @@ class Stream(StreamBase):
         we perform this only when pywebsocket is running in standalone mode.
         """
 
-        # If self._options.deflate is true, self._request is DeflateRequest, so
-        # we can get wrapped request object by self._request._request.
+        # If self._options.deflate_stream is true, self._request is
+        # DeflateRequest, so we can get wrapped request object by
+        # self._request._request.
         #
         # Only _StandaloneRequest has _drain_received_data method.
-        if (self._options.deflate and
+        if (self._options.deflate_stream and
             ('_drain_received_data' in dir(self._request._request))):
             self._request._request._drain_received_data()
 

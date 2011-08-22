@@ -322,6 +322,12 @@ class Stream(StreamBase):
 
         return opcode, bytes, fin, rsv1, rsv2, rsv3
 
+    def _receive_frame_as_frame_object(self):
+        opcode, bytes, fin, rsv1, rsv2, rsv3 = self._receive_frame()
+
+        return Frame(fin=fin, rsv1=rsv1, rsv2=rsv2, rsv3=rsv3,
+                     opcode=opcode, payload=bytes)
+
     def send_message(self, message, end=True, binary=False):
         """Send message.
 
@@ -375,10 +381,7 @@ class Stream(StreamBase):
             # mp_conn.read will block if no bytes are available.
             # Timeout is controlled by TimeOut directive of Apache.
 
-            opcode, bytes, fin, rsv1, rsv2, rsv3 = self._receive_frame()
-
-            frame = Frame(fin=fin, rsv1=rsv1, rsv2=rsv2, rsv3=rsv3,
-                          opcode=opcode, payload=bytes)
+            frame = self._receive_frame_as_frame_object()
 
             for frame_filter in self._options.incoming_frame_filters:
                 frame_filter.filter(frame)

@@ -874,9 +874,9 @@ class WebSocketStream(object):
             frame += chr(len(body)) + body
         return frame
 
-    def send_close(self):
+    def send_close(self, code, reason):
         self._socket.sendall(
-            self._build_close_frame(STATUS_NORMAL, '', True))
+            self._build_close_frame(code, reason, True))
 
     def assert_receive_close(self, code, reason):
         expected_frame = self._build_close_frame(code, reason, False)
@@ -929,7 +929,7 @@ class WebSocketStreamHixie75(object):
                 'Unexpected payload: %r (expected) vs %r (actual)' %
                 (payload, received[0:-1]))
 
-    def send_close(self):
+    def send_close(self, code, reason):
         self._socket.sendall(self._CLOSE_FRAME)
 
     def assert_receive_close(self, unused_code, unused_reason):
@@ -997,8 +997,8 @@ class Client(object):
         else:
             self._stream.assert_receive_text(payload)
 
-    def send_close(self):
-        self._stream.send_close()
+    def send_close(self, code=STATUS_NORMAL, reason=''):
+        self._stream.send_close(code, reason)
 
     def assert_receive_close(self, code=STATUS_NORMAL, reason=''):
         self._stream.assert_receive_close(code, reason)

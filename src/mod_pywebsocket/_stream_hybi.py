@@ -50,6 +50,7 @@ _NOOP_MASKER = util.NoopMasker()
 
 
 class Frame(object):
+
     def __init__(self, fin=1, rsv1=0, rsv2=0, rsv3=0,
                  opcode=None, payload=''):
         self.fin = fin
@@ -489,7 +490,13 @@ class Stream(StreamBase):
                 self._logger.debug(
                     'Received client-initiated closing handshake')
 
-                self._send_closing_handshake(common.STATUS_NORMAL, '')
+                code = common.STATUS_NORMAL
+                reason = ''
+                if hasattr(self._request, '_dispatcher'):
+                    dispatcher = self._request._dispatcher
+                    code, reason = dispatcher.passive_closing_handshake(
+                        self._request)
+                self._send_closing_handshake(code, reason)
                 self._logger.debug(
                     'Sent ack for client-initiated closing handshake')
                 return None

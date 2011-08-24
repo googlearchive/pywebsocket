@@ -47,6 +47,8 @@ _SOURCE_PATH_PATTERN = re.compile(r'(?i)_wsh\.py$')
 _SOURCE_SUFFIX = '_wsh.py'
 _DO_EXTRA_HANDSHAKE_HANDLER_NAME = 'web_socket_do_extra_handshake'
 _TRANSFER_DATA_HANDLER_NAME = 'web_socket_transfer_data'
+_PASSIVE_CLOSING_HANDSHAKE_HANDLER_NAME = (
+    'web_socket_passive_closing_handshake')
 
 
 class DispatchException(Exception):
@@ -55,6 +57,11 @@ class DispatchException(Exception):
     def __init__(self, name, status=404):
         super(DispatchException, self).__init__(name)
         self.status = status
+
+
+def _default_passive_closing_handshake_handler(request):
+    """Default web_socket_passive_closing_handshake handler."""
+    return common.STATUS_NORMAL, ''
 
 
 def _normalize_path(path):
@@ -106,9 +113,11 @@ def _enumerate_handler_file_paths(directory):
 class _HandlerSuite(object):
     """A handler suite holder class."""
 
-    def __init__(self, do_extra_handshake, transfer_data):
+    def __init__(self, do_extra_handshake, transfer_data,
+                 passive_closing_handshake):
         self.do_extra_handshake = do_extra_handshake
         self.transfer_data = transfer_data
+        self.passive_closing_handshake = passive_closing_handshake
 
 
 def _source_handler_file(handler_definition):
@@ -125,9 +134,17 @@ def _source_handler_file(handler_definition):
     except Exception:
         raise DispatchException('Error in sourcing handler:' +
                                 util.get_stack_trace())
+    passive_closing_handshake_handler = None
+    try:
+        passive_closing_handshake_handler = _extract_handler(
+            global_dic, _PASSIVE_CLOSING_HANDSHAKE_HANDLER_NAME)
+    except Exception:
+        passive_closing_handshake_handler = (
+            _default_passive_closing_handshake_handler)
     return _HandlerSuite(
         _extract_handler(global_dic, _DO_EXTRA_HANDSHAKE_HANDLER_NAME),
-        _extract_handler(global_dic, _TRANSFER_DATA_HANDLER_NAME))
+        _extract_handler(global_dic, _TRANSFER_DATA_HANDLER_NAME),
+        passive_closing_handshake_handler)
 
 
 def _extract_handler(dic, name):
@@ -264,6 +281,16 @@ class Dispatcher(object):
                     _TRANSFER_DATA_HANDLER_NAME, request.ws_resource),
                 e)
             raise
+
+    def passive_closing_handshake(self, request):
+        """Prepare code and reason for responding client initiated closing
+        handshake.
+        """
+
+        handler_suite = self.get_handler_suite(request.ws_resource)
+        if handler_suite is None:
+            return _default_passive_closing_handshake_handler(request)
+        return handler_suite.passive_closing_handshake(request)
 
     def get_handler_suite(self, resource):
         """Retrieves two handlers (one for extra handshake processing, and one

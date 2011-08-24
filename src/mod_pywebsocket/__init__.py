@@ -1,4 +1,4 @@
-# Copyright 2009, Google Inc.
+# Copyright 2011, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -93,10 +93,11 @@ specified in the handshake is considered as if it is a file path under
 For example, if the resource name is /example/chat, the handler defined in
 <websock_handlers>/example/chat_wsh.py is invoked.
 
-A WebSocket handler is composed of the following two functions:
+A WebSocket handler is composed of the following three functions:
 
     web_socket_do_extra_handshake(request)
     web_socket_transfer_data(request)
+    web_socket_passive_closing_handshake(request)
 
 where:
     request: mod_python request.
@@ -160,6 +161,14 @@ web_socket_transfer_data cause connection close.
 When you're using IETF HyBi 00 or later protocol, close_connection will wait
 for closing handshake acknowledgement coming from the client. When it
 couldn't receive a valid acknowledgement, raises an exception.
+
+web_socket_passive_closing_handshake is called after the server receives
+incoming closing frame from the client peer immediately. You can specify
+code and reason by return values. They are sent as a outgoing closing frame
+from the server. A request object has the following properties that you can
+use in web_socket_passive_closing_handshake.
+- ws_close_code
+- ws_close_reason
 
 A WebSocket handler must be thread-safe if the server (Apache or
 standalone.py) is configured to use threads.

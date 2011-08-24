@@ -743,6 +743,10 @@ class ClientConnection(object):
     def read(self, n):
         return self._socket.recv(n)
 
+    def get_remote_addr(self):
+        return self._socket.getpeername()
+    remote_addr = property(get_remote_addr)
+
 
 class ClientRequest(object):
     """A wrapper class just to make it able to pass a socket object to

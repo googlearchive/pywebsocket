@@ -93,6 +93,15 @@ def _echo_check_procedure_with_goodbye(client):
     client.assert_connection_closed()
 
 
+def _echo_check_procedure_with_code_and_reason(client, code, reason):
+    client.connect()
+
+    client.send_close(code, reason)
+    client.assert_receive_close(code, reason)
+
+    client.assert_connection_closed()
+
+
 class EndToEndTest(unittest.TestCase):
     """An end-to-end test that launches pywebsocket standalone server as a
     separate process, connects to it using the client_for_testing module, and
@@ -196,6 +205,20 @@ class EndToEndTest(unittest.TestCase):
         finally:
             self._kill_process(server.pid)
 
+    def _run_hybi_close_with_code_and_reason_test(self, test_function, code,
+                                                  reason):
+        server = self._run_server()
+        try:
+            time.sleep(0.2)
+
+            client = client_for_testing.create_client(self._options)
+            try:
+                test_function(client, code, reason)
+            finally:
+                client.close_socket()
+        finally:
+            self._kill_process(server.pid)
+
     def _run_hybi_http_fallback_test(self, options, status):
         server = self._run_server()
         try:
@@ -235,6 +258,11 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_deflate_frame_server_close(self):
         self._run_hybi_deflate_frame_test(
             _echo_check_procedure_with_goodbye)
+
+    def test_echo_close_with_code_and_reason(self):
+        self._options.resource = '/close'
+        self._run_hybi_close_with_code_and_reason_test(
+            _echo_check_procedure_with_code_and_reason, 3333, "sunsunsunsun")
 
     def test_close_on_protocol_error(self):
         """Tests that the server sends a close frame with protocol error status
@@ -334,6 +362,7 @@ class EndToEndTest(unittest.TestCase):
     # TODO(toyoshim): Add tests to verify invalid absolute uri handling like
     # host unmatch, port unmatch and invalid port description (':' without port
     # number).
+
     def test_absolute_uri(self):
         """Tests absolute uri request."""
 

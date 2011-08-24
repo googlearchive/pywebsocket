@@ -431,6 +431,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                     strict=self._options.strict)
 
                 try:
+                    self._request._dispatcher = self._options.dispatcher
                     self._options.dispatcher.transfer_data(self._request)
                 except Exception, e:
                     # Catch exception in transfer_data.

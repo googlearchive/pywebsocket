@@ -472,6 +472,10 @@ class Stream(StreamBase):
                         '!H', message[0:2])[0]
                     self._request.ws_close_reason = message[2:].decode(
                         'utf-8', 'replace')
+                    self._logger.debug(
+                        'Received close frame (code=%d, reason=%r)',
+                        self._request.ws_close_code,
+                        self._request.ws_close_reason)
 
                 # Drain junk data after the close frame if necessary.
                 self._drain_received_data()

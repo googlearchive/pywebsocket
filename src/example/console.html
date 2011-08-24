@@ -47,6 +47,8 @@ var socket = null;
 var addressBox = null;
 var logBox = null;
 var messageBox = null;
+var codeBox = null;
+var reasonBox = null;
 
 function addToLog(log) {
   logBox.value += log + '\n'
@@ -111,7 +113,11 @@ function closeSocket() {
     return;
   }
 
-  socket.close();
+  if (codeBox.value || reasonBox.value) {
+    socket.close(codeBox.value, reasonBox.value);
+  } else {
+    socket.close();
+  }
 }
 
 function printState() {
@@ -133,6 +139,8 @@ function init() {
   addressBox = document.getElementById('address');
   logBox = document.getElementById('log');
   messageBox = document.getElementById('message');
+  codeBox = document.getElementById('code');
+  reasonBox = document.getElementById('reason');
 
   addressBox.value = defaultAddress;
 
@@ -149,7 +157,6 @@ function init() {
 <form action="#" onsubmit="connect(); return false;">
 <input type="text" id="address" size="40">
 <input type="submit" value="connect">
-<input type="button" value="close" onclick="closeSocket();">
 <input type="button" value="print state" onclick="printState();">
 </form>
 
@@ -158,6 +165,12 @@ function init() {
 <form action="#" onsubmit="send(); return false;">
 <input type="text" id="message" size="40">
 <input type="submit" value="send">
+</form>
+
+<form action="#" onsubmit="closeSocket(); return false;">
+Code <input type="text" id="code" size="10">
+Reason <input type="text" id="reason" size="20">
+<input type="submit" value="close">
 </form>
 
 </body>

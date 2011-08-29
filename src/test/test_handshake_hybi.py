@@ -37,6 +37,7 @@ import unittest
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 from mod_pywebsocket import common
+from mod_pywebsocket.handshake._base import AbortedByUserException
 from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake.hybi import Handshaker
 
@@ -80,7 +81,7 @@ def _create_handshaker(request):
 
 
 class SubprotocolChoosingDispatcher(object):
-    """A dispacher for testing. This dispatcher sets the i-th subprotocol
+    """A dispatcher for testing. This dispatcher sets the i-th subprotocol
     of requested ones to ws_protocol where i is given on construction as index
     argument. If index is negative, default_value will be set to ws_protocol.
     """
@@ -105,12 +106,25 @@ class HandshakeAbortedException(Exception):
 
 
 class AbortingDispatcher(object):
-    """A dispacher for testing. This dispatcher raises an exception in
+    """A dispatcher for testing. This dispatcher raises an exception in
     do_extra_handshake to reject the request.
     """
 
     def do_extra_handshake(self, conn_context):
         raise HandshakeAbortedException('An exception to reject the request')
+
+    def transfer_data(self, conn_context):
+        pass
+
+
+class AbortedByUserDispatcher(object):
+    """A dispatcher for testing. This dispatcher raises an
+    AbortedByUserException in do_extra_handshake to reject the request.
+    """
+
+    def do_extra_handshake(self, conn_context):
+        raise AbortedByUserException('An AbortedByUserException to reject the '
+                                     'request')
 
     def transfer_data(self, conn_context):
         pass
@@ -271,6 +285,14 @@ class HandshakerTest(unittest.TestCase):
             'AValue', request.headers_in['AKey'])
         self.assertEqual(
             '', request.headers_in['EmptyValue'])
+
+    def test_abort_extra_handshake(self):
+        handshaker = Handshaker(
+            _create_request(_create_good_request_def()),
+            AbortedByUserDispatcher())
+        # do_extra_handshake raises an AbortedByUserException. Check that it's
+        # not caught by do_handshake.
+        self.assertRaises(AbortedByUserException, handshaker.do_handshake)
 
     def test_bad_requests(self):
         bad_cases = [

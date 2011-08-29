@@ -148,6 +148,8 @@ def headerparserhandler(request):
             apache.APLOG_DEBUG)
         try:
             _dispatcher.transfer_data(request)
+        except handshake.AbortedByUserException, e:
+            raise
         except Exception, e:
             # Catch exception in transfer_data.
             # In this case, handshake has been successful, so just log the
@@ -161,6 +163,8 @@ def headerparserhandler(request):
     except dispatch.DispatchException, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
         return e.status
+    except handshake.AbortedByUserException, e:
+        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
     # Set assbackwards to suppress response header generation by Apache.
     request.assbackwards = 1
     return apache.DONE  # Return DONE such that no other handlers are invoked.

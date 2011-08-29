@@ -396,6 +396,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         #
         # Variables set by this method will be also used by WebSocket request
         # handling. See _StandaloneRequest.get_request, etc.
+        # TODO(toyoshim): Return False immediately if result is False.
         result = CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self)
         if result:
             host, port, resource = http_header_util.parse_uri(self.path)
@@ -424,15 +425,20 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                     logging.info('No handlers for request: %s' % self.path)
                     return True
 
-                handshake.do_handshake(
-                    self._request,
-                    self._options.dispatcher,
-                    allowDraft75=self._options.allow_draft75,
-                    strict=self._options.strict)
-
+                try:
+                    handshake.do_handshake(
+                        self._request,
+                        self._options.dispatcher,
+                        allowDraft75=self._options.allow_draft75,
+                        strict=self._options.strict)
+                except handshake.AbortedByUserException, e:
+                    logging.info('mod_pywebsocket: %s' % e)
+                    return False
                 try:
                     self._request._dispatcher = self._options.dispatcher
                     self._options.dispatcher.transfer_data(self._request)
+                except handshake.AbortedByUserException, e:
+                    logging.info('mod_pywebsocket: %s' % e)
                 except Exception, e:
                     # Catch exception in transfer_data.
                     # In this case, handshake has been successful, so just log

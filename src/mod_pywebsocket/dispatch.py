@@ -231,6 +231,8 @@ class Dispatcher(object):
         do_extra_handshake_ = handler_suite.do_extra_handshake
         try:
             do_extra_handshake_(request)
+        except handshake.AbortedByUserException, e:
+            raise
         except Exception, e:
             util.prepend_message_to_exception(
                     '%s raised exception for %s: ' % (
@@ -259,6 +261,9 @@ class Dispatcher(object):
             if not request.server_terminated:
                 request.ws_stream.close_connection()
         # Catch non-critical exceptions the handler didn't handle.
+        except handshake.AbortedByUserException, e:
+            self._logger.debug('%s', e)
+            raise
         except msgutil.BadOperationException, e:
             self._logger.debug('%s', e)
             request.ws_stream.close_connection(common.STATUS_ABNORMAL_CLOSE)

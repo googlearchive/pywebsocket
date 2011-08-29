@@ -39,7 +39,8 @@ import logging
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake import hybi
-# Export HandshakeException symbol from this module.
+# Export AbortedByUserException and HandshakeException symbol from this module.
+from mod_pywebsocket.handshake._base import AbortedByUserException
 from mod_pywebsocket.handshake._base import HandshakeException
 
 
@@ -97,6 +98,8 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
                 name, e)
             if e.status:
                 raise e
+        except AbortedByUserException, e:
+            raise
 
     raise HandshakeException(
         'Failed to complete opening handshake for all available protocols')

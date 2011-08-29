@@ -37,6 +37,20 @@ from mod_pywebsocket import common
 from mod_pywebsocket import http_header_util
 
 
+class AbortedByUserException(Exception):
+    """Exception for aborting a connection intentionally.
+
+    If this exception is raised in do_extra_handshake handler, the connection
+    will be abandoned. No other WebSocket or HTTP(S) handler will be invoked.
+
+    If this exception is raised in transfer_data_handler, the connection will
+    be closed without closing handshake. No other WebSocket or HTTP(S) handler
+    will be invoked.
+    """
+
+    pass
+
+
 class HandshakeException(Exception):
     """This exception will be raised when an error occurred while processing
     WebSocket initial handshake.

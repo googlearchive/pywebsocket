@@ -88,8 +88,9 @@ class DispatcherTest(unittest.TestCase):
         paths = list(
             dispatch._enumerate_handler_file_paths(_TEST_HANDLERS_DIR))
         paths.sort()
-        self.assertEqual(7, len(paths))
+        self.assertEqual(8, len(paths))
         expected_paths = [
+                os.path.join(_TEST_HANDLERS_DIR, 'abort_by_user_wsh.py'),
                 os.path.join(_TEST_HANDLERS_DIR, 'blank_wsh.py'),
                 os.path.join(_TEST_HANDLERS_DIR, 'origin_check_wsh.py'),
                 os.path.join(_TEST_HANDLERS_DIR, 'sub',
@@ -150,6 +151,13 @@ class DispatcherTest(unittest.TestCase):
             self.assertEquals(403, e.status)
         except Exception, e:
             self.fail('Unexpected exception: %r' % e)
+
+    def test_abort_extra_handshake(self):
+        dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
+        request = mock.MockRequest()
+        request.ws_resource = '/abort_by_user'
+        self.assertRaises(handshake.AbortedByUserException,
+                          dispatcher.do_extra_handshake, request)
 
     def test_transfer_data(self):
         dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
@@ -213,9 +221,16 @@ class DispatcherTest(unittest.TestCase):
             self.failUnless(str(e).find('Intentional') != -1,
                             'Unexpected exception: %s' % e)
 
+    def test_abort_transfer_data(self):
+        dispatcher = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
+        request = mock.MockRequest()
+        request.ws_resource = '/abort_by_user'
+        self.assertRaises(handshake.AbortedByUserException,
+                          dispatcher.transfer_data, request)
+
     def test_scan_dir(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
-        self.assertEqual(3, len(disp._handler_suite_map))
+        self.assertEqual(4, len(disp._handler_suite_map))
         self.failUnless('/origin_check' in disp._handler_suite_map)
         self.failUnless(
             '/sub/exception_in_transfer' in disp._handler_suite_map)
@@ -248,7 +263,7 @@ class DispatcherTest(unittest.TestCase):
     def test_resource_path_alias(self):
         disp = dispatch.Dispatcher(_TEST_HANDLERS_DIR, None)
         disp.add_resource_path_alias('/', '/origin_check')
-        self.assertEqual(4, len(disp._handler_suite_map))
+        self.assertEqual(5, len(disp._handler_suite_map))
         self.failUnless('/origin_check' in disp._handler_suite_map)
         self.failUnless(
             '/sub/exception_in_transfer' in disp._handler_suite_map)

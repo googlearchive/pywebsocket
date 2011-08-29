@@ -147,6 +147,7 @@ class DispatcherTest(unittest.TestCase):
         request.ws_origin = 'http://bad.example.com'
         try:
             dispatcher.do_extra_handshake(request)
+            self.fail('Could not catch HandshakeException with 403 status')
         except handshake.HandshakeException, e:
             self.assertEquals(403, e.status)
         except Exception, e:

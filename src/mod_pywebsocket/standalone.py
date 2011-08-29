@@ -396,71 +396,66 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         #
         # Variables set by this method will be also used by WebSocket request
         # handling. See _StandaloneRequest.get_request, etc.
-        # TODO(toyoshim): Return False immediately if result is False.
-        result = CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self)
-        if result:
-            host, port, resource = http_header_util.parse_uri(self.path)
-            if resource is None:
-                logging.info('mod_pywebsocket: invalid uri %r' % self.path)
+        if not CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self):
+            return False
+        host, port, resource = http_header_util.parse_uri(self.path)
+        if resource is None:
+            logging.info('mod_pywebsocket: invalid uri %r' % self.path)
+            return True
+        server_options = self.server.websocket_server_options
+        if host is not None:
+            validation_host = server_options.validation_host
+            if validation_host is not None and host != validation_host:
+                logging.info('mod_pywebsocket: invalid host %r '
+                             '(expected: %r)' % (host, validation_host))
                 return True
-            server_options = self.server.websocket_server_options
-            if host is not None:
-                validation_host = server_options.validation_host
-                if validation_host is not None and host != validation_host:
-                    logging.info('mod_pywebsocket: invalid host %r '
-                                 '(expected: %r)' % (host, validation_host))
-                    return True
-            if port is not None:
-                validation_port = server_options.validation_port
-                if validation_port is not None and port != validation_port:
-                    logging.info('mod_pywebsocket: invalid port %r '
-                                 '(expected: %r)' % (port, validation_port))
-                    return True
-            self.path = resource
+        if port is not None:
+            validation_port = server_options.validation_port
+            if validation_port is not None and port != validation_port:
+                logging.info('mod_pywebsocket: invalid port %r '
+                             '(expected: %r)' % (port, validation_port))
+                return True
+        self.path = resource
+
+        try:
+            # Fallback to default http handler for request paths for which
+            # we don't have request handlers.
+            if not self._options.dispatcher.get_handler_suite(self.path):
+                logging.info('No handlers for request: %s' % self.path)
+                return True
 
             try:
-                # Fallback to default http handler for request paths for which
-                # we don't have request handlers.
-                if not self._options.dispatcher.get_handler_suite(self.path):
-                    logging.info('No handlers for request: %s' % self.path)
-                    return True
-
-                try:
-                    handshake.do_handshake(
-                        self._request,
-                        self._options.dispatcher,
-                        allowDraft75=self._options.allow_draft75,
-                        strict=self._options.strict)
-                except handshake.AbortedByUserException, e:
-                    logging.info('mod_pywebsocket: %s' % e)
-                    return False
-                try:
-                    self._request._dispatcher = self._options.dispatcher
-                    self._options.dispatcher.transfer_data(self._request)
-                except handshake.AbortedByUserException, e:
-                    logging.info('mod_pywebsocket: %s' % e)
-                except Exception, e:
-                    # Catch exception in transfer_data.
-                    # In this case, handshake has been successful, so just log
-                    # the exception and return False.
-                    logging.info('mod_pywebsocket: %s' % e)
-                    logging.info(
-                        'mod_pywebsocket: %s' % util.get_stack_trace())
-                return False
-            except handshake.HandshakeException, e:
-                # Handshake for ws(s) failed. Assume http(s).
+                handshake.do_handshake(
+                    self._request,
+                    self._options.dispatcher,
+                    allowDraft75=self._options.allow_draft75,
+                    strict=self._options.strict)
+            except handshake.AbortedByUserException, e:
                 logging.info('mod_pywebsocket: %s' % e)
-                self.send_error(e.status)
                 return False
-            except dispatch.DispatchException, e:
-                logging.warning('mod_pywebsocket: %s' % e)
-                self.send_error(e.status)
-                return False
+            try:
+                self._request._dispatcher = self._options.dispatcher
+                self._options.dispatcher.transfer_data(self._request)
+            except handshake.AbortedByUserException, e:
+                logging.info('mod_pywebsocket: %s' % e)
             except Exception, e:
-                logging.warning('mod_pywebsocket: %s' % e)
-                logging.warning('mod_pywebsocket: %s' % util.get_stack_trace())
-                return False
-        return result
+                # Catch exception in transfer_data.
+                # In this case, handshake has been successful, so just log
+                # the exception and return False.
+                logging.info('mod_pywebsocket: %s' % e)
+                logging.info(
+                    'mod_pywebsocket: %s' % util.get_stack_trace())
+        except handshake.HandshakeException, e:
+            # Handshake for ws(s) failed. Assume http(s).
+            logging.info('mod_pywebsocket: %s' % e)
+            self.send_error(e.status)
+        except dispatch.DispatchException, e:
+            logging.warning('mod_pywebsocket: %s' % e)
+            self.send_error(e.status)
+        except Exception, e:
+            logging.warning('mod_pywebsocket: %s' % e)
+            logging.warning('mod_pywebsocket: %s' % util.get_stack_trace())
+        return False
 
     def log_request(self, code='-', size='-'):
         """Override BaseHTTPServer.log_request."""

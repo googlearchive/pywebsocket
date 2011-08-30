@@ -321,6 +321,12 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 
         self.__ws_serving = True
         self.__ws_is_shut_down.clear()
+        handle_request = self.handle_request
+        if hasattr(self, '_handle_request_noblock'):
+            handle_request = self._handle_request_noblock
+        else:
+            logging.warning('mod_pywebsocket: fallback to blocking request '
+                            'handler')
         try:
             while self.__ws_serving:
                 r, w, e = select.select(
@@ -328,7 +334,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                     [], [], poll_interval)
                 for socket_ in r:
                     self.socket = socket_
-                    self._handle_request_noblock()
+                    handle_request()
                 self.socket = None
         finally:
             self.__ws_is_shut_down.set()

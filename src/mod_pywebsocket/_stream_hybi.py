@@ -356,11 +356,14 @@ class Stream(StreamBase):
             raise BadOperationException(e)
 
     def receive_message(self):
-        """Receive a WebSocket frame and return its payload an unicode string.
+        """Receive a WebSocket frame and return its payload as a text in
+        unicode or a binary in str.
 
         Returns:
-            payload unicode string in a WebSocket frame. None iff received
-            closing handshake.
+            payload data of the frame
+            - as unicode instance if received text frame
+            - as str instance if received binary frame
+            or None iff received closing handshake.
         Raises:
             BadOperationException: when called on a client-terminated
                 connection.

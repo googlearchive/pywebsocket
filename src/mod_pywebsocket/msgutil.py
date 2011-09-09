@@ -59,23 +59,25 @@ def close_connection(request):
     request.ws_stream.close_connection()
 
 
-def send_message(request, message, end=True):
+def send_message(request, message, end=True, binary=False):
     """Send message.
 
     Args:
         request: mod_python request.
-        message: unicode string to send.
+        message: unicode text or str binary to send.
         end: False to send message as a fragment. All messages until the
              first call with end=True (inclusive) will be delivered to the
              client in separate frames but as one WebSocket message.
+        binary: send message as binary frame.
     Raises:
         BadOperationException: when server already terminated.
     """
-    request.ws_stream.send_message(message, end)
+    request.ws_stream.send_message(message, end, binary)
 
 
 def receive_message(request):
-    """Receive a WebSocket frame and return its payload as unicode string.
+    """Receive a WebSocket frame and return its payload as a text in
+    unicode or a binary in str.
 
     Args:
         request: mod_python request.

@@ -442,6 +442,9 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
             try:
                 self._request._dispatcher = self._options.dispatcher
                 self._options.dispatcher.transfer_data(self._request)
+            except dispatch.DispatchException, e:
+                logging.warning('mod_pywebsocket: %s' % e)
+                return False
             except handshake.AbortedByUserException, e:
                 logging.info('mod_pywebsocket: %s' % e)
             except Exception, e:
@@ -451,12 +454,12 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 logging.info('mod_pywebsocket: %s' % e)
                 logging.info(
                     'mod_pywebsocket: %s' % util.get_stack_trace())
+        except dispatch.DispatchException, e:
+            logging.warning('mod_pywebsocket: %s' % e)
+            self.send_error(e.status)
         except handshake.HandshakeException, e:
             # Handshake for ws(s) failed. Assume http(s).
             logging.info('mod_pywebsocket: %s' % e)
-            self.send_error(e.status)
-        except dispatch.DispatchException, e:
-            logging.warning('mod_pywebsocket: %s' % e)
             self.send_error(e.status)
         except Exception, e:
             logging.warning('mod_pywebsocket: %s' % e)

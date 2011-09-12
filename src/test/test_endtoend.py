@@ -50,6 +50,11 @@ from test import client_for_testing
 # Special message that tells the echo server to start closing handshake
 _GOODBYE_MESSAGE = 'Goodbye'
 
+# If you want to use external server to run end to end tests, set following
+# parameters correctly.
+_use_external_server = False
+_external_server_port = 0
+
 
 # Test body functions
 def _echo_check_procedure(client):
@@ -125,7 +130,14 @@ class EndToEndTest(unittest.TestCase):
         self._options.server_host = 'localhost'
         self._options.origin = 'http://localhost'
         self._options.resource = '/echo'
-        self._options.server_port = self.test_port
+
+        # TODO(toyoshim): Eliminate launching a standalone server on using
+        # external server.
+
+        if _use_external_server:
+            self._options.server_port = _external_server_port
+        else:
+            self._options.server_port = self.test_port
 
     def _run_python_command(self, commandline, stdout=None, stderr=None):
         return subprocess.Popen([sys.executable] + commandline, close_fds=True,
@@ -367,7 +379,7 @@ class EndToEndTest(unittest.TestCase):
         """Tests absolute uri request."""
 
         options = self._options
-        options.resource = 'ws://localhost:%d/echo' % self.test_port
+        options.resource = 'ws://localhost:%d/echo' % options.server_port
         self._run_hybi_test_with_client_options(_echo_check_procedure, options)
 
     def test_origin_check(self):
@@ -398,7 +410,7 @@ class EndToEndTest(unittest.TestCase):
             client_command = os.path.join(
                 self.top_dir, 'example', 'echo_client.py')
             args = [client_command,
-                    '-p', str(self.test_port)]
+                    '-p', str(self._options.server_port)]
             client = self._run_python_command(args, stdout=subprocess.PIPE)
             stdoutdata, stderrdata = client.communicate()
             actual = stdoutdata.decode("utf-8")

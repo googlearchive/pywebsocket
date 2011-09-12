@@ -138,33 +138,35 @@ def headerparserhandler(request):
     name for a PythonHeaderParserHandler.
     """
 
+    handshake_is_done = False
     try:
         allowDraft75 = apache.main_server.get_options().get(
             _PYOPT_ALLOW_DRAFT75, None)
         handshake.do_handshake(
             request, _dispatcher, allowDraft75=allowDraft75)
+        handshake_is_done = True
         request.log_error(
             'mod_pywebsocket: resource: %r' % request.ws_resource,
             apache.APLOG_DEBUG)
-        try:
-            _dispatcher.transfer_data(request)
-        except handshake.AbortedByUserException, e:
-            raise
-        except Exception, e:
-            # Catch exception in transfer_data.
-            # In this case, handshake has been successful, so just log the
-            # exception and return apache.DONE
-            request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
+        request._dispatcher = _dispatcher
+        _dispatcher.transfer_data(request)
+    except dispatch.DispatchException, e:
+        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
+        if not handshake_is_done:
+            return e.status
+    except handshake.AbortedByUserException, e:
+        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
     except handshake.HandshakeException, e:
         # Handshake for ws/wss failed.
         # The request handling fallback into http/https.
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
         return e.status
-    except dispatch.DispatchException, e:
+    except Exception, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
-        return e.status
-    except handshake.AbortedByUserException, e:
-        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
+        # Unknown exceptions before handshake mean Apache must handle its
+        # request with another handler.
+        if not handshake_is_done:
+            return apache.DECLINE
     # Set assbackwards to suppress response header generation by Apache.
     request.assbackwards = 1
     return apache.DONE  # Return DONE such that no other handlers are invoked.

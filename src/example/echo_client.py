@@ -713,7 +713,7 @@ class ClientHandshakeProcessorHixie75(object):
         if not self._options.origin:
             raise ClientHandshakeError(
                 'Specify the origin of the connection by --origin flag')
-        self._socket.sendall(_origin_header(common.ORIGIN_HEAER,
+        self._socket.sendall(_origin_header(common.ORIGIN_HEADER,
                                             self._options.origin))
         self._socket.sendall('\r\n')
 

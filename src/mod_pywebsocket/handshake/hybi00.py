@@ -87,6 +87,10 @@ class Handshaker(object):
             ws_challenge_md5: WebSocket handshake information.
             ws_stream: Frame generation/parsing class.
             ws_version: Protocol version.
+
+        Raises:
+            HandshakeException: when any error happened in parsing the opening
+                                handshake request.
         """
 
         # 5.1 Reading the client's opening handshake.
@@ -132,23 +136,9 @@ class Handshaker(object):
     def _set_protocol_version(self):
         # |Sec-WebSocket-Draft|
         draft = self._request.headers_in.get(common.SEC_WEBSOCKET_DRAFT_HEADER)
-        if draft is not None:
-            try:
-                draft_int = int(draft)
-
-                # Draft value 2 is used by HyBi 02 and 03 which we no longer
-                # support. draft >= 3 and <= 1 are never defined in the spec.
-                # 0 might be used to mean HyBi 00 by somebody. 1 might be used
-                # to mean HyBi 01 by somebody but we no longer support it.
-
-                if draft_int == 1 or draft_int == 2:
-                    raise HandshakeException('HyBi 01-03 are not supported')
-                elif draft_int != 0:
-                    raise ValueError
-            except ValueError, e:
-                raise HandshakeException(
-                    'Illegal value for %s: %s' %
-                    (common.SEC_WEBSOCKET_DRAFT_HEADER, draft))
+        if draft is not None and draft != '0':
+            raise HandshakeException('Illegal value for %s: %s' %
+                                     (common.SEC_WEBSOCKET_DRAFT_HEADER, draft))
 
         self._logger.debug('IETF HyBi 00 protocol')
         self._request.ws_version = common.VERSION_HYBI00

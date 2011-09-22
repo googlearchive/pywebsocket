@@ -223,6 +223,11 @@ class Dispatcher(object):
 
         Args:
             request: mod_python request.
+
+        Raises:
+            DispatchException: when handler was not found
+            AbortedByUserException: when user handler abort connection
+            HandshakeException: when opening handshake failed
         """
 
         handler_suite = self.get_handler_suite(request.ws_resource)
@@ -249,6 +254,10 @@ class Dispatcher(object):
 
         Args:
             request: mod_python request.
+
+        Raises:
+            DispatchException: when handler was not found
+            AbortedByUserException: when user handler abort connection
         """
 
         handler_suite = self.get_handler_suite(request.ws_resource)

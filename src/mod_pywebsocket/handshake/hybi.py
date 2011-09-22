@@ -112,7 +112,6 @@ class Handshaker(object):
                 (common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
 
     def do_handshake(self):
-        # TODO(toyoshim): Should be used by closing handshake.
         self._request.ws_close_code = None
         self._request.ws_close_reason = None
 

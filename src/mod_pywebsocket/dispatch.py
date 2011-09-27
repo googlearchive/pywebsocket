@@ -61,6 +61,7 @@ class DispatchException(Exception):
 
 def _default_passive_closing_handshake_handler(request):
     """Default web_socket_passive_closing_handshake handler."""
+
     return common.STATUS_NORMAL, ''
 
 
@@ -82,6 +83,15 @@ def _normalize_path(path):
 
 
 def _create_path_to_resource_converter(base_dir):
+    """Returns a function that converts the path of a WebSocket handler source
+    file to a resource string by removing the path to the base directory from
+    its head, removing _SOURCE_SUFFIX from its tail, and replacing path
+    separators in it with '/'.
+
+    Args:
+        base_dir: the path to the base directory.
+    """
+
     base_dir = _normalize_path(base_dir)
 
     base_len = len(base_dir)
@@ -90,7 +100,9 @@ def _create_path_to_resource_converter(base_dir):
     def converter(path):
         if not path.endswith(_SOURCE_SUFFIX):
             return None
-        path = _normalize_path(path)
+        # _normalize_path must not be used because resolving symlink breaks
+        # following path check.
+        path = path.replace('\\', '/')
         if not path.startswith(base_dir):
             return None
         return path[base_len:-suffix_len]
@@ -166,7 +178,9 @@ class Dispatcher(object):
     This class maintains a map from resource name to handlers.
     """
 
-    def __init__(self, root_dir, scan_dir=None):
+    def __init__(
+        self, root_dir, scan_dir=None,
+        exclude_handlers_outside_root_dir=True):
         """Construct an instance.
 
         Args:
@@ -178,6 +192,8 @@ class Dispatcher(object):
                       root_dir is used as scan_dir. scan_dir can be useful
                       in saving scan time when root_dir contains many
                       subdirectories.
+            exclude_handlers_outside_root_dir: Excludes handler files whose
+                      canonical path is not under root_dir.
         """
 
         self._logger = util.get_class_logger(self)
@@ -190,7 +206,8 @@ class Dispatcher(object):
                 os.path.realpath(root_dir)):
             raise DispatchException('scan_dir:%s must be a directory under '
                                     'root_dir:%s.' % (scan_dir, root_dir))
-        self._source_handler_files_in_dir(root_dir, scan_dir)
+        self._source_handler_files_in_dir(
+            root_dir, scan_dir, exclude_handlers_outside_root_dir)
 
     def add_resource_path_alias(self,
                                 alias_resource_path, existing_resource_path):
@@ -322,20 +339,41 @@ class Dispatcher(object):
                                     'WebSocket URIs', 400);
         return handler_suite
 
-    def _source_handler_files_in_dir(self, root_dir, scan_dir):
+    def _source_handler_files_in_dir(
+        self, root_dir, scan_dir, exclude_handlers_outside_root_dir):
         """Source all the handler source files in the scan_dir directory.
 
         The resource path is determined relative to root_dir.
         """
 
+        # We build a map from resource to handler code assuming that there's
+        # only one path from root_dir to scan_dir and it can be obtained by
+        # comparing realpath of them.
+
+        # Here we cannot use abspath. See
+        # https://bugs.webkit.org/show_bug.cgi?id=31603
+
         convert = _create_path_to_resource_converter(root_dir)
-        for path in _enumerate_handler_file_paths(scan_dir):
+        scan_realpath = os.path.realpath(scan_dir)
+        root_realpath = os.path.realpath(root_dir)
+        for path in _enumerate_handler_file_paths(scan_realpath):
+            if (exclude_handlers_outside_root_dir and
+                (not os.path.realpath(path).startswith(root_realpath))):
+                self._logger.debug(
+                    'Canonical path of %s is not under root directory' %
+                    path)
+                continue
             try:
                 handler_suite = _source_handler_file(open(path).read())
             except DispatchException, e:
                 self._source_warnings.append('%s: %s' % (path, e))
                 continue
-            self._handler_suite_map[convert(path)] = handler_suite
+            resource = convert(path)
+            if resource is None:
+                self._logger.debug(
+                    'Path to resource conversion on %s failed' % path)
+            else:
+                self._handler_suite_map[convert(path)] = handler_suite
 
 
 # vi:sts=4 sw=4 et

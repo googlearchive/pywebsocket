@@ -52,6 +52,11 @@ _PYOPT_HANDLER_ROOT = 'mod_pywebsocket.handler_root'
 # The default is the root directory.
 _PYOPT_HANDLER_SCAN = 'mod_pywebsocket.handler_scan'
 
+# PythonOption to set if the server excludes handlers whose canonical path is
+# not under the root directory or not.
+_PYOPT_EXCLUDE_HANDLERS_OUTSIDE_ROOT = (
+    'mod_pywebsocket.exclude_handlers_outside_root_dir')
+
 # PythonOption to specify to allow draft75 handshake.
 # The default is None (Off)
 _PYOPT_ALLOW_DRAFT75 = 'mod_pywebsocket.allow_draft75'
@@ -117,8 +122,11 @@ def _create_dispatcher():
         raise Exception('PythonOption %s is not defined' % _PYOPT_HANDLER_ROOT,
                         apache.APLOG_ERR)
     _HANDLER_SCAN = apache.main_server.get_options().get(
-            _PYOPT_HANDLER_SCAN, _HANDLER_ROOT)
-    dispatcher = dispatch.Dispatcher(_HANDLER_ROOT, _HANDLER_SCAN)
+        _PYOPT_HANDLER_SCAN, _HANDLER_ROOT)
+    _EXCLUDE_HANDLERS_OUTSIDE_ROOT = apache.main_server.get_options().get(
+        _PYOPT_EXCLUDE_HANDLERS_OUTSIDE_ROOT, True)
+    dispatcher = dispatch.Dispatcher(
+        _HANDLER_ROOT, _HANDLER_SCAN, _EXCLUDE_HANDLERS_OUTSIDE_ROOT)
     for warning in dispatcher.source_warnings():
         apache.log_error('mod_pywebsocket: %s' % warning, apache.APLOG_WARNING)
     return dispatcher

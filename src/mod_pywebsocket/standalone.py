@@ -576,6 +576,13 @@ def _main():
                       default=None,
                       help=('WebSocket handlers scan directory. '
                             'Must be a directory under websock_handlers.'))
+    parser.add_option('--exclude-handlers-outside-root-dir',
+                      '--exclude_handlers_outside_root_dir',
+                      dest='exclude_handlers_outside_root_dir',
+                      default=True,
+                      help=('Excludes WebSocket handlers whose canonical path '
+                            'is not under websock_handlers from scanning '
+                            'target.'))
     parser.add_option('-d', '--document-root', '--document_root',
                       dest='document_root', default='.',
                       help='Document root directory.')
@@ -655,8 +662,10 @@ def _main():
     try:
         # Share a Dispatcher among request handlers to save time for
         # instantiation.  Dispatcher can be shared because it is thread-safe.
-        options.dispatcher = dispatch.Dispatcher(options.websock_handlers,
-                                                 options.scan_dir)
+        options.dispatcher = dispatch.Dispatcher(
+            options.websock_handlers,
+            options.scan_dir,
+            options.exclude_handlers_outside_root_dir)
         if options.websock_handlers_map_file:
             _alias_handlers(options.dispatcher,
                             options.websock_handlers_map_file)

@@ -70,11 +70,13 @@ class DispatcherTest(unittest.TestCase):
         self.assertEqual(None, converter('a/b/h_wsh.py'))
 
         converter = dispatch._create_path_to_resource_converter('a/b')
-        self.assertEqual('/h', converter('a/b/h_wsh.py'))
+        self.assertEqual('/h', converter(dispatch._normalize_path(
+            'a/b/h_wsh.py')))
 
         converter = dispatch._create_path_to_resource_converter('/a/b///')
         self.assertEqual('/h', converter('/a/b/h_wsh.py'))
-        self.assertEqual('/h', converter('/a/b/../b/h_wsh.py'))
+        self.assertEqual('/h', converter(dispatch._normalize_path(
+            '/a/b/../b/h_wsh.py')))
 
         converter = dispatch._create_path_to_resource_converter(
             '/a/../a/b/../b/')
@@ -121,16 +123,17 @@ class DispatcherTest(unittest.TestCase):
         warnings = dispatcher.source_warnings()
         warnings.sort()
         expected_warnings = [
-                (os.path.join(_TEST_HANDLERS_DIR, 'blank_wsh.py') +
+                (os.path.realpath(os.path.join(
+                    _TEST_HANDLERS_DIR, 'blank_wsh.py')) +
                  ': web_socket_do_extra_handshake is not defined.'),
-                (os.path.join(_TEST_HANDLERS_DIR, 'sub',
-                              'non_callable_wsh.py') +
+                (os.path.realpath(os.path.join(
+                    _TEST_HANDLERS_DIR, 'sub', 'non_callable_wsh.py')) +
                  ': web_socket_do_extra_handshake is not callable.'),
-                (os.path.join(_TEST_HANDLERS_DIR, 'sub',
-                              'wrong_handshake_sig_wsh.py') +
+                (os.path.realpath(os.path.join(
+                    _TEST_HANDLERS_DIR, 'sub', 'wrong_handshake_sig_wsh.py')) +
                  ': web_socket_do_extra_handshake is not defined.'),
-                (os.path.join(_TEST_HANDLERS_DIR, 'sub',
-                              'wrong_transfer_sig_wsh.py') +
+                (os.path.realpath(os.path.join(
+                    _TEST_HANDLERS_DIR, 'sub', 'wrong_transfer_sig_wsh.py')) +
                  ': web_socket_transfer_data is not defined.'),
                 ]
         self.assertEquals(4, len(warnings))

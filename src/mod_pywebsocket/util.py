@@ -390,6 +390,10 @@ class DeflateConnection(object):
         self._deflater = _Deflater(zlib.MAX_WBITS)
         self._inflater = _Inflater()
 
+    def get_remote_addr(self):
+        return self._connection.remote_addr
+    remote_addr = property(get_remote_addr)
+
     def put_bytes(self, bytes):
         self.write(bytes)
 

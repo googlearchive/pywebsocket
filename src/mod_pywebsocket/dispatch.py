@@ -180,7 +180,7 @@ class Dispatcher(object):
 
     def __init__(
         self, root_dir, scan_dir=None,
-        exclude_handlers_outside_root_dir=True):
+        allow_handlers_outside_root_dir=True):
         """Construct an instance.
 
         Args:
@@ -192,7 +192,7 @@ class Dispatcher(object):
                       root_dir is used as scan_dir. scan_dir can be useful
                       in saving scan time when root_dir contains many
                       subdirectories.
-            exclude_handlers_outside_root_dir: Excludes handler files whose
+            allow_handlers_outside_root_dir: Scans handler files even if their
                       canonical path is not under root_dir.
         """
 
@@ -207,7 +207,7 @@ class Dispatcher(object):
             raise DispatchException('scan_dir:%s must be a directory under '
                                     'root_dir:%s.' % (scan_dir, root_dir))
         self._source_handler_files_in_dir(
-            root_dir, scan_dir, exclude_handlers_outside_root_dir)
+            root_dir, scan_dir, allow_handlers_outside_root_dir)
 
     def add_resource_path_alias(self,
                                 alias_resource_path, existing_resource_path):
@@ -340,7 +340,7 @@ class Dispatcher(object):
         return handler_suite
 
     def _source_handler_files_in_dir(
-        self, root_dir, scan_dir, exclude_handlers_outside_root_dir):
+        self, root_dir, scan_dir, allow_handlers_outside_root_dir):
         """Source all the handler source files in the scan_dir directory.
 
         The resource path is determined relative to root_dir.
@@ -357,7 +357,7 @@ class Dispatcher(object):
         scan_realpath = os.path.realpath(scan_dir)
         root_realpath = os.path.realpath(root_dir)
         for path in _enumerate_handler_file_paths(scan_realpath):
-            if (exclude_handlers_outside_root_dir and
+            if (not allow_handlers_outside_root_dir and
                 (not os.path.realpath(path).startswith(root_realpath))):
                 self._logger.debug(
                     'Canonical path of %s is not under root directory' %

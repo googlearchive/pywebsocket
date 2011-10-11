@@ -78,6 +78,12 @@ STATUS_NORMAL = 1000
 STATUS_GOING_AWAY = 1001
 STATUS_PROTOCOL_ERROR = 1002
 STATUS_UNSUPPORTED = 1003
+STATUS_CODE_NOT_AVAILABLE = 1005
+STATUS_ABNORMAL_CLOSE = 1006
+STATUS_INVALID_FRAME_PAYLOAD = 1007
+STATUS_POLICY_VIOLATION = 1008
+STATUS_MESSAGE_TOO_BIG = 1009
+STATUS_MANDATORY_EXT = 1010
 
 # Extension tokens
 _DEFLATE_STREAM_EXTENSION = 'deflate-stream'
@@ -732,7 +738,7 @@ class WebSocketStream(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._socket.sendall(header + self._mask_hybi(body))
 
-    def _send_data(self, payload, frame_type, end=True):
+    def send_data(self, payload, frame_type, end=True):
         if self._outgoing_frame_filter is not None:
             payload = self._outgoing_frame_filter.filter(payload)
 
@@ -767,10 +773,10 @@ class WebSocketStream(object):
         self._socket.sendall(header + self._mask_hybi(payload))
 
     def send_binary(self, payload, end=True):
-        self._send_data(payload, _OPCODE_BINARY, end)
+        self.send_data(payload, _OPCODE_BINARY, end)
 
     def send_text(self, payload, end=True):
-        self._send_data(payload.encode('utf-8'), _OPCODE_TEXT, end)
+        self.send_data(payload.encode('utf-8'), _OPCODE_TEXT, end)
 
     def _assert_receive_data(self, payload, opcode, fin, rsv1, rsv2, rsv3):
         received = _receive_bytes(self._socket, 2)
@@ -898,6 +904,10 @@ class WebSocketStreamHixie75(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._socket.sendall(header + body)
 
+    def send_data(self, payload, unused_frame_typem, unused_end):
+        frame = ''.join(['\x00', payload, '\xff'])
+        self._socket.sendall(frame)
+
     def send_binary(self, unused_payload, unused_end):
         pass
 
@@ -985,9 +995,11 @@ class Client(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._stream.send_frame_of_arbitrary_bytes(header, body)
 
-    def send_message(self, message, end=True, binary=False):
+    def send_message(self, message, end=True, binary=False, raw=False):
         if binary:
             self._stream.send_binary(message, end)
+        elif raw:
+            self._stream.send_data(message, _OPCODE_TEXT, end)
         else:
             self._stream.send_text(message, end)
 

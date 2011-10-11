@@ -302,8 +302,9 @@ class Dispatcher(object):
             self._logger.debug('%s', e)
             request.ws_stream.close_connection(common.STATUS_UNSUPPORTED)
         except stream.InvalidUTF8Exception, e:
-            self._logger_debug('%s', e)
-            request.ws_stream.close_connection(common.STATUS_INVALID_UTF8)
+            self._logger.debug('%s', e)
+            request.ws_stream.close_connection(
+                common.STATUS_INVALID_FRAME_PAYLOAD)
         except msgutil.ConnectionTerminatedException, e:
             self._logger.debug('%s', e)
         except Exception, e:

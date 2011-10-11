@@ -308,6 +308,22 @@ class EndToEndTest(unittest.TestCase):
 
         self._run_hybi_test(test_function)
 
+    def test_close_on_invalid_frame(self):
+        """Tests that the server sends a close frame with invalid frame payload
+        data status code when the client sends an invalid frame like containing
+        invalid UTF-8 character.
+        """
+
+        def test_function(client):
+            client.connect()
+
+            # Text frame with invalid UTF-8 string.
+            client.send_message('\x80', raw=True)
+            client.assert_receive_close(
+                client_for_testing.STATUS_INVALID_FRAME_PAYLOAD)
+
+        self._run_hybi_test(test_function)
+
     def _run_hybi00_test(self, test_function):
         server = self._run_server()
         try:

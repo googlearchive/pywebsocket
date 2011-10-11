@@ -53,12 +53,23 @@ from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.handshake._base import parse_token_list
 from mod_pywebsocket.handshake._base import validate_mandatory_header
 from mod_pywebsocket.handshake._base import validate_subprotocol
+from mod_pywebsocket.handshake._base import VersionException
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamOptions
 from mod_pywebsocket import util
 
 
 _BASE64_REGEX = re.compile('^[+/0-9A-Za-z]*=*$')
+
+# Defining aliases for values used frequently.
+_VERSION_HYBI08 = common.VERSION_HYBI08
+_VERSION_HYBI08_STRING = str(_VERSION_HYBI08)
+_VERSION_LATEST = common.VERSION_HYBI_LATEST
+_VERSION_LATEST_STRING = str(_VERSION_LATEST)
+_SUPPORTED_VERSIONS = [
+    _VERSION_LATEST,
+    _VERSION_HYBI08,
+]
 
 
 def compute_accept(key):
@@ -216,11 +227,11 @@ class Handshaker(object):
         except HandshakeException, e:
             if not e.status:
                 # Fallback to 400 bad request by default.
-                e.status = 400
+                e.status = common.HTTP_STATUS_BAD_REQUEST
             raise e
 
     def _get_origin(self):
-        if self._request.ws_version is common.VERSION_HYBI08:
+        if self._request.ws_version is _VERSION_HYBI08:
             origin_header = common.SEC_WEBSOCKET_ORIGIN_HEADER
         else:
             origin_header = common.ORIGIN_HEADER
@@ -232,14 +243,14 @@ class Handshaker(object):
     def _check_version(self):
         version = get_mandatory_header(self._request,
                                        common.SEC_WEBSOCKET_VERSION_HEADER)
-        if version == str(common.VERSION_HYBI08):
-            return common.VERSION_HYBI08
-        if version == str(common.VERSION_HYBI_LATEST):
-            return common.VERSION_HYBI_LATEST
-        # TODO(toyoshim): Support multiple versions described in hybi-14
-        raise HandshakeException(
+        if version == _VERSION_HYBI08_STRING:
+            return _VERSION_HYBI08
+        if version == _VERSION_LATEST_STRING:
+            return _VERSION_LATEST
+        raise VersionException(
             'Unsupported version %r for header %s' %
-            (version, common.SEC_WEBSOCKET_VERSION_HEADER), status=426)
+            (version, common.SEC_WEBSOCKET_VERSION_HEADER),
+            supported_versions=', '.join(map(str, _SUPPORTED_VERSIONS)))
 
     def _set_protocol(self):
         self._request.ws_protocol = None

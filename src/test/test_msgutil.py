@@ -127,6 +127,7 @@ def _create_blocking_request_hixie75():
 
 class MessageTest(unittest.TestCase):
     # Tests for Stream
+
     def test_send_message(self):
         request = _create_request()
         msgutil.send_message(request, 'Hello')

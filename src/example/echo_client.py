@@ -374,6 +374,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 'Wrong status line format: %r' % status_line)
         status_code = m.group(1)
         if status_code != '101':
+            self._logger.debug('Unexpected status code %s with following '
+                               'headers: %r', status_code, self._read_fields())
             raise ClientHandshakeError(
                 'Expected HTTP status code 101 but found %r' % status_code)
 

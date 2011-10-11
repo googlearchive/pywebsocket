@@ -138,7 +138,8 @@ class Handshaker(object):
         draft = self._request.headers_in.get(common.SEC_WEBSOCKET_DRAFT_HEADER)
         if draft is not None and draft != '0':
             raise HandshakeException('Illegal value for %s: %s' %
-                                     (common.SEC_WEBSOCKET_DRAFT_HEADER, draft))
+                                     (common.SEC_WEBSOCKET_DRAFT_HEADER,
+                                      draft))
 
         self._logger.debug('IETF HyBi 00 protocol')
         self._request.ws_version = common.VERSION_HYBI00

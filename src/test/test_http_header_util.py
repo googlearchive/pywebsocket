@@ -37,6 +37,7 @@ import unittest
 
 from mod_pywebsocket import http_header_util
 
+
 class UnitTest(unittest.TestCase):
     """A unittest for http_header_util module."""
 

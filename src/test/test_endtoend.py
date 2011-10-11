@@ -414,7 +414,7 @@ class EndToEndTest(unittest.TestCase):
         options = self._options
         options.version = 99
         self.server_stderr = subprocess.PIPE
-        self._run_hybi_http_fallback_test(options, 426)
+        self._run_hybi_http_fallback_test(options, 400)
 
     def test_example_echo_client(self):
         """Tests that the echo_client.py example can talk with the server."""

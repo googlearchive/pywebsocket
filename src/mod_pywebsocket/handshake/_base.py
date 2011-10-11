@@ -61,6 +61,22 @@ class HandshakeException(Exception):
         self.status = status
 
 
+class VersionException(Exception):
+    """This exception will be raised when a version of client request does not
+    match with version the server supports.
+    """
+
+    def __init__(self, name, supported_versions=''):
+        """Construct an instance.
+
+        Args:
+            supported_version: a str object to show supported hybi versions.
+                               (e.g. '8, 13')
+        """
+        super(VersionException, self).__init__(name)
+        self.supported_versions = supported_versions
+
+
 def get_default_port(is_secure):
     if is_secure:
         return common.DEFAULT_WEB_SOCKET_SECURE_PORT

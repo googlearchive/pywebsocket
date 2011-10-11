@@ -54,7 +54,7 @@ _PASSIVE_CLOSING_HANDSHAKE_HANDLER_NAME = (
 class DispatchException(Exception):
     """Exception in dispatching WebSocket request."""
 
-    def __init__(self, name, status=404):
+    def __init__(self, name, status=common.HTTP_STATUS_NOT_FOUND):
         super(DispatchException, self).__init__(name)
         self.status = status
 
@@ -261,7 +261,7 @@ class Dispatcher(object):
                             _DO_EXTRA_HANDSHAKE_HANDLER_NAME,
                             request.ws_resource),
                     e)
-            raise handshake.HandshakeException(e, 403)
+            raise handshake.HandshakeException(e, common.HTTP_STATUS_FORBIDDEN)
 
     def transfer_data(self, request):
         """Let a handler transfer_data with a WebSocket client.
@@ -337,7 +337,8 @@ class Dispatcher(object):
         handler_suite = self._handler_suite_map.get(resource)
         if handler_suite and fragment:
             raise DispatchException('Fragment identifiers MUST NOT be used on '
-                                    'WebSocket URIs', 400);
+                                    'WebSocket URIs',
+                                    common.HTTP_STATUS_BAD_REQUEST)
         return handler_suite
 
     def _source_handler_files_in_dir(

@@ -39,6 +39,7 @@ import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 from mod_pywebsocket import common
 from mod_pywebsocket.handshake._base import AbortedByUserException
 from mod_pywebsocket.handshake._base import HandshakeException
+from mod_pywebsocket.handshake._base import VersionException
 from mod_pywebsocket.handshake.hybi import Handshaker
 
 import mock
@@ -311,64 +312,70 @@ class HandshakerTest(unittest.TestCase):
                   'Accept-Encoding': 'gzip,deflate',
                   'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
                   'Keep-Alive': '300',
-                  'Connection': 'keep-alive'}), None)]
+                  'Connection': 'keep-alive'}), None, True)]
 
         request_def = _create_good_request_def()
         request_def.method = 'POST'
-        bad_cases.append(('Wrong method', request_def, None))
+        bad_cases.append(('Wrong method', request_def, None, True))
 
         request_def = _create_good_request_def()
         del request_def.headers['Host']
-        bad_cases.append(('Missing Host', request_def, None))
+        bad_cases.append(('Missing Host', request_def, None, True))
 
         request_def = _create_good_request_def()
         del request_def.headers['Upgrade']
-        bad_cases.append(('Missing Upgrade', request_def, None))
+        bad_cases.append(('Missing Upgrade', request_def, None, True))
 
         request_def = _create_good_request_def()
         request_def.headers['Upgrade'] = 'nonwebsocket'
-        bad_cases.append(('Wrong Upgrade', request_def, None))
+        bad_cases.append(('Wrong Upgrade', request_def, None, True))
 
         request_def = _create_good_request_def()
         del request_def.headers['Connection']
-        bad_cases.append(('Missing Connection', request_def, None))
+        bad_cases.append(('Missing Connection', request_def, None, True))
 
         request_def = _create_good_request_def()
         request_def.headers['Connection'] = 'Downgrade'
-        bad_cases.append(('Wrong Connection', request_def, None))
+        bad_cases.append(('Wrong Connection', request_def, None, True))
 
         request_def = _create_good_request_def()
         del request_def.headers['Sec-WebSocket-Key']
-        bad_cases.append(('Missing Sec-WebSocket-Key', request_def, 400))
+        bad_cases.append(('Missing Sec-WebSocket-Key', request_def, 400, True))
 
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Key'] = (
             'dGhlIHNhbXBsZSBub25jZQ==garbage')
         bad_cases.append(('Wrong Sec-WebSocket-Key (with garbage on the tail)',
-                          request_def, 400))
+                          request_def, 400, True))
 
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Key'] = 'YQ=='  # BASE64 of 'a'
         bad_cases.append(
             ('Wrong Sec-WebSocket-Key (decoded value is not 16 octets long)',
-             request_def, 400))
+             request_def, 400, True))
 
         request_def = _create_good_request_def()
         del request_def.headers['Sec-WebSocket-Version']
-        bad_cases.append(('Missing Sec-WebSocket-Version', request_def, None))
+        bad_cases.append(('Missing Sec-WebSocket-Version', request_def, None,
+                          True))
 
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Version'] = '3'
-        bad_cases.append(('Wrong Sec-WebSocket-Version', request_def, 426))
+        bad_cases.append(('Wrong Sec-WebSocket-Version', request_def, None,
+                          False))
 
-        for case_name, request_def, expected_status in bad_cases:
+        for (case_name, request_def, expected_status,
+             expect_handshake_exception) in bad_cases:
             request = _create_request(request_def)
             handshaker = Handshaker(request, mock.MockDispatcher())
             try:
                 handshaker.do_handshake()
                 self.fail('No exception thrown for \'%s\' case' % case_name)
             except HandshakeException, e:
+                self.assertTrue(expect_handshake_exception)
                 self.assertEqual(expected_status, e.status)
+            except VersionException, e:
+                self.assertFalse(expect_handshake_exception)
 
 
 if __name__ == '__main__':

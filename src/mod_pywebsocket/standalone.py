@@ -461,6 +461,12 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
             # Handshake for ws(s) failed. Assume http(s).
             logging.info('mod_pywebsocket: %s' % e)
             self.send_error(e.status)
+        except handshake.VersionException, e:
+            logging.info('mod_pywebsocket: %s' % e)
+            self.send_response(common.HTTP_STATUS_BAD_REQUEST)
+            self.send_header(common.SEC_WEBSOCKET_VERSION_HEADER,
+                             e.supported_versions)
+            self.end_headers()
         except Exception, e:
             logging.warning('mod_pywebsocket: %s' % e)
             logging.warning('mod_pywebsocket: %s' % util.get_stack_trace())

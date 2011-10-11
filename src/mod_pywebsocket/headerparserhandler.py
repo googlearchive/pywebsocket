@@ -39,6 +39,7 @@ import logging
 
 from mod_python import apache
 
+from mod_pywebsocket import common
 from mod_pywebsocket import dispatch
 from mod_pywebsocket import handshake
 from mod_pywebsocket import util
@@ -170,12 +171,17 @@ def headerparserhandler(request):
         # The request handling fallback into http/https.
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
         return e.status
+    except handshake.VersionException, e:
+        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
+        request.err_headers_out.add(common.SEC_WEBSOCKET_VERSION_HEADER,
+                                    e.supported_versions)
+        return apache.HTTP_BAD_REQUEST
     except Exception, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
         # Unknown exceptions before handshake mean Apache must handle its
         # request with another handler.
         if not handshake_is_done:
-            return apache.DECLINE
+            return apache.DECLINED
     # Set assbackwards to suppress response header generation by Apache.
     request.assbackwards = 1
     return apache.DONE  # Return DONE such that no other handlers are invoked.

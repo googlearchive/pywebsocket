@@ -39,9 +39,11 @@ import logging
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake import hybi
-# Export AbortedByUserException and HandshakeException symbol from this module.
+# Export AbortedByUserException, HandshakeException, and VersionException
+# symbol from this module.
 from mod_pywebsocket.handshake._base import AbortedByUserException
 from mod_pywebsocket.handshake._base import HandshakeException
+from mod_pywebsocket.handshake._base import VersionException
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -99,6 +101,8 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
             if e.status:
                 raise e
         except AbortedByUserException, e:
+            raise
+        except VersionException, e:
             raise
 
     raise HandshakeException(

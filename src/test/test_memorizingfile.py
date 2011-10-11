@@ -91,7 +91,7 @@ class UtilTest(unittest.TestCase):
         self.check(memorizing_file, 10, [])
 
     def test_get_memorized_lines_with_size(self):
-        for size in range(1,10):
+        for size in range(1, 10):
             memorizing_file = memorizingfile.MemorizingFile(StringIO.StringIO(
                 'Hello\nWorld\nWelcome'))
             self.check_with_size(memorizing_file, size,

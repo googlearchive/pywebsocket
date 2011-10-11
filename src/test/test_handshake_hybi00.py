@@ -62,16 +62,15 @@ _GOOD_REQUEST_CAPITALIZED_HEADER_VALUES = (
     'GET',
     '/demo',
     {
-        'Host':'example.com',
-        'Connection':'UPGRADE',
-        'Sec-WebSocket-Key2':'12998 5 Y3 1  .P00',
-        'Sec-WebSocket-Protocol':'sample',
-        'Upgrade':'WEBSOCKET',
-        'Sec-WebSocket-Key1':'4 @1  46546xW%0l 1 5',
-        'Origin':'http://example.com',
+        'Host': 'example.com',
+        'Connection': 'UPGRADE',
+        'Sec-WebSocket-Key2': '12998 5 Y3 1  .P00',
+        'Sec-WebSocket-Protocol': 'sample',
+        'Upgrade': 'WEBSOCKET',
+        'Sec-WebSocket-Key1': '4 @1  46546xW%0l 1 5',
+        'Origin': 'http://example.com',
     },
-    '^n:ds[4U'
-)
+    '^n:ds[4U')
 
 _GOOD_RESPONSE_DEFAULT_PORT = (
     'HTTP/1.1 101 WebSocket Protocol Handshake\r\n'

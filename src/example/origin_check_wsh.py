@@ -29,6 +29,7 @@
 
 # This example is derived from test/testdata/handlers/origin_check_wsh.py.
 
+
 def web_socket_do_extra_handshake(request):
     if request.ws_origin == 'http://example.com':
         return

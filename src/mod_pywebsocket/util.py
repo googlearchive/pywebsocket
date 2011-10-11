@@ -218,6 +218,7 @@ class DeflateRequest(object):
 
 
 class _Deflater(object):
+
     def __init__(self, window_bits):
         self._logger = get_class_logger(self)
 
@@ -233,6 +234,7 @@ class _Deflater(object):
 
 
 class _Inflater(object):
+
     def __init__(self):
         self._logger = get_class_logger(self)
 

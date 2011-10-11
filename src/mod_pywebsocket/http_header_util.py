@@ -52,6 +52,7 @@ def _is_ctl(c):
 
 
 class ParsingState(object):
+
     def __init__(self, data):
         self.data = data
         self.head = 0
@@ -209,7 +210,7 @@ def quote_if_necessary(s):
             result.append(c)
 
     if quote:
-        return '"' + ''.join(result) + '"';
+        return '"' + ''.join(result) + '"'
     else:
         return ''.join(result)
 

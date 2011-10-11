@@ -276,7 +276,10 @@ class WebSocketHandshake(object):
             self._options.server_port,
             self._options.use_tls))
 
-        fields.append(_sec_origin_header(self._options.origin))
+        if self._options.version is 8:
+            fields.append(_sec_origin_header(self._options.origin))
+        else:
+            fields.append(_origin_header(self._options.origin))
 
         original_key = os.urandom(16)
         key = base64.b64encode(original_key)
@@ -952,7 +955,7 @@ class ClientOptions(object):
     """Holds option values to configure the Client object."""
 
     def __init__(self):
-        self.version = 8
+        self.version = 13
         self.server_host = ''
         self.origin = ''
         self.resource = ''

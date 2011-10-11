@@ -92,6 +92,7 @@ _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 # Special message that tells the echo server to start closing handshake
 _GOODBYE_MESSAGE = 'Goodbye'
 
+_PROTOCOL_VERSION_HYBI13 = 'hybi13'
 _PROTOCOL_VERSION_HYBI08 = 'hybi08'
 _PROTOCOL_VERSION_HYBI00 = 'hybi00'
 _PROTOCOL_VERSION_HIXIE75 = 'hixie75'
@@ -306,8 +307,13 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         fields.append(_UPGRADE_HEADER)
         fields.append(_CONNECTION_HEADER)
         if self._options.origin is not None:
-            fields.append(_origin_header(common.SEC_WEBSOCKET_ORIGIN_HEADER,
-                                         self._options.origin))
+            if self._options.protocol_version == _PROTOCOL_VERSION_HYBI08:
+                fields.append(_origin_header(
+                    common.SEC_WEBSOCKET_ORIGIN_HEADER,
+                    self._options.origin))
+            else:
+                fields.append(_origin_header(common.ORIGIN_HEADER,
+                                             self._options.origin))
 
         original_key = os.urandom(16)
         self._key = base64.b64encode(original_key)
@@ -319,8 +325,15 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         fields.append(
             '%s: %s\r\n' % (common.SEC_WEBSOCKET_KEY_HEADER, self._key))
 
-        fields.append('%s: %s\r\n' % (common.SEC_WEBSOCKET_VERSION_HEADER,
-                                      common.VERSION_HYBI_LATEST))
+        if self._options.version_header > 0:
+            fields.append('%s: %d\r\n' % (common.SEC_WEBSOCKET_VERSION_HEADER,
+                                          self._options.version_header))
+        elif self._options.protocol_version == _PROTOCOL_VERSION_HYBI08:
+            fields.append('%s: %d\r\n' % (common.SEC_WEBSOCKET_VERSION_HEADER,
+                                          common.VERSION_HYBI08))
+        else:
+            fields.append('%s: %d\r\n' % (common.SEC_WEBSOCKET_VERSION_HEADER,
+                                          common.VERSION_HYBI_LATEST))
 
         extensions_to_request = []
 
@@ -794,7 +807,8 @@ class EchoClient(object):
 
             version = self._options.protocol_version
 
-            if version == _PROTOCOL_VERSION_HYBI08:
+            if (version == _PROTOCOL_VERSION_HYBI08 or
+                version == _PROTOCOL_VERSION_HYBI13):
                 self._handshake = ClientHandshakeProcessor(
                     self._socket, self._options)
             elif version == _PROTOCOL_VERSION_HYBI00:
@@ -813,7 +827,8 @@ class EchoClient(object):
 
             request = ClientRequest(self._socket)
 
-            if version == _PROTOCOL_VERSION_HYBI08:
+            if (version == _PROTOCOL_VERSION_HYBI08 or
+                version == _PROTOCOL_VERSION_HYBI13):
                 stream_option = StreamOptions()
                 stream_option.mask_send = True
                 stream_option.unmask_receive = False
@@ -904,14 +919,15 @@ def main():
                       'protocol-version flag')
     parser.add_option('--protocol-version', '--protocol_version',
                       dest='protocol_version',
-                      type='string', default=_PROTOCOL_VERSION_HYBI08,
+                      type='string', default=_PROTOCOL_VERSION_HYBI13,
                       help='WebSocket protocol version to use. One of \'' +
+                      _PROTOCOL_VERSION_HYBI13 + '\', \'' +
                       _PROTOCOL_VERSION_HYBI08 + '\', \'' +
                       _PROTOCOL_VERSION_HYBI00 + '\', \'' +
                       _PROTOCOL_VERSION_HIXIE75 + '\'')
     parser.add_option('--version-header', '--version_header',
                       dest='version_header',
-                      type='int', default=common.VERSION_HYBI_LATEST,
+                      type='int', default=-1,
                       help='specify Sec-WebSocket-Version header value')
     parser.add_option('--deflate-stream', '--deflate_stream',
                       dest='deflate_stream',

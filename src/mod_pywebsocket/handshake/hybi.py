@@ -130,7 +130,7 @@ class Handshaker(object):
 
         unused_host = get_mandatory_header(self._request, common.HOST_HEADER)
 
-        self._check_version()
+        self._request.ws_version = self._check_version()
 
         # This handshake must be based on latest hybi. We are responsible to
         # fallback to HTTP on handshake failure as latest hybi handshake
@@ -151,7 +151,6 @@ class Handshaker(object):
                 util.hexify(accept_binary))
 
             self._logger.debug('IETF HyBi protocol')
-            self._request.ws_version = common.VERSION_HYBI_LATEST
 
             # Setup extension processors.
 
@@ -221,14 +220,26 @@ class Handshaker(object):
             raise e
 
     def _get_origin(self):
-        origin = self._request.headers_in.get(
-            common.SEC_WEBSOCKET_ORIGIN_HEADER)
+        if self._request.ws_version is common.VERSION_HYBI08:
+            origin_header = common.SEC_WEBSOCKET_ORIGIN_HEADER
+        else:
+            origin_header = common.ORIGIN_HEADER
+        origin = self._request.headers_in.get(origin_header)
+        if origin is None:
+            self._logger.debug('Client request does not have origin header')
         self._request.ws_origin = origin
 
     def _check_version(self):
-        unused_value = validate_mandatory_header(
-            self._request, common.SEC_WEBSOCKET_VERSION_HEADER,
-            str(common.VERSION_HYBI_LATEST), fail_status=426)
+        version = get_mandatory_header(self._request,
+                                       common.SEC_WEBSOCKET_VERSION_HEADER)
+        if version == str(common.VERSION_HYBI08):
+            return common.VERSION_HYBI08
+        if version == str(common.VERSION_HYBI_LATEST):
+            return common.VERSION_HYBI_LATEST
+        # TODO(toyoshim): Support multiple versions described in hybi-14
+        raise HandshakeException(
+            'Unsupported version %r for header %s' %
+            (version, common.SEC_WEBSOCKET_VERSION_HEADER), status=426)
 
     def _set_protocol(self):
         self._request.ws_protocol = None

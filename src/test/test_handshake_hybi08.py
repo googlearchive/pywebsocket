@@ -62,8 +62,8 @@ def _create_good_request_def():
          'Upgrade': 'websocket',
          'Connection': 'Upgrade',
          'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
-         'Sec-WebSocket-Version': '13',
-         'Origin': 'http://example.com'})
+         'Sec-WebSocket-Origin': 'http://example.com',
+         'Sec-WebSocket-Version': '8'})
 
 
 def _create_request(request_def):
@@ -156,7 +156,7 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual('http://example.com', request.ws_origin)
         self.assertEqual(None, request.ws_protocol)
         self.assertEqual(None, request.ws_extensions)
-        self.assertEqual(common.VERSION_HYBI_LATEST, request.ws_version)
+        self.assertEqual(common.VERSION_HYBI08, request.ws_version)
 
     def test_do_handshake_with_capitalized_value(self):
         request_def = _create_good_request_def()
@@ -252,7 +252,7 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual('deflate-stream', extension.name())
         self.assertEqual(0, len(extension.get_parameter_names()))
 
-    def test_do_handshake_with_extensions(self):
+    def test_do_handshake_with_quoted_extensions(self):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Extensions'] = (
             'deflate-stream, , '

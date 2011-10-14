@@ -274,8 +274,12 @@ class Handshaker(object):
             self._request.ws_requested_extensions = None
             return
 
+        if self._request.ws_version is common.VERSION_HYBI08:
+            allow_quoted_string=False
+        else:
+            allow_quoted_string=True
         self._request.ws_requested_extensions = parse_extensions(
-            extensions_header)
+            extensions_header, allow_quoted_string=allow_quoted_string)
 
         self._logger.debug(
             'Extensions requested: %r',

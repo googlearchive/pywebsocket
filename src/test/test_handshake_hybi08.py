@@ -261,18 +261,7 @@ class HandshakerTest(unittest.TestCase):
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
-        handshaker.do_handshake()
-        self.assertEqual(2, len(request.ws_requested_extensions))
-        first_extension = request.ws_requested_extensions[0]
-        self.assertEqual('deflate-stream', first_extension.name())
-        self.assertEqual(0, len(first_extension.get_parameter_names()))
-        second_extension = request.ws_requested_extensions[1]
-        self.assertEqual('unknown', second_extension.name())
-        self.assertEqual(
-            ['e', 'ma', 'pv'], second_extension.get_parameter_names())
-        self.assertEqual('mc^2', second_extension.get_parameter_value('e'))
-        self.assertEqual(' \rf ', second_extension.get_parameter_value('ma'))
-        self.assertEqual('nrt', second_extension.get_parameter_value('pv'))
+        self.assertRaises(HandshakeException, handshaker.do_handshake)
 
     def test_do_handshake_with_optional_headers(self):
         request_def = _create_good_request_def()

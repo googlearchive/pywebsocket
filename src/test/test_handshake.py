@@ -102,21 +102,39 @@ class HandshakerTest(unittest.TestCase):
                           hixie=False)
 
 
-_TEST_EXTENSION_DATA = [
+_TEST_TOKEN_EXTENSION_DATA = [
     ('foo', [('foo', [])]),
     ('foo; bar', [('foo', [('bar', None)])]),
     ('foo; bar=baz', [('foo', [('bar', 'baz')])]),
+    ('foo; bar=baz; car=cdr', [('foo', [('bar', 'baz'), ('car', 'cdr')])]),
+    ('foo; bar=baz, car; cdr',
+     [('foo', [('bar', 'baz')]), ('car', [('cdr', None)])]),
+    ('a, b, c, d',
+     [('a', []), ('b', []), ('c', []), ('d', [])]),
+    ]
+
+
+_TEST_QUOTED_EXTENSION_DATA = [
     ('foo; bar=""', [('foo', [('bar', '')])]),
     ('foo; bar=" baz "', [('foo', [('bar', ' baz ')])]),
     ('foo; bar=",baz;"', [('foo', [('bar', ',baz;')])]),
     ('foo; bar="\\\r\\\nbaz"', [('foo', [('bar', '\r\nbaz')])]),
     ('foo; bar="\\"baz"', [('foo', [('bar', '"baz')])]),
     ('foo; bar="\xbbbaz"', [('foo', [('bar', '\xbbbaz')])]),
-    ('foo; bar=baz; car=cdr', [('foo', [('bar', 'baz'), ('car', 'cdr')])]),
-    ('foo; bar=baz, car; cdr',
-     [('foo', [('bar', 'baz')]), ('car', [('cdr', None)])]),
-    ('a, b, c, d',
-     [('a', []), ('b', []), ('c', []), ('d', [])]),
+    ]
+
+
+_TEST_REDUNDANT_TOKEN_EXTENSION_DATA = [
+    ('foo \t ', [('foo', [])]),
+    ('foo; \r\n bar', [('foo', [('bar', None)])]),
+    ('foo; bar=\r\n \r\n baz', [('foo', [('bar', 'baz')])]),
+    ('foo ;bar = baz ', [('foo', [('bar', 'baz')])]),
+    ('foo,bar,,baz', [('foo', []), ('bar', []), ('baz', [])]),
+    ]
+
+
+_TEST_REDUNDANT_QUOTED_EXTENSION_DATA = [
+    ('foo; bar="\r\n \r\n baz"', [('foo', [('bar', '  baz')])]),
     ]
 
 
@@ -136,23 +154,50 @@ class ExtensionsParserTest(unittest.TestCase):
             self.assertEqual(parameters, actual._parameters)
 
     def test_parse(self):
-        for formatted_string, definition in _TEST_EXTENSION_DATA:
+        for formatted_string, definition in _TEST_TOKEN_EXTENSION_DATA:
             self._verify_extension_list(
-                definition, parse_extensions(formatted_string))
+                definition, parse_extensions(formatted_string,
+                                             allow_quoted_string=False))
+
+        for formatted_string, unused_definition in _TEST_QUOTED_EXTENSION_DATA:
+            self.assertRaises(
+                HandshakeException, parse_extensions, formatted_string, False)
+
+    def test_parse_with_allow_quoted_string(self):
+        for formatted_string, definition in _TEST_TOKEN_EXTENSION_DATA:
+            self._verify_extension_list(
+                definition, parse_extensions(formatted_string,
+                                             allow_quoted_string=True))
+
+        for formatted_string, definition in _TEST_QUOTED_EXTENSION_DATA:
+            self._verify_extension_list(
+                definition, parse_extensions(formatted_string,
+                                             allow_quoted_string=True))
 
     def test_parse_redundant_data(self):
-        _TEST_REDUNDANT_EXTENSION_DATA = [
-            ('foo \t ', [('foo', [])]),
-            ('foo; \r\n bar', [('foo', [('bar', None)])]),
-            ('foo; bar=\r\n \r\n baz', [('foo', [('bar', 'baz')])]),
-            ('foo; bar="\r\n \r\n baz"', [('foo', [('bar', '  baz')])]),
-            ('foo ;bar = baz ', [('foo', [('bar', 'baz')])]),
-            ('foo,bar,,baz', [('foo', []), ('bar', []), ('baz', [])]),
-            ]
-
-        for formatted_string, definition in _TEST_REDUNDANT_EXTENSION_DATA:
+        for (formatted_string,
+             definition) in _TEST_REDUNDANT_TOKEN_EXTENSION_DATA:
             self._verify_extension_list(
-                definition, parse_extensions(formatted_string))
+                definition, parse_extensions(formatted_string,
+                                             allow_quoted_string=False))
+
+        for (formatted_string,
+             definition) in _TEST_REDUNDANT_QUOTED_EXTENSION_DATA:
+            self.assertRaises(
+                HandshakeException, parse_extensions, formatted_string, False)
+
+    def test_parse_redundant_data_with_allow_quoted_string(self):
+        for (formatted_string,
+             definition) in _TEST_REDUNDANT_TOKEN_EXTENSION_DATA:
+            self._verify_extension_list(
+                definition, parse_extensions(formatted_string,
+                                             allow_quoted_string=True))
+
+        for (formatted_string,
+             definition) in _TEST_REDUNDANT_QUOTED_EXTENSION_DATA:
+            self._verify_extension_list(
+                definition, parse_extensions(formatted_string,
+                                             allow_quoted_string=True))
 
     def test_parse_bad_data(self):
         _TEST_BAD_EXTENSION_DATA = [
@@ -175,7 +220,7 @@ class ExtensionsParserTest(unittest.TestCase):
 class FormatExtensionsTest(unittest.TestCase):
 
     def test_format_extensions(self):
-        for formatted_string, definitions in _TEST_EXTENSION_DATA:
+        for formatted_string, definitions in _TEST_TOKEN_EXTENSION_DATA:
             extensions = []
             for definition in definitions:
                 (name, parameters) = definition

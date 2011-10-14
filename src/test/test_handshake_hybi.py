@@ -253,7 +253,7 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual('deflate-stream', extension.name())
         self.assertEqual(0, len(extension.get_parameter_names()))
 
-    def test_do_handshake_with_extensions(self):
+    def test_do_handshake_with_quoted_extensions(self):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Extensions'] = (
             'deflate-stream, , '

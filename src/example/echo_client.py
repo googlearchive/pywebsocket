@@ -204,6 +204,9 @@ class ClientHandshakeBase(object):
     protocol version.
     """
 
+    def __init__(self):
+        self._logger = util.get_class_logger(self)
+
     def _read_fields(self):
         # 4.1 32. let /fields/ be a list of name-value pairs, initially empty.
         fields = {}
@@ -226,6 +229,7 @@ class ClientHandshakeBase(object):
                 raise ClientHandshakeError(
                     'Expected LF but found %r while reading value %r for '
                     'header %r' % (ch, value, name))
+            self._logger.debug('Received %r header', name)
             # 4.1 38. append an entry to the /fields/ list that has the name
             # given by the string obtained by interpreting the /name/ byte
             # array as a UTF-8 stream and the value given by the string
@@ -283,6 +287,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
     """
 
     def __init__(self, socket, options):
+        super(ClientHandshakeProcessor, self).__init__()
+
         self._socket = socket
         self._options = options
 
@@ -296,7 +302,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         """
 
         request_line = _build_method_line(self._options.resource)
-        self._logger.debug('Opening handshake Request-Line: %r', request_line)
+        self._logger.debug('Client\'s opening handshake Request-Line: %r',
+                           request_line)
         self._socket.sendall(request_line)
 
         fields = []
@@ -357,9 +364,9 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         self._socket.sendall('\r\n')
 
-        self._logger.debug('Opening handshake headers %r', field)
-
-        self._logger.info('Sent handshake')
+        self._logger.debug('Sent client\'s opening handshake headers: %r',
+                           fields)
+        self._logger.debug('Start reading Status-Line')
 
         status_line = ''
         while True:
@@ -379,6 +386,9 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             raise ClientHandshakeError(
                 'Expected HTTP status code 101 but found %r' % status_code)
 
+        self._logger.debug('Received valid Status-Line')
+        self._logger.debug('Start reading headers until we see an empty line')
+
         fields = self._read_fields()
 
         ch = _receive_bytes(self._socket, 1)
@@ -386,6 +396,9 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             raise ClientHandshakeError(
                 'Expected LF but found %r while reading value %r for header '
                 'name %r' % (ch, value, name))
+
+        self._logger.debug('Received an empty line')
+        self._logger.debug('Server\'s opening handshake headers: %r', fields)
 
         _validate_mandatory_header(
             fields,
@@ -480,6 +493,8 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
     """
 
     def __init__(self, socket, options):
+        super(ClientHandshakeProcessor, self).__init__()
+
         self._socket = socket
         self._options = options
 

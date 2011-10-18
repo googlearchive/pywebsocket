@@ -36,6 +36,7 @@ successfully established.
 
 import logging
 
+from mod_pywebsocket import common
 from mod_pywebsocket.handshake import draft75
 from mod_pywebsocket.handshake import hybi00
 from mod_pywebsocket.handshake import hybi
@@ -105,8 +106,10 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
         except VersionException, e:
             raise
 
+    # TODO(toyoshim): Add a test to cover the case all handshakers fail.
     raise HandshakeException(
-        'Failed to complete opening handshake for all available protocols')
+        'Failed to complete opening handshake for all available protocols',
+        status=common.HTTP_STATUS_BAD_REQUEST)
 
 
 # vi:sts=4 sw=4 et

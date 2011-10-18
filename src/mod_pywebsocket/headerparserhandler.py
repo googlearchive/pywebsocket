@@ -58,10 +58,16 @@ _PYOPT_HANDLER_SCAN = 'mod_pywebsocket.handler_scan'
 # Set this option with value of 'yes' to allow.
 _PYOPT_ALLOW_HANDLERS_OUTSIDE_ROOT = (
     'mod_pywebsocket.allow_handlers_outside_root_dir')
+# Map from values to their meanings. 'Yes' and 'No' are allowed just for
+# compatibility.
+_PYOPT_ALLOW_HANDLERS_OUTSIDE_ROOT_DEFINITION = {
+    'off': False, 'no': False, 'on': True, 'yes': True}
 
 # PythonOption to specify to allow draft75 handshake.
 # The default is None (Off)
 _PYOPT_ALLOW_DRAFT75 = 'mod_pywebsocket.allow_draft75'
+# Map from values to their meanings.
+_PYOPT_ALLOW_DRAFT75_DEFINITION = {'off': False, 'on': True}
 
 
 class ApacheLogHandler(logging.Handler):
@@ -117,20 +123,38 @@ _LOGGER.setLevel(logging.DEBUG)
 _LOGGER.addHandler(ApacheLogHandler())
 
 
+def _parse_option(name, value, definition):
+    if value is None:
+        return False
+
+    meaning = definition.get(value.lower())
+    if meaning is None:
+        raise Exception('Invalid value for PythonOption %s: %r' %
+                        (name, value))
+    return meaning
+
+
 def _create_dispatcher():
-    _HANDLER_ROOT = apache.main_server.get_options().get(
-            _PYOPT_HANDLER_ROOT, None)
-    if not _HANDLER_ROOT:
+    options = apache.main_server.get_options()
+
+    handler_root = options.get(_PYOPT_HANDLER_ROOT, None)
+    if not handler_root:
         raise Exception('PythonOption %s is not defined' % _PYOPT_HANDLER_ROOT,
                         apache.APLOG_ERR)
-    _HANDLER_SCAN = apache.main_server.get_options().get(
-        _PYOPT_HANDLER_SCAN, _HANDLER_ROOT)
-    _ALLOW_HANDLERS_OUTSIDE_ROOT = apache.main_server.get_options().get(
-        _PYOPT_ALLOW_HANDLERS_OUTSIDE_ROOT, 'no')
+
+    handler_scan = options.get(_PYOPT_HANDLER_SCAN, handler_root)
+
+    allow_handlers_outside_root = _parse_option(
+        _PYOPT_ALLOW_HANDLERS_OUTSIDE_ROOT,
+        options.get(_PYOPT_ALLOW_HANDLERS_OUTSIDE_ROOT),
+        _PYOPT_ALLOW_HANDLERS_OUTSIDE_ROOT_DEFINITION)
+
     dispatcher = dispatch.Dispatcher(
-        _HANDLER_ROOT, _HANDLER_SCAN, _ALLOW_HANDLERS_OUTSIDE_ROOT == 'yes')
+        handler_root, handler_scan, allow_handlers_outside_root)
+
     for warning in dispatcher.source_warnings():
         apache.log_error('mod_pywebsocket: %s' % warning, apache.APLOG_WARNING)
+
     return dispatcher
 
 
@@ -150,10 +174,12 @@ def headerparserhandler(request):
 
     handshake_is_done = False
     try:
-        allowDraft75 = apache.main_server.get_options().get(
-            _PYOPT_ALLOW_DRAFT75, None)
+        allow_draft75 = _parse_option(
+            _PYOPT_ALLOW_DRAFT75,
+            apache.main_server.get_options().get(_PYOPT_ALLOW_DRAFT75),
+            _PYOPT_ALLOW_DRAFT75_DEFINITION)
         handshake.do_handshake(
-            request, _dispatcher, allowDraft75=allowDraft75)
+            request, _dispatcher, allowDraft75=allow_draft75)
         handshake_is_done = True
         request.log_error(
             'mod_pywebsocket: resource: %r' % request.ws_resource,

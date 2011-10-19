@@ -138,6 +138,30 @@ class MockTableTest(unittest.TestCase):
         self.assertEqual('Value', table['KEY'])
 
 
+class MockRequestTest(unittest.TestCase):
+    """A unittest for MockRequest class."""
+
+    def test_create_from_basic_list(self):
+        request = mock.MockRequest(headers_in=[['Key', 'Value']])
+        self.assertEqual('Value', request.headers_in.get('KEY'))
+        self.assertEqual('Value', request.headers_in['KEY'])
+
+    def test_create_from_list_with_conflicting_item(self):
+        # Test that MockTable in headers_in is working.
+        request = mock.MockRequest(headers_in=[['Key1', 'Value1'],
+                                               ['key2', 'Foo'],
+                                               ['key1', 'Value2']])
+        self.assertEqual('Value2', request.headers_in.get('KEY1'))
+        self.assertEqual('Value2', request.headers_in['KEY1'])
+
+        # Test that get_header_value_list method is working.
+        key_headers = request.get_header_value_list('KEY1')
+        self.assertEqual(2, len(key_headers))
+        if len(key_headers) is 2:
+            self.assertEqual('Value1', key_headers[0])
+            self.assertEqual('Value2', key_headers[1])
+
+
 if __name__ == '__main__':
     unittest.main()
 

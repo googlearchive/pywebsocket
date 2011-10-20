@@ -172,7 +172,7 @@ class MockRequest(object):
     This mimics mod_python request.
     """
 
-    def __init__(self, uri=None, headers_in=[], connection=None, method='GET',
+    def __init__(self, uri=None, headers_in={}, connection=None, method='GET',
                  is_https=False):
         """Construct an instance.
 
@@ -188,13 +188,7 @@ class MockRequest(object):
         self.uri = uri
         self.connection = connection
         self.method = method
-        headers = {}
-        self._headers = {}
-        for name, value in headers_in:
-            lower_name = name.lower()
-            headers[lower_name] = value
-            self._headers.setdefault(lower_name, []).append(value)
-        self.headers_in = MockTable(headers)
+        self.headers_in = MockTable(headers_in)
         # self.is_https_ needs to be accessible from tests.  To avoid name
         # conflict with self.is_https(), it is named as such.
         self.is_https_ = is_https
@@ -212,12 +206,6 @@ class MockRequest(object):
 
     def _drain_received_data(self):
         self.drain_received_data_called = True
-
-    def get_header_value_list(self, name):
-        try:
-            return self._headers[name.lower()]
-        except KeyError:
-            return []
 
 
 class MockDispatcher(object):

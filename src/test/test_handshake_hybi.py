@@ -55,43 +55,16 @@ class RequestDefinition(object):
         self.uri = uri
         self.headers = headers
 
-    def set_header(self, name, value):
-        """If the header definition has any header which has the same name
-        as specified by |name|. The first matched header value is replaced by
-        specified |value|. Otherwise, new header item with |name| and |value|
-        is appended.
-        """
-
-        length = len(self.headers)
-        for i in xrange(length):
-            header_name, header_value = self.headers[i]
-            if header_name == name:
-                self.headers[i] = [name, value]
-                return
-        self.headers.append([name, value])
-
-    def delete_header(self, name):
-        """If the header definition has any header which has the same name
-        as specified by |name|. The first mathced header value is deleted.
-        """
-
-        length = len(self.headers)
-        for i in xrange(length):
-            header_name, header_value = self.headers[i]
-            if header_name == name:
-                del self.headers[i]
-                return
-
 
 def _create_good_request_def():
     return RequestDefinition(
         'GET', '/demo',
-        [['Host', 'server.example.com'],
-         ['Upgrade', 'websocket'],
-         ['Connection', 'Upgrade'],
-         ['Sec-WebSocket-Key', 'dGhlIHNhbXBsZSBub25jZQ=='],
-         ['Sec-WebSocket-Version', '13'],
-         ['Origin', 'http://example.com']])
+        {'Host': 'server.example.com',
+         'Upgrade': 'websocket',
+         'Connection': 'Upgrade',
+         'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+         'Sec-WebSocket-Version': '13',
+         'Origin': 'http://example.com'})
 
 
 def _create_request(request_def):
@@ -188,7 +161,7 @@ class HandshakerTest(unittest.TestCase):
 
     def test_do_handshake_with_capitalized_value(self):
         request_def = _create_good_request_def()
-        request_def.set_header('upgrade', 'WEBSOCKET')
+        request_def.headers['upgrade'] = 'WEBSOCKET'
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
@@ -197,7 +170,7 @@ class HandshakerTest(unittest.TestCase):
             _EXPECTED_RESPONSE, request.connection.written_data())
 
         request_def = _create_good_request_def()
-        request_def.set_header('Connection', 'UPGRADE')
+        request_def.headers['Connection'] = 'UPGRADE'
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
@@ -207,7 +180,7 @@ class HandshakerTest(unittest.TestCase):
 
     def test_do_handshake_with_multiple_connection_values(self):
         request_def = _create_good_request_def()
-        request_def.set_header('Connection', 'Upgrade, keep-alive, , ')
+        request_def.headers['Connection'] = 'Upgrade, keep-alive, , '
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
@@ -225,7 +198,7 @@ class HandshakerTest(unittest.TestCase):
 
     def test_do_handshake_with_protocol(self):
         request_def = _create_good_request_def()
-        request_def.set_header('Sec-WebSocket-Protocol', 'chat, superchat')
+        request_def.headers['Sec-WebSocket-Protocol'] = 'chat, superchat'
 
         request = _create_request(request_def)
         handshaker = Handshaker(request, SubprotocolChoosingDispatcher(0))
@@ -252,7 +225,7 @@ class HandshakerTest(unittest.TestCase):
 
     def test_do_handshake_with_protocol_no_protocol_selection(self):
         request_def = _create_good_request_def()
-        request_def.set_header('Sec-WebSocket-Protocol', 'chat, superchat')
+        request_def.headers['Sec-WebSocket-Protocol'] = 'chat, superchat'
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
@@ -261,8 +234,8 @@ class HandshakerTest(unittest.TestCase):
 
     def test_do_handshake_with_extensions(self):
         request_def = _create_good_request_def()
-        request_def.set_header('Sec-WebSocket-Extensions',
-                               'deflate-stream, unknown')
+        request_def.headers['Sec-WebSocket-Extensions'] = (
+            'deflate-stream, unknown')
 
         EXPECTED_RESPONSE = (
             'HTTP/1.1 101 Switching Protocols\r\n'
@@ -282,9 +255,9 @@ class HandshakerTest(unittest.TestCase):
 
     def test_do_handshake_with_quoted_extensions(self):
         request_def = _create_good_request_def()
-        request_def.set_header('Sec-WebSocket-Extensions',
-                               'deflate-stream, , unknown; e   =    "mc^2"; '
-                               'ma="\r\n      \\\rf  "; pv=nrt')
+        request_def.headers['Sec-WebSocket-Extensions'] = (
+            'deflate-stream, , '
+            'unknown; e   =    "mc^2"; ma="\r\n      \\\rf  "; pv=nrt')
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
@@ -303,8 +276,8 @@ class HandshakerTest(unittest.TestCase):
 
     def test_do_handshake_with_optional_headers(self):
         request_def = _create_good_request_def()
-        request_def.set_header('EmptyValue', '')
-        request_def.set_header('AKey', 'AValue')
+        request_def.headers['EmptyValue'] = ''
+        request_def.headers['AKey'] = 'AValue'
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
@@ -327,67 +300,67 @@ class HandshakerTest(unittest.TestCase):
             ('HTTP request',
              RequestDefinition(
                  'GET', '/demo',
-                 [['Host', 'www.google.com'],
-                  ['User-Agent',
-                       'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5;'
-                       ' en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3'
-                       ' GTB6 GTBA'],
-                  ['Accept',
-                       'text/html,application/xhtml+xml,application/xml;q=0.9,'
-                       '*/*;q=0.8'],
-                  ['Accept-Language', 'en-us,en;q=0.5'],
-                  ['Accept-Encoding', 'gzip,deflate'],
-                  ['Accept-Charset', 'ISO-8859-1,utf-8;q=0.7,*;q=0.7'],
-                  ['Keep-Alive', '300'],
-                  ['Connection', 'keep-alive']]), None, True)]
+                 {'Host': 'www.google.com',
+                  'User-Agent':
+                      'Mozilla/5.0 (Macintosh; U; Intel Mac OS X 10.5;'
+                      ' en-US; rv:1.9.1.3) Gecko/20090824 Firefox/3.5.3'
+                      ' GTB6 GTBA',
+                  'Accept':
+                      'text/html,application/xhtml+xml,application/xml;q=0.9,'
+                      '*/*;q=0.8',
+                  'Accept-Language': 'en-us,en;q=0.5',
+                  'Accept-Encoding': 'gzip,deflate',
+                  'Accept-Charset': 'ISO-8859-1,utf-8;q=0.7,*;q=0.7',
+                  'Keep-Alive': '300',
+                  'Connection': 'keep-alive'}), None, True)]
 
         request_def = _create_good_request_def()
         request_def.method = 'POST'
         bad_cases.append(('Wrong method', request_def, None, True))
 
         request_def = _create_good_request_def()
-        request_def.delete_header('Host')
+        del request_def.headers['Host']
         bad_cases.append(('Missing Host', request_def, None, True))
 
         request_def = _create_good_request_def()
-        request_def.delete_header('Upgrade')
+        del request_def.headers['Upgrade']
         bad_cases.append(('Missing Upgrade', request_def, None, True))
 
         request_def = _create_good_request_def()
-        request_def.set_header('Upgrade', 'nonwebsocket')
+        request_def.headers['Upgrade'] = 'nonwebsocket'
         bad_cases.append(('Wrong Upgrade', request_def, None, True))
 
         request_def = _create_good_request_def()
-        request_def.delete_header('Connection')
+        del request_def.headers['Connection']
         bad_cases.append(('Missing Connection', request_def, None, True))
 
         request_def = _create_good_request_def()
-        request_def.set_header('Connection', 'Downgrade')
+        request_def.headers['Connection'] = 'Downgrade'
         bad_cases.append(('Wrong Connection', request_def, None, True))
 
         request_def = _create_good_request_def()
-        request_def.delete_header('Sec-WebSocket-Key')
+        del request_def.headers['Sec-WebSocket-Key']
         bad_cases.append(('Missing Sec-WebSocket-Key', request_def, 400, True))
 
         request_def = _create_good_request_def()
-        request_def.set_header('Sec-WebSocket-Key',
-                               'dGhlIHNhbXBsZSBub25jZQ==garbage')
+        request_def.headers['Sec-WebSocket-Key'] = (
+            'dGhlIHNhbXBsZSBub25jZQ==garbage')
         bad_cases.append(('Wrong Sec-WebSocket-Key (with garbage on the tail)',
                           request_def, 400, True))
 
         request_def = _create_good_request_def()
-        request_def.set_header('Sec-WebSocket-Key', 'YQ==')  # BASE64 of 'a'
+        request_def.headers['Sec-WebSocket-Key'] = 'YQ=='  # BASE64 of 'a'
         bad_cases.append(
             ('Wrong Sec-WebSocket-Key (decoded value is not 16 octets long)',
              request_def, 400, True))
 
         request_def = _create_good_request_def()
-        request_def.delete_header('Sec-WebSocket-Version')
+        del request_def.headers['Sec-WebSocket-Version']
         bad_cases.append(('Missing Sec-WebSocket-Version', request_def, None,
                           True))
 
         request_def = _create_good_request_def()
-        request_def.set_header('Sec-WebSocket-Version', '3')
+        request_def.headers['Sec-WebSocket-Version'] = '3'
         bad_cases.append(('Wrong Sec-WebSocket-Version', request_def, None,
                           False))
 

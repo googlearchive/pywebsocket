@@ -235,8 +235,16 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         self.server_name, self.server_port = self.server_address
         self._sockets = []
         if not self.server_name:
+            # On platforms that doesn't support IPv6, the first bind fails.
+            # On platforms that supports IPv6
+            # - If it binds both IPv4 and IPv6 on call with AF_INET6, the
+            #   first bind succeeds and the second fails (we'll see 'Address
+            #   already in use' error).
+            # - If it binds only IPv6 on call with AF_INET6, both call are
+            #   expected to succeed to listen both protocol.
             addrinfo_array = [
-                (self.address_family, self.socket_type, '', '', '')]
+                (socket.AF_INET6, socket.SOCK_STREAM, '', '', ''),
+                (socket.AF_INET, socket.SOCK_STREAM, '', '', '')]
         else:
             addrinfo_array = socket.getaddrinfo(self.server_name,
                                                 self.server_port,

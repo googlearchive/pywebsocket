@@ -444,7 +444,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
             # Fallback to default http handler for request paths for which
             # we don't have request handlers.
             if not self._options.dispatcher.get_handler_suite(self.path):
-                self._logger.info('No handlers for request: %s', self.path)
+                self._logger.info('No handler for resource: %r', self.path)
                 self._logger.info('Fallback to CGIHTTPRequestHandler')
                 return True
 

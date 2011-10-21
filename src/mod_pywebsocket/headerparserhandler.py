@@ -187,6 +187,14 @@ def headerparserhandler(request):
 
     handshake_is_done = False
     try:
+        # Fallback to default http handler for request paths for which
+        # we don't have request handlers.
+        if not _dispatcher.get_handler_suite(request.uri):
+            request.log_error('No handler for resource: %r' % request.uri,
+                              apache.APLOG_INFO)
+            request.log_error('Fallback to Apache', apache.APLOG_INFO)
+            return apache.DECLINED
+
         allow_draft75 = _parse_option(
             _PYOPT_ALLOW_DRAFT75,
             apache.main_server.get_options().get(_PYOPT_ALLOW_DRAFT75),
@@ -207,7 +215,7 @@ def headerparserhandler(request):
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
     except handshake.HandshakeException, e:
         # Handshake for ws/wss failed.
-        # The request handling fallback into http/https.
+        # Send http response with error status.
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
         return e.status
     except handshake.VersionException, e:

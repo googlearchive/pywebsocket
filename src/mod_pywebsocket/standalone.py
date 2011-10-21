@@ -409,6 +409,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         host, port, resource = http_header_util.parse_uri(self.path)
         if resource is None:
             self._logger.info('Invalid URI: %r', self.path)
+            self._logger.info('Fallback to CGIHTTPRequestHandler')
             return True
         server_options = self.server.websocket_server_options
         if host is not None:
@@ -417,6 +418,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 self._logger.info('Invalid host: %r (expected: %r)',
                                   host,
                                   validation_host)
+                self._logger.info('Fallback to CGIHTTPRequestHandler')
                 return True
         if port is not None:
             validation_port = server_options.validation_port
@@ -424,6 +426,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 self._logger.info('Invalid port: %r (expected: %r)',
                                   port,
                                   validation_port)
+                self._logger.info('Fallback to CGIHTTPRequestHandler')
                 return True
         self.path = resource
 
@@ -432,6 +435,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
             # we don't have request handlers.
             if not self._options.dispatcher.get_handler_suite(self.path):
                 self._logger.info('No handlers for request: %s', self.path)
+                self._logger.info('Fallback to CGIHTTPRequestHandler')
                 return True
 
             try:

@@ -122,7 +122,7 @@ class EndToEndTest(unittest.TestCase):
             self.top_dir, 'mod_pywebsocket', 'standalone.py')
         self.document_root = os.path.join(self.top_dir, 'example')
         s = socket.socket()
-        s.bind(('127.0.0.1', 0))
+        s.bind(('localhost', 0))
         (_, self.test_port) = s.getsockname()
         s.close()
 

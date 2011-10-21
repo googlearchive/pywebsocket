@@ -268,11 +268,22 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         sockets bind.
         """
 
-        for socket_, addrinfo in self._sockets:
+        failed_sockets = []
+
+        for socketinfo in self._sockets:
+            socket_, addrinfo = socketinfo
             self._logger.info('Bind on: %r', addrinfo)
             if self.allow_reuse_address:
                 socket_.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            socket_.bind(self.server_address)
+            try:
+                socket_.bind(self.server_address)
+            except Exception, e:
+                self._logger.info('Skip by failure: %r', e)
+                socket_.close()
+                failed_sockets.append(socketinfo)
+
+        for socketinfo in failed_sockets:
+            self._sockets.remove(socketinfo)
 
     def server_activate(self):
         """Override SocketServer.TCPServer.server_activate to enable multiple

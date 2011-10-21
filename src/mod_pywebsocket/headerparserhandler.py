@@ -83,14 +83,19 @@ class ApacheLogHandler(logging.Handler):
 
     def __init__(self, request=None):
         logging.Handler.__init__(self)
-        self.log_error = apache.log_error
+        self._log_error = apache.log_error
         if request is not None:
-            self.log_error = request.log_error
+            self._log_error = request.log_error
+
+        # Time and level will be printed by Apache.
+        self._formatter = logging.Formatter('%(name)s: %(message)s')
 
     def emit(self, record):
         apache_level = apache.APLOG_DEBUG
         if record.levelno in ApacheLogHandler._LEVELS:
             apache_level = ApacheLogHandler._LEVELS[record.levelno]
+
+        msg = self._formatter.format(record)
 
         # "server" parameter must be passed to have "level" parameter work.
         # If only "level" parameter is passed, nothing shows up on Apache's
@@ -112,15 +117,21 @@ class ApacheLogHandler(logging.Handler):
         # methods call request.log_error indirectly. When request is
         # _StandaloneRequest, the methods call Python's logging facility which
         # we create in standalone.py.
-        self.log_error(record.getMessage(), apache_level, apache.main_server)
+        self._log_error(msg, apache_level, apache.main_server)
 
 
-_LOGGER = logging.getLogger('mod_pywebsocket')
-# Logs are filtered by Apache based on LogLevel directive in Apache
-# configuration file. We must just pass logs for all levels to
-# ApacheLogHandler.
-_LOGGER.setLevel(logging.DEBUG)
-_LOGGER.addHandler(ApacheLogHandler())
+def _configure_logging():
+    logger = logging.getLogger()
+    # Logs are filtered by Apache based on LogLevel directive in Apache
+    # configuration file. We must just pass logs for all levels to
+    # ApacheLogHandler.
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(ApacheLogHandler())
+
+
+_configure_logging()
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _parse_option(name, value, definition):
@@ -135,6 +146,8 @@ def _parse_option(name, value, definition):
 
 
 def _create_dispatcher():
+    _LOGGER.info('Initializing Dispatcher')
+
     options = apache.main_server.get_options()
 
     handler_root = options.get(_PYOPT_HANDLER_ROOT, None)

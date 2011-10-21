@@ -355,6 +355,13 @@ class HandshakerTest(unittest.TestCase):
              request_def, 400, True))
 
         request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Key'] = (
+            'dGhlIHNhbXBsZSBub25jZQ==,dGhlIHNhbXBsZSBub25jZQ==')
+        bad_cases.append(
+            ('Wrong Sec-WebSocket-Key (multiple values)',
+             request_def, 400, True))
+
+        request_def = _create_good_request_def()
         del request_def.headers['Sec-WebSocket-Version']
         bad_cases.append(('Missing Sec-WebSocket-Version', request_def, None,
                           True))
@@ -363,6 +370,11 @@ class HandshakerTest(unittest.TestCase):
         request_def.headers['Sec-WebSocket-Version'] = '3'
         bad_cases.append(('Wrong Sec-WebSocket-Version', request_def, None,
                           False))
+
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Version'] = '13, 13'
+        bad_cases.append(('Wrong Sec-WebSocket-Version (multiple values)',
+                          request_def, 400, True))
 
         for (case_name, request_def, expected_status,
              expect_handshake_exception) in bad_cases:

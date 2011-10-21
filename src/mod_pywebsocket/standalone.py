@@ -65,6 +65,7 @@ import BaseHTTPServer
 import CGIHTTPServer
 import SimpleHTTPServer
 import SocketServer
+import httplib
 import logging
 import logging.handlers
 import optparse
@@ -158,6 +159,7 @@ class _StandaloneRequest(object):
         self._request_handler = request_handler
         self.connection = _StandaloneConnection(request_handler)
         self._use_tls = use_tls
+        self.headers_in = request_handler.headers
 
     def get_uri(self):
         """Getter to mimic request.uri."""
@@ -170,12 +172,6 @@ class _StandaloneRequest(object):
 
         return self._request_handler.command
     method = property(get_method)
-
-    def get_headers_in(self):
-        """Getter to mimic request.headers_in."""
-
-        return self._request_handler.headers
-    headers_in = property(get_headers_in)
 
     def is_https(self):
         """Mimic request.is_https()."""
@@ -362,6 +358,9 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
     """CGIHTTPRequestHandler specialized for WebSocket."""
 
+    # Use httplib.HTTPMessage instead of mimetools.Message.
+    MessageClass = httplib.HTTPMessage
+
     def setup(self):
         """Override SocketServer.StreamRequestHandler.setup to wrap rfile
         with MemorizingFile.
@@ -392,8 +391,6 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         # Replace CGIHTTPRequestHandler.is_executable method.
         if self._options.is_executable_method is not None:
             self.is_executable = self._options.is_executable_method
-
-        self._request = _StandaloneRequest(self, self._options.use_tls)
 
         # This actually calls BaseRequestHandler.__init__.
         CGIHTTPServer.CGIHTTPRequestHandler.__init__(
@@ -441,6 +438,8 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 return True
         self.path = resource
 
+        request = _StandaloneRequest(self, self._options.use_tls)
+
         try:
             # Fallback to default http handler for request paths for which
             # we don't have request handlers.
@@ -451,7 +450,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
 
             try:
                 handshake.do_handshake(
-                    self._request,
+                    request,
                     self._options.dispatcher,
                     allowDraft75=self._options.allow_draft75,
                     strict=self._options.strict)
@@ -459,8 +458,8 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 self._logger.info('%s', e)
                 return False
             try:
-                self._request._dispatcher = self._options.dispatcher
-                self._options.dispatcher.transfer_data(self._request)
+                request._dispatcher = self._options.dispatcher
+                self._options.dispatcher.transfer_data(request)
             except dispatch.DispatchException, e:
                 self._logger.warning('%s', e)
                 return False

@@ -247,6 +247,12 @@ class Handshaker(object):
             return _VERSION_HYBI08
         if version == _VERSION_LATEST_STRING:
             return _VERSION_LATEST
+
+        if version.find(',') >= 0:
+            raise HandshakeException(
+                'Multiple versions (%r) are not allowed for header %s' %
+                (version, common.SEC_WEBSOCKET_VERSION_HEADER),
+                status=common.HTTP_STATUS_BAD_REQUEST)
         raise VersionException(
             'Unsupported version %r for header %s' %
             (version, common.SEC_WEBSOCKET_VERSION_HEADER),
@@ -287,6 +293,11 @@ class Handshaker(object):
                 self._request.ws_requested_extensions))
 
     def _validate_key(self, key):
+        if key.find(',') >= 0:
+            raise HandshakeException('Request has multiple %s header lines or '
+                                     'contains illegal character \',\': %r' %
+                                     (common.SEC_WEBSOCKET_KEY_HEADER, key))
+
         # Validate
         key_is_valid = False
         try:

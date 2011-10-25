@@ -222,8 +222,6 @@ class Handshaker(object):
                         'request any subprotocol')
 
             self._send_handshake(accept)
-
-            self._logger.debug('Sent opening handshake response')
         except HandshakeException, e:
             if not e.status:
                 # Fallback to 400 bad request by default.
@@ -356,8 +354,9 @@ class Handshaker(object):
         response.append('\r\n')
 
         raw_response = ''.join(response)
-        self._logger.debug('Opening handshake response: %r', raw_response)
         self._request.connection.write(raw_response)
+        self._logger.debug('Sent server\'s opening handshake: %r',
+                           raw_response)
 
 
 # vi:sts=4 sw=4 et

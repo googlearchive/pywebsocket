@@ -107,8 +107,6 @@ class Handshaker(object):
 
         self._send_handshake()
 
-        self._logger.debug('Sent opening handshake response')
-
     def _set_resource(self):
         self._request.ws_resource = self._request.uri
 
@@ -230,8 +228,9 @@ class Handshaker(object):
         response.append(self._request.ws_challenge_md5)
 
         raw_response = ''.join(response)
-        self._logger.debug('Opening handshake response: %r', raw_response)
         self._request.connection.write(raw_response)
+        self._logger.debug('Sent server\'s opening handshake: %r',
+                           raw_response)
 
 
 # vi:sts=4 sw=4 et

@@ -65,7 +65,7 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
     handshake.
     """
 
-    _LOGGER.debug('Opening handshake resource: %r', request.uri)
+    _LOGGER.debug('Client\'s opening handshake resource: %r', request.uri)
     # To print mimetools.Message as escaped one-line string, we converts
     # headers_in to dict object. Without conversion, if we use %r, it just
     # prints the type and address, and if we use %s, it prints the original
@@ -79,7 +79,7 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
     # header values. While MpTable_Type doesn't have such __str__ but just
     # __repr__ which formats itself as well as dictionary object.
     _LOGGER.debug(
-        'Opening handshake request headers: %r', dict(request.headers_in))
+        'Client\'s opening handshake headers: %r', dict(request.headers_in))
 
     handshakers = []
     handshakers.append(

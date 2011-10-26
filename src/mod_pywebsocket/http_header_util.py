@@ -252,4 +252,12 @@ def parse_uri(uri):
     return parsed.hostname, port, path
 
 
+try:
+    urlparse.uses_netloc.index('ws')
+except ValueError, e:
+    # urlparse in Python2.5.1 doesn't have 'ws' and 'wss' entries.
+    urlparse.uses_netloc.append('ws')
+    urlparse.uses_netloc.append('wss')
+
+
 # vi:sts=4 sw=4 et

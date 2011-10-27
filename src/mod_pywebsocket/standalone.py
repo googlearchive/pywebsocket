@@ -444,49 +444,43 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
             # Fallback to default http handler for request paths for which
             # we don't have request handlers.
             if not self._options.dispatcher.get_handler_suite(self.path):
-                self._logger.info('No handler for resource: %r', self.path)
+                self._logger.info('No handler for resource: %r',
+                                  self.path)
                 self._logger.info('Fallback to CGIHTTPRequestHandler')
                 return True
+        except dispatch.DispatchException, e:
+            self._logger.info('%s', e)
+            self.send_error(e.status)
+            return False
 
+        # If any Exceptions without except clause setup (including
+        # DispatchException) is raised below this point, it will be caught
+        # and logged by WebSocketServer.
+
+        try:
             try:
                 handshake.do_handshake(
                     request,
                     self._options.dispatcher,
                     allowDraft75=self._options.allow_draft75,
                     strict=self._options.strict)
-            except handshake.AbortedByUserException, e:
+            except handshake.VersionException, e:
                 self._logger.info('%s', e)
+                self.send_response(common.HTTP_STATUS_BAD_REQUEST)
+                self.send_header(common.SEC_WEBSOCKET_VERSION_HEADER,
+                                 e.supported_versions)
+                self.end_headers()
                 return False
-            try:
-                request._dispatcher = self._options.dispatcher
-                self._options.dispatcher.transfer_data(request)
-            except dispatch.DispatchException, e:
-                self._logger.warning('%s', e)
+            except handshake.HandshakeException, e:
+                # Handshake for ws(s) failed.
+                self._logger.info('%s', e)
+                self.send_error(e.status)
                 return False
-            except handshake.AbortedByUserException, e:
-                self._logger.info('%s', e)
-            except Exception, e:
-                # Catch exception in transfer_data.
-                # In this case, handshake has been successful, so just log
-                # the exception and return False.
-                self._logger.info('%s', e)
-                self._logger.info('%s', util.get_stack_trace())
-        except dispatch.DispatchException, e:
-            self._logger.warning('%s', e)
-            self.send_error(e.status)
-        except handshake.HandshakeException, e:
-            # Handshake for ws(s) failed. Assume http(s).
+
+            request._dispatcher = self._options.dispatcher
+            self._options.dispatcher.transfer_data(request)
+        except handshake.AbortedByUserException, e:
             self._logger.info('%s', e)
-            self.send_error(e.status)
-        except handshake.VersionException, e:
-            self._logger.info('%s', e)
-            self.send_response(common.HTTP_STATUS_BAD_REQUEST)
-            self.send_header(common.SEC_WEBSOCKET_VERSION_HEADER,
-                             e.supported_versions)
-            self.end_headers()
-        except Exception, e:
-            self._logger.warning('%s', e)
-            self._logger.warning('%s', util.get_stack_trace())
         return False
 
     def log_request(self, code='-', size='-'):

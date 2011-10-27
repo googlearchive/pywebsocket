@@ -194,37 +194,43 @@ def headerparserhandler(request):
                               apache.APLOG_INFO)
             request.log_error('Fallback to Apache', apache.APLOG_INFO)
             return apache.DECLINED
+    except dispatch.DispatchException, e:
+        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
+        if not handshake_is_done:
+            return e.status
 
+    try:
         allow_draft75 = _parse_option(
             _PYOPT_ALLOW_DRAFT75,
             apache.main_server.get_options().get(_PYOPT_ALLOW_DRAFT75),
             _PYOPT_ALLOW_DRAFT75_DEFINITION)
-        handshake.do_handshake(
-            request, _dispatcher, allowDraft75=allow_draft75)
+
+        try:
+            handshake.do_handshake(
+                request, _dispatcher, allowDraft75=allow_draft75)
+        except handshake.VersionException, e:
+            request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
+            request.err_headers_out.add(common.SEC_WEBSOCKET_VERSION_HEADER,
+                                        e.supported_versions)
+            return apache.HTTP_BAD_REQUEST
+        except handshake.HandshakeException, e:
+            # Handshake for ws/wss failed.
+            # Send http response with error status.
+            request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
+            return e.status
+
         handshake_is_done = True
-        request.log_error(
-            'mod_pywebsocket: resource: %r' % request.ws_resource,
-            apache.APLOG_DEBUG)
         request._dispatcher = _dispatcher
         _dispatcher.transfer_data(request)
-    except dispatch.DispatchException, e:
-        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
-        if not handshake_is_done:
-            return e.status
     except handshake.AbortedByUserException, e:
         request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
-    except handshake.HandshakeException, e:
-        # Handshake for ws/wss failed.
-        # Send http response with error status.
-        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
-        return e.status
-    except handshake.VersionException, e:
-        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_INFO)
-        request.err_headers_out.add(common.SEC_WEBSOCKET_VERSION_HEADER,
-                                    e.supported_versions)
-        return apache.HTTP_BAD_REQUEST
     except Exception, e:
-        request.log_error('mod_pywebsocket: %s' % e, apache.APLOG_WARNING)
+        # DispatchException can also be thrown if something is wrong in
+        # pywebsocket code. It's caught here, then.
+
+        request.log_error('mod_pywebsocket: %s\n%s' %
+                          (e, util.get_stack_trace()),
+                          apache.APLOG_ERROR)
         # Unknown exceptions before handshake mean Apache must handle its
         # request with another handler.
         if not handshake_is_done:

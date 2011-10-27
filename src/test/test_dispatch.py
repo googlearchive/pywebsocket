@@ -64,9 +64,13 @@ class DispatcherTest(unittest.TestCase):
 
     def test_converter(self):
         converter = dispatch._create_path_to_resource_converter('/a/b')
-        self.assertEqual('/h', converter('/a/b/h_wsh.py'))
-        self.assertEqual('/c/h', converter('/a/b/c/h_wsh.py'))
-        self.assertEqual(None, converter('/a/b/h.py'))
+        # Python built by MSC inserts a drive name like 'C:\' via realpath().
+        # Converter Generator expands provided path using realpath() and uses
+        # the path including a drive name to verify the prefix.
+        os_root = os.path.realpath('/')
+        self.assertEqual('/h', converter(os_root + 'a/b/h_wsh.py'))
+        self.assertEqual('/c/h', converter(os_root + 'a/b/c/h_wsh.py'))
+        self.assertEqual(None, converter(os_root + 'a/b/h.py'))
         self.assertEqual(None, converter('a/b/h_wsh.py'))
 
         converter = dispatch._create_path_to_resource_converter('a/b')
@@ -74,17 +78,17 @@ class DispatcherTest(unittest.TestCase):
             'a/b/h_wsh.py')))
 
         converter = dispatch._create_path_to_resource_converter('/a/b///')
-        self.assertEqual('/h', converter('/a/b/h_wsh.py'))
+        self.assertEqual('/h', converter(os_root + 'a/b/h_wsh.py'))
         self.assertEqual('/h', converter(dispatch._normalize_path(
             '/a/b/../b/h_wsh.py')))
 
         converter = dispatch._create_path_to_resource_converter(
             '/a/../a/b/../b/')
-        self.assertEqual('/h', converter('/a/b/h_wsh.py'))
+        self.assertEqual('/h', converter(os_root + 'a/b/h_wsh.py'))
 
         converter = dispatch._create_path_to_resource_converter(r'\a\b')
-        self.assertEqual('/h', converter(r'\a\b\h_wsh.py'))
-        self.assertEqual('/h', converter(r'/a/b/h_wsh.py'))
+        self.assertEqual('/h', converter(os_root + r'a\b\h_wsh.py'))
+        self.assertEqual('/h', converter(os_root + r'a/b/h_wsh.py'))
 
     def test_enumerate_handler_file_paths(self):
         paths = list(

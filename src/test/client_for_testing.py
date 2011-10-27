@@ -741,7 +741,7 @@ class WebSocketStream(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._socket.sendall(header + self._mask_hybi(body))
 
-    def send_data(self, payload, frame_type, end=True):
+    def send_data(self, payload, frame_type, end=True, mask=True):
         if self._outgoing_frame_filter is not None:
             payload = self._outgoing_frame_filter.filter(payload)
 
@@ -761,7 +761,10 @@ class WebSocketStream(object):
         if self._handshake._options.use_deflate_frame:
             rsv1 = 1
 
-        mask_bit = 1 << 7
+        if mask:
+            mask_bit = 1 << 7
+        else:
+            mask_bit = 0
 
         header = chr(fin << 7 | rsv1 << 6 | opcode)
         payload_length = len(payload)
@@ -773,13 +776,15 @@ class WebSocketStream(object):
             header += chr(mask_bit | 127) + struct.pack('!Q', payload_length)
         else:
             raise Exception('Too long payload (%d byte)' % payload_length)
-        self._socket.sendall(header + self._mask_hybi(payload))
+        if mask:
+            payload = self._mask_hybi(payload)
+        self._socket.sendall(header + payload)
 
-    def send_binary(self, payload, end=True):
-        self.send_data(payload, _OPCODE_BINARY, end)
+    def send_binary(self, payload, end=True, mask=True):
+        self.send_data(payload, _OPCODE_BINARY, end, mask)
 
-    def send_text(self, payload, end=True):
-        self.send_data(payload.encode('utf-8'), _OPCODE_TEXT, end)
+    def send_text(self, payload, end=True, mask=True):
+        self.send_data(payload.encode('utf-8'), _OPCODE_TEXT, end, mask)
 
     def _assert_receive_data(self, payload, opcode, fin, rsv1, rsv2, rsv3):
         received = _receive_bytes(self._socket, 2)
@@ -907,14 +912,14 @@ class WebSocketStreamHixie75(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._socket.sendall(header + body)
 
-    def send_data(self, payload, unused_frame_typem, unused_end):
+    def send_data(self, payload, unused_frame_typem, unused_end, unused_mask):
         frame = ''.join(['\x00', payload, '\xff'])
         self._socket.sendall(frame)
 
-    def send_binary(self, unused_payload, unused_end):
+    def send_binary(self, unused_payload, unused_end, unused_mask):
         pass
 
-    def send_text(self, payload, unused_end):
+    def send_text(self, payload, unused_end, unused_mask):
         encoded_payload = payload.encode('utf-8')
         frame = ''.join(['\x00', encoded_payload, '\xff'])
         self._socket.sendall(frame)
@@ -998,13 +1003,14 @@ class Client(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._stream.send_frame_of_arbitrary_bytes(header, body)
 
-    def send_message(self, message, end=True, binary=False, raw=False):
+    def send_message(self, message, end=True, binary=False, raw=False,
+                     mask=True):
         if binary:
-            self._stream.send_binary(message, end)
+            self._stream.send_binary(message, end, mask)
         elif raw:
-            self._stream.send_data(message, _OPCODE_TEXT, end)
+            self._stream.send_data(message, _OPCODE_TEXT, end, mask)
         else:
-            self._stream.send_text(message, end)
+            self._stream.send_text(message, end, mask)
 
     def assert_receive(self, payload, binary=False):
         if binary:
@@ -1026,9 +1032,17 @@ class Client(object):
             read_data = _receive_bytes(self._socket, 1)
         except Exception, e:
             if str(e).find(
-                'Connection closed before receiving requested length ') != 0:
-                raise
-            return
+                'Connection closed before receiving requested length ') == 0:
+                return
+            try:
+                error_number, message = e
+                for error_name in ['ECONNRESET', 'WSAECONNRESET']:
+                    if (error_name in dir(errno) and
+                        error_number == getattr(errno, error_name)):
+                        return
+            except:
+                raise e
+            raise e
 
         raise Exception('Connection is not closed (Read: %r)' % read_data)
 

@@ -107,6 +107,15 @@ def _echo_check_procedure_with_code_and_reason(client, code, reason):
     client.assert_connection_closed()
 
 
+def _unmasked_frame_check_procedure(client):
+    client.connect()
+
+    client.send_message('test', mask=False)
+    client.assert_receive_close(client_for_testing.STATUS_PROTOCOL_ERROR, '')
+
+    client.assert_connection_closed()
+
+
 class EndToEndTest(unittest.TestCase):
     """An end-to-end test that launches pywebsocket standalone server as a
     separate process, connects to it using the client_for_testing module, and
@@ -257,6 +266,9 @@ class EndToEndTest(unittest.TestCase):
 
     def test_echo_server_close(self):
         self._run_hybi_test(_echo_check_procedure_with_goodbye)
+
+    def test_unmasked_frame(self):
+        self._run_hybi_test(_unmasked_frame_check_procedure)
 
     def test_echo_deflate(self):
         self._run_hybi_deflate_test(_echo_check_procedure)

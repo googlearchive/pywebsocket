@@ -91,12 +91,13 @@ def do_handshake(request, dispatcher, allowDraft75=False, strict=False):
             ('IETF Hixie 75', draft75.Handshaker(request, dispatcher, strict)))
 
     for name, handshaker in handshakers:
-        _LOGGER.info('Trying %s protocol', name)
+        _LOGGER.debug('Trying %s protocol', name)
         try:
             handshaker.do_handshake()
+            _LOGGER.info('Established (%s protocol)', name)
             return
         except HandshakeException, e:
-            _LOGGER.info(
+            _LOGGER.debug(
                 'Failed to complete opening handshake as %s protocol: %r',
                 name, e)
             if e.status:

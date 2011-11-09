@@ -493,7 +493,7 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
     """
 
     def __init__(self, socket, options):
-        super(ClientHandshakeProcessor, self).__init__()
+        super(ClientHandshakeProcessorHybi00, self).__init__()
 
         self._socket = socket
         self._options = options

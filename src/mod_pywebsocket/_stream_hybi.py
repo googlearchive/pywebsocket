@@ -322,9 +322,11 @@ class Stream(StreamBase):
                 length_encoding_bytes = 2
 
         if not valid_length_encoding:
-            logger.warning('Payload length is not encoded using the '
-                           'minimal number of bytes (%d is encoded using '
-                           '%d bytes)', payload_length, length_encoding_bytes)
+            self._logger.warning(
+                'Payload length is not encoded using the minimal number of '
+                'bytes (%d is encoded using %d bytes)',
+                payload_length,
+                length_encoding_bytes)
 
         if mask == 1:
             masking_nonce = self.receive_bytes(4)

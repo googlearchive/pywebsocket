@@ -341,6 +341,16 @@ class MessageTest(unittest.TestCase):
             ('\x81\xff\x00\x00\x00\x00\x00\x01\x00\x00', payload))
         self.assertEqual(payload, msgutil.receive_message(request))
 
+    def test_receive_length_not_encoded_using_minimal_number_of_bytes(self):
+        # Log warning on receiving bad payload length field that doesn't use
+        # minimal number of bytes but continue processing.
+
+        payload = 'a'
+        # 1 byte can be represented without extended payload length field.
+        request = _create_request(
+            ('\x81\xff\x00\x00\x00\x00\x00\x00\x00\x01', payload))
+        self.assertEqual(payload, msgutil.receive_message(request))
+
     def test_receive_message_unicode(self):
         request = _create_request(('\x81\x83', '\xe6\x9c\xac'))
         # U+672c is encoded as e6,9c,ac in UTF-8

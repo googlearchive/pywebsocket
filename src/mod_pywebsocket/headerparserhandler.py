@@ -230,7 +230,7 @@ def headerparserhandler(request):
 
         request.log_error('mod_pywebsocket: %s\n%s' %
                           (e, util.get_stack_trace()),
-                          apache.APLOG_ERROR)
+                          apache.APLOG_ERR)
         # Unknown exceptions before handshake mean Apache must handle its
         # request with another handler.
         if not handshake_is_done:

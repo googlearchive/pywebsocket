@@ -562,8 +562,9 @@ def _alias_handlers(dispatcher, websock_handlers_map_file):
         fp.close()
 
 
-def _main():
+def _build_option_parser():
     parser = optparse.OptionParser()
+
     parser.add_option('-H', '--server-host', '--server_host',
                       dest='server_host',
                       default='',
@@ -638,7 +639,17 @@ def _main():
     parser.add_option('-q', '--queue', dest='request_queue_size', type='int',
                       default=_DEFAULT_REQUEST_QUEUE_SIZE,
                       help='request queue size')
-    options = parser.parse_args()[0]
+
+    return parser
+
+
+def _main(args=None):
+    parser = _build_option_parser()
+
+    options, args = parser.parse_args(args=args)
+    if args:
+        logging.critical('Unrecognized positional arguments: %r', args)
+        sys.exit(1)
 
     os.chdir(options.document_root)
 

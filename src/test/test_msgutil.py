@@ -491,6 +491,38 @@ class MessageTest(unittest.TestCase):
 
         self.assertEqual(None, msgutil.receive_message(request))
 
+    def test_receive_message_deflate_frame_client_using_smaller_window(self):
+        """Test that frames coming from a client which is using smaller window
+        size that the server are correctly received.
+        """
+
+        # Using the smallest window bits of 8 for generating input frames.
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -8)
+
+        data = ''
+
+        # Use a frame whose content is bigger than the clients' DEFLATE window
+        # size before compression. The content mainly consists of 'a' but
+        # repetition of 'b' is put at the head and tail so that if the window
+        # size is big, the head is back-referenced but if small, not.
+        payload = 'b' * 64 + 'a' * 1024 + 'b' * 64
+        compressed_hello = compress.compress(payload)
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        data += '\xc1%c' % (len(compressed_hello) | 0x80)
+        data += _mask_hybi(compressed_hello)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        request = _create_request_from_rawdata(
+            data, deflate_frame_request=extension)
+        self.assertEqual(payload, msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
     def test_receive_message_deflate_frame_comp_bit(self):
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)

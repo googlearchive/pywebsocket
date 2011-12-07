@@ -75,6 +75,8 @@ import select
 import socket
 import sys
 import threading
+import time
+
 
 _HAS_OPEN_SSL = False
 try:
@@ -625,6 +627,15 @@ def _build_option_parser():
                       choices=['debug', 'info', 'warning', 'warn', 'error',
                                'critical'],
                       help='Log level.')
+    parser.add_option('--thread-monitor-interval-in-sec',
+                      '--thread_monitor_interval_in_sec',
+                      dest='thread_monitor_interval_in_sec',
+                      type='int', default=-1,
+                      help=('If positive integer is specified, run a thread '
+                            'monitor to show the status of server threads '
+                            'periodically in the specified inteval in '
+                            'second. If non-positive integer is specified, '
+                            'disable the thread monitor.'))
     parser.add_option('--log-max', '--log_max', dest='log_max', type='int',
                       default=_DEFAULT_LOG_MAX_BYTES,
                       help='Log maximum bytes')
@@ -641,6 +652,28 @@ def _build_option_parser():
                       help='request queue size')
 
     return parser
+
+
+class ThreadMonitor(threading.Thread):
+    daemon = True
+
+    def __init__(self, interval_in_sec):
+        threading.Thread.__init__(self, name='ThreadMonitor')
+
+        self._logger = util.get_class_logger(self)
+
+        self._interval_in_sec = interval_in_sec
+
+    def run(self):
+        while True:
+            thread_name_list = []
+            for thread in threading.enumerate():
+                thread_name_list.append(thread.name)
+            self._logger.info(
+                "%d active threads: %s",
+                threading.active_count(),
+                ', '.join(thread_name_list))
+            time.sleep(self._interval_in_sec)
 
 
 def _main(args=None):
@@ -689,6 +722,11 @@ def _main(args=None):
         options.scan_dir = options.websock_handlers
 
     try:
+        if options.thread_monitor_interval_in_sec > 0:
+            # Run a thread monitor to show the status of server threads for
+            # debugging.
+            ThreadMonitor(options.thread_monitor_interval_in_sec).start()
+
         # Share a Dispatcher among request handlers to save time for
         # instantiation.  Dispatcher can be shared because it is thread-safe.
         options.dispatcher = dispatch.Dispatcher(

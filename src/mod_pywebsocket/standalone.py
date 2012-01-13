@@ -32,6 +32,8 @@
 
 """Standalone WebSocket server.
 
+BASIC USAGE
+
 Use this server to run mod_pywebsocket without Apache HTTP Server.
 
 Usage:
@@ -52,11 +54,39 @@ handlers. If this path is relative, <document_root> is used as the base.
 <scan_dir> is a path under the root directory. If specified, only the
 handlers under scan_dir are scanned. This is useful in saving scan time.
 
-Note:
+
+CONFIGURATION FILE
+
+You can also write a configuration file and use it by specifying the path to
+the configuration file by --config option. Please write a configuration file
+following the documentation of the Python ConfigParser library. Name of each
+entry must be the long version argument name. E.g. to set log level to debug,
+add the following line:
+
+log_level=debug
+
+For options which doesn't take value, please add some fake value. E.g. for
+--tls option, add the following line:
+
+tls=True
+
+Note that tls will be enabled even if you write tls=False as the value part is
+fake.
+
+When both a command line argument and a configuration file entry are set for
+the same configuration item, the command line value will override one in the
+configuration file.
+
+
+THREADING
+
 This server is derived from SocketServer.ThreadingMixIn. Hence a thread is
 used for each request.
 
-SECURITY WARNING: This uses CGIHTTPServer and CGIHTTPServer is not secure.
+
+SECURITY WARNING
+
+This uses CGIHTTPServer and CGIHTTPServer is not secure.
 It may execute arbitrary Python code or external programs. It should not be
 used outside a firewall.
 """
@@ -65,6 +95,7 @@ import BaseHTTPServer
 import CGIHTTPServer
 import SimpleHTTPServer
 import SocketServer
+import ConfigParser
 import httplib
 import logging
 import logging.handlers
@@ -567,6 +598,11 @@ def _alias_handlers(dispatcher, websock_handlers_map_file):
 def _build_option_parser():
     parser = optparse.OptionParser()
 
+    parser.add_option('--config', dest='config_file', type='string',
+                      default=None,
+                      help=('Path to configuration file. See the file comment '
+                            'at the top of this file for the configuration '
+                            'file format'))
     parser.add_option('-H', '--server-host', '--server_host',
                       dest='server_host',
                       default='',
@@ -676,13 +712,45 @@ class ThreadMonitor(threading.Thread):
             time.sleep(self._interval_in_sec)
 
 
-def _main(args=None):
+def _parse_args_and_config(args):
     parser = _build_option_parser()
 
-    options, args = parser.parse_args(args=args)
-    if args:
-        logging.critical('Unrecognized positional arguments: %r', args)
+    # First, parse options without configuration file.
+    temporary_options, temporary_args = parser.parse_args(args=args)
+    if temporary_args:
+        logging.critical(
+            'Unrecognized positional arguments: %r', temporary_args)
         sys.exit(1)
+
+    if temporary_options.config_file:
+        try:
+            config_fp = open(temporary_options.config_file, 'r')
+        except IOError, e:
+            logging.critical(
+                'Failed to open configuration file %r: %r',
+                temporary_options.config_file,
+                e)
+            sys.exit(1)
+
+        config_parser = ConfigParser.SafeConfigParser()
+        config_parser.readfp(config_fp)
+        config_fp.close()
+
+        args_from_config = []
+        for name, value in config_parser.items('pywebsocket'):
+            args_from_config.append('--' + name)
+            args_from_config.append(value)
+        if args is None:
+            args = args_from_config
+        else:
+            args = args_from_config + args
+        return parser.parse_args(args=args)
+    else:
+        return temporary_options, temporary_args
+
+
+def _main(args=None):
+    options, args = _parse_args_and_config(args=args)
 
     os.chdir(options.document_root)
 
@@ -750,7 +818,7 @@ def _main(args=None):
 
 
 if __name__ == '__main__':
-    _main()
+    _main(sys.argv[1:])
 
 
 # vi:sts=4 sw=4 et

@@ -224,6 +224,28 @@ class _StandaloneRequest(object):
                 'Drained data following close frame: %r', drained_data)
 
 
+class _StandaloneSSLConnection(object):
+    """A wrapper class for OpenSSL.SSL.Connection to provide makefile method
+    which is not supported by the class.
+    """
+
+    def __init__(self, connection):
+        self._connection = connection
+
+    def __getattribute__(self, name):
+        if name in ('_connection', 'makefile'):
+            return object.__getattribute__(self, name)
+        return self._connection.__getattribute__(name)
+
+    def __setattr__(self, name, value):
+        if name in ('_connection', 'makefile'):
+            return object.__setattr__(self, name, value)
+        return self._connection.__setattr__(name, value)
+
+    def makefile(self, mode='r', bufsize=-1):
+        return socket._fileobject(self._connection, mode, bufsize)
+
+
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """HTTPServer specialized for WebSocket."""
 
@@ -359,6 +381,16 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
             util.get_stack_trace())
         # Note: client_address is a tuple.
 
+    def get_request(self):
+        """Override TCPServer.get_request to wrap OpenSSL.SSL.Connection
+        object with _StandaloneSSLConnection to provide makefile method. We
+        cannot substitute OpenSSL.SSL.Connection.makefile since it's readonly
+        attribute.
+        """
+
+        accepted_socket, client_address = self.socket.accept()
+        return _StandaloneSSLConnection(accepted_socket), client_address
+
     def serve_forever(self, poll_interval=0.5):
         """Override SocketServer.BaseServer.serve_forever."""
 
@@ -444,7 +476,9 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         # it needs variables set by CGIHTTPRequestHandler.parse_request.
         #
         # Variables set by this method will be also used by WebSocket request
-        # handling. See _StandaloneRequest.get_request, etc.
+        # handling (self.path, self.command, self.requestline, etc. See also
+        # how _StandaloneRequest's members are implemented using these
+        # attributes).
         if not CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self):
             return False
         host, port, resource = http_header_util.parse_uri(self.path)

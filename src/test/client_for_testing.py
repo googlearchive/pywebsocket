@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011, Google Inc.
+# Copyright 2012, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -74,16 +74,18 @@ _CONNECTION_HEADER = 'Connection: Upgrade\r\n'
 _WEBSOCKET_ACCEPT_UUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
 
 # Status codes
-STATUS_NORMAL = 1000
+STATUS_NORMAL_CLOSURE = 1000
 STATUS_GOING_AWAY = 1001
 STATUS_PROTOCOL_ERROR = 1002
-STATUS_UNSUPPORTED = 1003
-STATUS_CODE_NOT_AVAILABLE = 1005
-STATUS_ABNORMAL_CLOSE = 1006
-STATUS_INVALID_FRAME_PAYLOAD = 1007
+STATUS_UNSUPPORTED_DATA = 1003
+STATUS_NO_STATUS_RECEIVED = 1005
+STATUS_ABNORMAL_CLOSURE = 1006
+STATUS_INVALID_FRAME_PAYLOAD_DATA = 1007
 STATUS_POLICY_VIOLATION = 1008
 STATUS_MESSAGE_TOO_BIG = 1009
 STATUS_MANDATORY_EXT = 1010
+STATUS_INTERNAL_SERVER_ERROR = 1011
+STATUS_TLS_HANDSHAKE = 1015
 
 # Extension tokens
 _DEFLATE_STREAM_EXTENSION = 'deflate-stream'
@@ -1018,10 +1020,10 @@ class Client(object):
         else:
             self._stream.assert_receive_text(payload)
 
-    def send_close(self, code=STATUS_NORMAL, reason=''):
+    def send_close(self, code=STATUS_NORMAL_CLOSURE, reason=''):
         self._stream.send_close(code, reason)
 
-    def assert_receive_close(self, code=STATUS_NORMAL, reason=''):
+    def assert_receive_close(self, code=STATUS_NORMAL_CLOSURE, reason=''):
         self._stream.assert_receive_close(code, reason)
 
     def close_socket(self):

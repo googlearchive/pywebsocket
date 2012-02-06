@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011, Google Inc.
+# Copyright 2012, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -316,7 +316,7 @@ class EndToEndTest(unittest.TestCase):
             # Text frame with RSV3 bit raised.
             client.send_frame_of_arbitrary_bytes('\x91\x80', '')
             client.assert_receive_close(
-                client_for_testing.STATUS_UNSUPPORTED)
+                client_for_testing.STATUS_UNSUPPORTED_DATA)
 
         self._run_hybi_test(test_function)
 
@@ -332,7 +332,7 @@ class EndToEndTest(unittest.TestCase):
             # Text frame with invalid UTF-8 string.
             client.send_message('\x80', raw=True)
             client.assert_receive_close(
-                client_for_testing.STATUS_INVALID_FRAME_PAYLOAD)
+                client_for_testing.STATUS_INVALID_FRAME_PAYLOAD_DATA)
 
         self._run_hybi_test(test_function)
 

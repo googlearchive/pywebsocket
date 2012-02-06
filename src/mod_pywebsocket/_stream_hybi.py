@@ -1,4 +1,4 @@
-# Copyright 2011, Google Inc.
+# Copyright 2012, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -508,7 +508,7 @@ class Stream(StreamBase):
                 self._logger.debug(
                     'Received client-initiated closing handshake')
 
-                code = common.STATUS_NORMAL
+                code = common.STATUS_NORMAL_CLOSURE
                 reason = ''
                 if hasattr(self._request, '_dispatcher'):
                     dispatcher = self._request._dispatcher
@@ -583,7 +583,7 @@ class Stream(StreamBase):
 
         self._write(frame)
 
-    def close_connection(self, code=common.STATUS_NORMAL, reason=''):
+    def close_connection(self, code=common.STATUS_NORMAL_CLOSURE, reason=''):
         """Closes a WebSocket connection."""
 
         if self._request.server_terminated:

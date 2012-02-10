@@ -72,7 +72,7 @@ _available_processors[common.DEFLATE_STREAM_EXTENSION] = (
 class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
     """WebSocket Per-frame DEFLATE extension processor."""
 
-    _WINDOW_BITS_PARAM = 'window_bits'
+    _WINDOW_BITS_PARAM = 'max_window_bits'
     _NO_CONTEXT_TAKEOVER_PARAM = 'no_context_takeover'
 
     def __init__(self, request):

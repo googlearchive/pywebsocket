@@ -277,20 +277,20 @@ class MessageTest(unittest.TestCase):
         """
 
         extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        # window_bits less than 8 is illegal.
-        extension.add_parameter('window_bits', '7')
+        # max_window_bits less than 8 is illegal.
+        extension.add_parameter('max_window_bits', '7')
         processor = DeflateFrameExtensionProcessor(extension)
         self.assertEqual(None, processor.get_extension_response())
 
         extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        # window_bits greater than 15 is illegal.
-        extension.add_parameter('window_bits', '16')
+        # max_window_bits greater than 15 is illegal.
+        extension.add_parameter('max_window_bits', '16')
         processor = DeflateFrameExtensionProcessor(extension)
         self.assertEqual(None, processor.get_extension_response())
 
         extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        # Non integer window_bits is illegal.
-        extension.add_parameter('window_bits', 'foobar')
+        # Non integer max_window_bits is illegal.
+        extension.add_parameter('max_window_bits', 'foobar')
         processor = DeflateFrameExtensionProcessor(extension)
         self.assertEqual(None, processor.get_extension_response())
 
@@ -305,8 +305,8 @@ class MessageTest(unittest.TestCase):
         processor = DeflateFrameExtensionProcessor(extension)
         processor.set_response_window_bits(8)
         response = processor.get_extension_response()
-        self.assertTrue(response.has_parameter('window_bits'))
-        self.assertEqual('8', response.get_parameter_value('window_bits'))
+        self.assertTrue(response.has_parameter('max_window_bits'))
+        self.assertEqual('8', response.get_parameter_value('max_window_bits'))
 
         extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
         processor = DeflateFrameExtensionProcessor(extension)

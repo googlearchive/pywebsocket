@@ -110,7 +110,7 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
 
         self._compress_outgoing = True
 
-        response = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        response = common.ExtensionParameter(self._request.name())
 
         if self._response_window_bits is not None:
             response.add_parameter(
@@ -123,7 +123,7 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
             'Enable %s extension ('
             'request: window_bits=%s; no_context_takeover=%r, '
             'response: window_wbits=%s; no_context_takeover=%r)' %
-            (common.DEFLATE_STREAM_EXTENSION,
+            (self._request.name(),
              window_bits,
              no_context_takeover,
              self._response_window_bits,
@@ -191,6 +191,12 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
 
 
 _available_processors[common.DEFLATE_FRAME_EXTENSION] = (
+    DeflateFrameExtensionProcessor)
+
+
+# Adding vendor-prefixed deflate-frame extension.
+# TODO(bashi): Remove this after WebKit stops using vender prefix.
+_available_processors[common.X_WEBKIT_DEFLATE_FRAME_EXTENSION] = (
     DeflateFrameExtensionProcessor)
 
 

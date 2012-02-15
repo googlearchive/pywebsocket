@@ -93,6 +93,7 @@ SEC_WEBSOCKET_LOCATION_HEADER = 'Sec-WebSocket-Location'
 # Extensions
 DEFLATE_STREAM_EXTENSION = 'deflate-stream'
 DEFLATE_FRAME_EXTENSION = 'deflate-frame'
+X_WEBKIT_DEFLATE_FRAME_EXTENSION = 'x-webkit-deflate-frame'
 
 # Status codes
 # Code STATUS_NO_STATUS_RECEIVED, STATUS_ABNORMAL_CLOSURE, and

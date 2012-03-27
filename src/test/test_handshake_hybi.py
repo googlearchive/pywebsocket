@@ -355,6 +355,14 @@ class HandshakerTest(unittest.TestCase):
              request_def, 400, True))
 
         request_def = _create_good_request_def()
+        # The last character right before == must be any of A, Q, w and g.
+        request_def.headers['Sec-WebSocket-Key'] = (
+            'AQIDBAUGBwgJCgsMDQ4PEC==')
+        bad_cases.append(
+            ('Wrong Sec-WebSocket-Key (padding bits are not zero)',
+             request_def, 400, True))
+
+        request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Key'] = (
             'dGhlIHNhbXBsZSBub25jZQ==,dGhlIHNhbXBsZSBub25jZQ==')
         bad_cases.append(

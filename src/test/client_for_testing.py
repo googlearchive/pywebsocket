@@ -141,8 +141,9 @@ def _receive_bytes(socket, length):
     return ''.join(bytes)
 
 
-# TODO(tyoshino): Now HyBi 07 diverts these methods. We should move to HTTP
-# parser. For HyBi 00 and Hixie 75, pack these methods as some parser class.
+# TODO(tyoshino): Now the WebSocketHandshake class diverts these methods. We
+# should move to HTTP parser as specified in RFC 6455. For HyBi 00 and
+# Hixie 75, pack these methods as some parser class.
 
 
 def _read_fields(socket):
@@ -249,7 +250,7 @@ class HttpStatusException(Exception):
 
 
 class WebSocketHandshake(object):
-    """WebSocket handshake processor for IETF HyBi latest protocol."""
+    """Opening handshake processor for the WebSocket protocol (RFC 6455)."""
 
     def __init__(self, options):
         self._logger = util.get_class_logger(self)
@@ -435,7 +436,8 @@ class WebSocketHandshake(object):
 
 
 class WebSocketHybi00Handshake(object):
-    """WebSocket handshake processor for IETF HyBi 00."""
+    """Opening handshake processor for the WebSocket protocol version HyBi 00.
+    """
 
     def __init__(self, options, draft_field):
         self._logger = util.get_class_logger(self)
@@ -708,7 +710,7 @@ class WebSocketHixie75Handshake(object):
 
 
 class WebSocketStream(object):
-    """WebSocket frame processor for IETF HyBi latest protocol."""
+    """Frame processor for the WebSocket protocol (RFC 6455)."""
 
     def __init__(self, socket, handshake):
         self._handshake = handshake
@@ -904,7 +906,8 @@ class WebSocketStream(object):
 
 
 class WebSocketStreamHixie75(object):
-    """WebSocket frame processor for Hixie 75 and IETF HyBi 00."""
+    """Frame processor for the WebSocket protocol version Hixie 75 and HyBi 00.
+    """
 
     _CLOSE_FRAME = '\xff\x00'
 

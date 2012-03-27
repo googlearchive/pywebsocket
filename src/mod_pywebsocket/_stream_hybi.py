@@ -28,7 +28,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Stream class for IETF HyBi latest WebSocket protocol.
+"""This file provides classes and helper functions for parsing/building frames
+of the WebSocket protocol (RFC 6455).
+
+Specification:
+http://tools.ietf.org/html/rfc6455
 """
 
 
@@ -238,7 +242,9 @@ class StreamOptions(object):
 
 
 class Stream(StreamBase):
-    """Stream of WebSocket messages."""
+    """A class for parsing/building frames of the WebSocket protocol
+    (RFC 6455).
+    """
 
     def __init__(self, request, options):
         """Constructs an instance.

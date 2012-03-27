@@ -28,7 +28,12 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""WebSocket HyBi latest opening handshake processor."""
+"""This file provides the opening handshake processor for the WebSocket
+protocol (RFC 6455).
+
+Specification:
+http://tools.ietf.org/html/rfc6455
+"""
 
 
 # Note: request.connection.write is used in this module, even though mod_python
@@ -85,7 +90,7 @@ def compute_accept(key):
 
 
 class Handshaker(object):
-    """This class performs WebSocket handshake."""
+    """Opening handshake processor for the WebSocket protocol (RFC 6455)."""
 
     def __init__(self, request, dispatcher):
         """Construct an instance.
@@ -161,7 +166,7 @@ class Handshaker(object):
                 accept,
                 util.hexify(accept_binary))
 
-            self._logger.debug('IETF HyBi protocol')
+            self._logger.debug('Protocol version is RFC 6455')
 
             # Setup extension processors.
 

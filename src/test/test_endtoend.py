@@ -428,6 +428,17 @@ class EndToEndTest(unittest.TestCase):
         self.server_stderr = subprocess.PIPE
         self._run_hybi_http_fallback_test(options, 400)
 
+    def _check_example_echo_client_result(
+        self, expected, stdoutdata, stderrdata):
+        actual = stdoutdata.decode("utf-8")
+        if actual != expected:
+            raise Exception('Unexpected result on example echo client: '
+                            '%r (expected) vs %r (actual)' %
+                            (expected, actual))
+        if stderrdata is not None:
+            raise Exception('Unexpected error message on example echo '
+                            'client: %r' % stderrdata)
+
     def test_example_echo_client(self):
         """Tests that the echo_client.py example can talk with the server."""
 
@@ -437,21 +448,30 @@ class EndToEndTest(unittest.TestCase):
 
             client_command = os.path.join(
                 self.top_dir, 'example', 'echo_client.py')
+
             args = [client_command,
                     '-p', str(self._options.server_port)]
             client = self._run_python_command(args, stdout=subprocess.PIPE)
             stdoutdata, stderrdata = client.communicate()
-            actual = stdoutdata.decode("utf-8")
             expected = ('Send: Hello\n' 'Recv: Hello\n'
                 u'Send: \u65e5\u672c\n' u'Recv: \u65e5\u672c\n'
                 'Send close\n' 'Recv ack\n')
-            if actual != expected:
-                raise Exception('Unexpected result on example echo client: '
-                                '%r (expected) vs %r (actual)' %
-                                (expected, actual))
-            if stderrdata is not None:
-                raise Exception('Unexpected error message on example echo '
-                                'client: %r' % stderrdata)
+            self._check_example_echo_client_result(
+                expected, stdoutdata, stderrdata)
+
+            # Process a big message for which extended payload length is used.
+            # To handle extended payload length, ws_version attribute will be
+            # accessed. This test checks that ws_version is correctly set.
+            big_message = 'a' * 1024
+            args = [client_command,
+                    '-p', str(self._options.server_port),
+                    '-m', big_message]
+            client = self._run_python_command(args, stdout=subprocess.PIPE)
+            stdoutdata, stderrdata = client.communicate()
+            expected = ('Send: %s\nRecv: %s\nSend close\nRecv ack\n' %
+                        (big_message, big_message))
+            self._check_example_echo_client_result(
+                expected, stdoutdata, stderrdata)
         finally:
             self._kill_process(server.pid)
 

@@ -844,6 +844,13 @@ class EchoClient(object):
 
             request = ClientRequest(self._socket)
 
+            version_map = {
+                _PROTOCOL_VERSION_HYBI08: common.VERSION_HYBI08,
+                _PROTOCOL_VERSION_HYBI13: common.VERSION_HYBI13,
+                _PROTOCOL_VERSION_HYBI00: common.VERSION_HYBI00,
+                _PROTOCOL_VERSION_HIXIE75: common.VERSION_HIXIE75}
+            request.ws_version = version_map[version]
+
             if (version == _PROTOCOL_VERSION_HYBI08 or
                 version == _PROTOCOL_VERSION_HYBI13):
                 stream_option = StreamOptions()

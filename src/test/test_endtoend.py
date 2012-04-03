@@ -62,6 +62,8 @@ def _echo_check_procedure(client):
 
     client.send_message('test')
     client.assert_receive('test')
+    client.send_message('helloworld')
+    client.assert_receive('helloworld')
 
     client.send_close()
     client.assert_receive_close()

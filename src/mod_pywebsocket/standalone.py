@@ -108,13 +108,17 @@ import sys
 import threading
 import time
 
-
+_HAS_SSL = False
 _HAS_OPEN_SSL = False
 try:
-    import OpenSSL.SSL
-    _HAS_OPEN_SSL = True
+    import ssl
+    _HAS_SSL = True
 except ImportError:
-    pass
+    try:
+        import OpenSSL.SSL
+        _HAS_OPEN_SSL = True
+    except ImportError:
+        pass
 
 from mod_pywebsocket import common
 from mod_pywebsocket import dispatch
@@ -306,12 +310,18 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                 self._logger.info('Skip by failure: %r', e)
                 continue
             if self.websocket_server_options.use_tls:
-                ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
-                ctx.use_privatekey_file(
-                    self.websocket_server_options.private_key)
-                ctx.use_certificate_file(
-                    self.websocket_server_options.certificate)
-                socket_ = OpenSSL.SSL.Connection(ctx, socket_)
+                if _HAS_SSL:
+                    socket_ = ssl.wrap_socket(socket_,
+                        keyfile=self.websocket_server_options.private_key,
+                        certfile=self.websocket_server_options.certificate,
+                        ssl_version=ssl.PROTOCOL_SSLv23)
+                if _HAS_OPEN_SSL:
+                    ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+                    ctx.use_privatekey_file(
+                        self.websocket_server_options.private_key)
+                    ctx.use_certificate_file(
+                        self.websocket_server_options.certificate)
+                    socket_ = OpenSSL.SSL.Connection(ctx, socket_)
             self._sockets.append((socket_, addrinfo))
 
     def server_bind(self):
@@ -389,7 +399,9 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         """
 
         accepted_socket, client_address = self.socket.accept()
-        return _StandaloneSSLConnection(accepted_socket), client_address
+        if self.websocket_server_options.use_tls and _HAS_OPEN_SSL:
+            accepted_socket = _StandaloneSSLConnection(accepted_socket)
+        return accepted_socket, client_address
 
     def serve_forever(self, poll_interval=0.5):
         """Override SocketServer.BaseServer.serve_forever."""
@@ -812,8 +824,8 @@ def _main(args=None):
             options.is_executable_method = __check_script
 
     if options.use_tls:
-        if not _HAS_OPEN_SSL:
-            logging.critical('To use TLS, install pyOpenSSL.')
+        if not (_HAS_SSL or _HAS_OPEN_SSL):
+            logging.critical('TLS support requires ssl or pyOpenSSL.')
             sys.exit(1)
         if not options.private_key or not options.certificate:
             logging.critical(

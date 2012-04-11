@@ -44,16 +44,36 @@ on the middle textarea.
 <script>
 var socket = null;
 
+var showTimeStamp = false;
+
 var addressBox = null;
 var logBox = null;
 var messageBox = null;
+var fileBox = null;
 var codeBox = null;
 var reasonBox = null;
 
+function getTimeStamp() {
+  return new Date().getTime();
+}
+
 function addToLog(log) {
+  if (showTimeStamp) {
+    logBox.value += '[' + getTimeStamp() + '] ';
+  }
   logBox.value += log + '\n'
   // Large enough to keep showing the latest message.
   logBox.scrollTop = 1000000;
+}
+
+function setbinarytype(binaryType) {
+  if (!socket) {
+    addToLog('Not connected');
+    return;
+  }
+
+  socket.binaryType = binaryType;
+  addToLog('Set binaryType to ' + binaryType);
 }
 
 function send() {
@@ -65,6 +85,23 @@ function send() {
   socket.send(messageBox.value);
   addToLog('> ' + messageBox.value);
   messageBox.value = '';
+}
+
+function sendfile() {
+  if (!socket) {
+    addToLog('Not connected');
+    return;
+  }
+
+  var files = fileBox.files;
+
+  if (files.length == 0) {
+    addToLog('File not selected');
+    return;
+  }
+
+  socket.send(files[0]);
+  addToLog('> Send ' + files[0].name);
 }
 
 function connect() {
@@ -139,6 +176,7 @@ function init() {
   addressBox = document.getElementById('address');
   logBox = document.getElementById('log');
   messageBox = document.getElementById('message');
+  fileBox = document.getElementById('file');
   codeBox = document.getElementById('code');
   reasonBox = document.getElementById('reason');
 
@@ -165,6 +203,29 @@ function init() {
 <form action="#" onsubmit="send(); return false;">
 <input type="text" id="message" size="40">
 <input type="submit" value="send">
+</form>
+
+<form action="#" onsubmit="sendfile(); return false;">
+<input type="file" id="file" size="40">
+<input type="submit" value="send file">
+</form>
+
+<form>
+<input type="radio"
+       name="binarytype"
+       value="blob"
+       onclick="setbinarytype('blob')" checked>blob
+<input type="radio"
+       name="binarytype"
+       value="arraybuffer"
+       onclick="setbinarytype('arraybuffer')">arraybuffer
+</form>
+
+<form>
+<input type="checkbox"
+       name="showtimestamp"
+       value="showtimestamp"
+       onclick="showTimeStamp = this.checked">Show time stamp
 </form>
 
 <form action="#" onsubmit="closeSocket(); return false;">

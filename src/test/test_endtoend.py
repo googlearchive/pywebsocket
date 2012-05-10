@@ -288,7 +288,12 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_close_with_code_and_reason(self):
         self._options.resource = '/close'
         self._run_hybi_close_with_code_and_reason_test(
-            _echo_check_procedure_with_code_and_reason, 3333, "sunsunsunsun")
+            _echo_check_procedure_with_code_and_reason, 3333, 'sunsunsunsun')
+
+    def test_echo_close_with_empty_body(self):
+        self._options.resource = '/close'
+        self._run_hybi_close_with_code_and_reason_test(
+            _echo_check_procedure_with_code_and_reason, None, '')
 
     def test_close_on_protocol_error(self):
         """Tests that the server sends a close frame with protocol error status

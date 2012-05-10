@@ -1,4 +1,4 @@
-# Copyright 2011, Google Inc.
+# Copyright 2012, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -29,6 +29,7 @@
 
 import struct
 
+from mod_pywebsocket import common
 from mod_pywebsocket import stream
 
 
@@ -51,7 +52,14 @@ def web_socket_transfer_data(request):
 
 
 def web_socket_passive_closing_handshake(request):
-    return request.ws_close_code, request.ws_close_reason
+    # Simply echo a close status code
+    code, reason = request.ws_close_code, request.ws_close_reason
+
+    # pywebsocket sets pseudo code for receiving an empty body close frame.
+    if code == common.STATUS_NO_STATUS_RECEIVED:
+        code = None
+        reason = ''
+    return code, reason
 
 
 # vi:sts=4 sw=4 et

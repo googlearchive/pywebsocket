@@ -552,11 +552,51 @@ class MessageTest(unittest.TestCase):
         for i in xrange(3):
             self.assertEqual('Hello', msgutil.receive_message(request))
 
+    def test_send_longest_close(self):
+        reason = 'a' * 123
+        request = _create_request(
+            ('\x88\xfd',
+             struct.pack('!H', common.STATUS_NORMAL_CLOSURE) + reason))
+        request.ws_stream.close_connection(common.STATUS_NORMAL_CLOSURE,
+                                           reason)
+        self.assertEqual(request.ws_close_code, common.STATUS_NORMAL_CLOSURE)
+        self.assertEqual(request.ws_close_reason, reason)
+
+    def test_send_close_too_long(self):
+        request = _create_request()
+        self.assertRaises(msgutil.BadOperationException,
+                          Stream.close_connection,
+                          request.ws_stream,
+                          common.STATUS_NORMAL_CLOSURE,
+                          'a' * 124)
+
+    def test_send_close_inconsistent_code_and_reason(self):
+        request = _create_request()
+        # reason parameter must not be specified when code is None.
+        self.assertRaises(msgutil.BadOperationException,
+                          Stream.close_connection,
+                          request.ws_stream,
+                          None,
+                          'a')
+
     def test_send_ping(self):
         request = _create_request()
         msgutil.send_ping(request, 'Hello World!')
         self.assertEqual('\x89\x0cHello World!',
                          request.connection.written_data())
+
+    def test_send_longest_ping(self):
+        request = _create_request()
+        msgutil.send_ping(request, 'a' * 125)
+        self.assertEqual('\x89\x7d' + 'a' * 125,
+                         request.connection.written_data())
+
+    def test_send_ping_too_long(self):
+        request = _create_request()
+        self.assertRaises(msgutil.BadOperationException,
+                          msgutil.send_ping,
+                          request,
+                          'a' * 126)
 
     def test_receive_ping(self):
         """Tests receiving a ping control frame."""
@@ -577,6 +617,19 @@ class MessageTest(unittest.TestCase):
         request.on_ping_handler = handler
         self.assertEqual('World', msgutil.receive_message(request))
         self.assertTrue(request.called)
+
+    def test_receive_longest_ping(self):
+        request = _create_request(
+            ('\x89\xfd', 'a' * 125), ('\x81\x85', 'World'))
+        self.assertEqual('World', msgutil.receive_message(request))
+        self.assertEqual('\x8a\x7d' + 'a' * 125,
+                         request.connection.written_data())
+
+    def test_receive_ping_too_long(self):
+        request = _create_request(('\x89\xfe\x00\x7e', 'a' * 126))
+        self.assertRaises(msgutil.InvalidFrameException,
+                          msgutil.receive_message,
+                          request)
 
     def test_receive_pong(self):
         """Tests receiving a pong control frame."""

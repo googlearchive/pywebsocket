@@ -208,7 +208,17 @@ class FragmentedFrameBuilder(object):
 def _create_control_frame(opcode, body, mask, frame_filters):
     frame = Frame(opcode=opcode, payload=body)
 
-    return _filter_and_format_frame_object(frame, mask, frame_filters)
+    for frame_filter in frame_filters:
+        frame_filter.filter(frame)
+
+    if len(frame.payload) > 125:
+        raise BadOperationException(
+            'Payload data size of control frames must be 125 bytes or less')
+
+    header = create_header(
+        frame.opcode, len(frame.payload), frame.fin,
+        frame.rsv1, frame.rsv2, frame.rsv3, mask)
+    return _build_frame(header, frame.payload, mask)
 
 
 def create_ping_frame(body, mask=False, frame_filters=[]):
@@ -408,6 +418,15 @@ class Stream(StreamBase):
 
             frame = self._receive_frame_as_frame_object()
 
+            # Check the constraint on the payload size for control frames
+            # before extension processes the frame.
+            # See also http://tools.ietf.org/html/rfc6455#section-5.5
+            if (common.is_control_opcode(frame.opcode) and
+                len(frame.payload) > 125):
+                raise InvalidFrameException(
+                    'Payload data size of control frames must be 125 bytes or '
+                    'less')
+
             for frame_filter in self._options.incoming_frame_filters:
                 frame_filter.filter(frame)
 
@@ -449,12 +468,6 @@ class Stream(StreamBase):
 
                 if frame.fin:
                     # Unfragmented frame
-
-                    if (common.is_control_opcode(frame.opcode) and
-                        len(frame.payload) > 125):
-                        raise InvalidFrameException(
-                            'Application data size of control frames must be '
-                            '125 bytes or less')
 
                     self._original_opcode = frame.opcode
                     message = frame.payload
@@ -586,10 +599,6 @@ class Stream(StreamBase):
             if code >= (1 << 16) or code < 0:
                 raise BadOperationException('Status code is out of range')
             encoded_reason = reason.encode('utf-8')
-            if len(encoded_reason) + 2 > 125:
-                raise BadOperationException(
-                    'Application data size of close frames must be 125 bytes '
-                    'or less')
             body = struct.pack('!H', code) + encoded_reason
 
         frame = create_close_frame(
@@ -654,10 +663,6 @@ class Stream(StreamBase):
         # note: mod_python Connection (mp_conn) doesn't have close method.
 
     def send_ping(self, body=''):
-        if len(body) > 125:
-            raise ValueError(
-                'Application data size of control frames must be 125 bytes or '
-                'less')
         frame = create_ping_frame(
             body,
             self._options.mask_send,
@@ -667,10 +672,6 @@ class Stream(StreamBase):
         self._ping_queue.append(body)
 
     def _send_pong(self, body):
-        if len(body) > 125:
-            raise ValueError(
-                'Application data size of control frames must be 125 bytes or '
-                'less')
         frame = create_pong_frame(
             body,
             self._options.mask_send,

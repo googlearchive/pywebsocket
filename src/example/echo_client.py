@@ -74,8 +74,6 @@ import sys
 
 from mod_pywebsocket import common
 from mod_pywebsocket.extensions import DeflateFrameExtensionProcessor
-from mod_pywebsocket.handshake._base import format_extensions
-from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket.stream import StreamOptions
@@ -357,7 +355,7 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             fields.append(
                 '%s: %s\r\n' %
                 (common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
-                 format_extensions(extensions_to_request)))
+                 common.format_extensions(extensions_to_request)))
 
         for field in fields:
             self._socket.sendall(field)
@@ -452,7 +450,8 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             common.SEC_WEBSOCKET_EXTENSIONS_HEADER.lower())
         accepted_extensions = []
         if extensions_header is not None and len(extensions_header) != 0:
-            accepted_extensions = parse_extensions(extensions_header[0])
+            accepted_extensions = common.parse_extensions(extensions_header[0])
+        # TODO(bashi): Support the new style perframe compression extension.
         for extension in accepted_extensions:
             extension_name = extension.name()
             if (extension_name == common.DEFLATE_STREAM_EXTENSION and

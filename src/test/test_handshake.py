@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011, Google Inc.
+# Copyright 2012, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -38,9 +38,10 @@ import unittest
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket.common import ExtensionParameter
-from mod_pywebsocket.handshake._base import format_extensions
+from mod_pywebsocket.common import ExtensionParsingException
+from mod_pywebsocket.common import format_extensions
+from mod_pywebsocket.common import parse_extensions
 from mod_pywebsocket.handshake._base import HandshakeException
-from mod_pywebsocket.handshake._base import parse_extensions
 from mod_pywebsocket.handshake._base import validate_subprotocol
 
 
@@ -161,7 +162,8 @@ class ExtensionsParserTest(unittest.TestCase):
 
         for formatted_string, unused_definition in _TEST_QUOTED_EXTENSION_DATA:
             self.assertRaises(
-                HandshakeException, parse_extensions, formatted_string, False)
+                ExtensionParsingException, parse_extensions,
+                formatted_string, False)
 
     def test_parse_with_allow_quoted_string(self):
         for formatted_string, definition in _TEST_TOKEN_EXTENSION_DATA:
@@ -184,7 +186,8 @@ class ExtensionsParserTest(unittest.TestCase):
         for (formatted_string,
              definition) in _TEST_REDUNDANT_QUOTED_EXTENSION_DATA:
             self.assertRaises(
-                HandshakeException, parse_extensions, formatted_string, False)
+                ExtensionParsingException, parse_extensions,
+                formatted_string, False)
 
     def test_parse_redundant_data_with_allow_quoted_string(self):
         for (formatted_string,
@@ -214,7 +217,7 @@ class ExtensionsParserTest(unittest.TestCase):
 
         for formatted_string in _TEST_BAD_EXTENSION_DATA:
             self.assertRaises(
-                HandshakeException, parse_extensions, formatted_string)
+                ExtensionParsingException, parse_extensions, formatted_string)
 
 
 class FormatExtensionsTest(unittest.TestCase):

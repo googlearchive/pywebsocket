@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011, Google Inc.
+# Copyright 2012, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -57,7 +57,7 @@ setup(author='Yuzo Fujishima',
       url='http://code.google.com/p/pywebsocket/',
       # See the source of distutils.version, distutils.versionpredicate and
       # distutils.dist to understand how to name version numbers.
-      version='0.7.4',
+      version='0.7.5',
       )
 
 

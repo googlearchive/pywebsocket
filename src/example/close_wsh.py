@@ -45,10 +45,14 @@ def web_socket_transfer_data(request):
         code, reason = line.split(' ', 1)
         if code is None or reason is None:
             return
-        data = struct.pack('!H', int(code)) + reason.encode('UTF-8')
-        request.connection.write(stream.create_close_frame(data))
-        # Suppress to re-respond client responding close frame.
-        raise Exception("customized server initiated closing handshake")
+        request.ws_stream.close_connection(int(code), reason)
+        # close_connection() initiates closing handshake. It validates code
+        # and reason. If you want to send a broken close frame for a test,
+        # following code will be useful.
+        # > data = struct.pack('!H', int(code)) + reason.encode('UTF-8')
+        # > request.connection.write(stream.create_close_frame(data))
+        # > # Suppress to re-respond client responding close frame.
+        # > raise Exception("customized server initiated closing handshake")
 
 
 def web_socket_passive_closing_handshake(request):

@@ -596,8 +596,14 @@ class Stream(StreamBase):
     def _send_closing_handshake(self, code, reason):
         body = ''
         if code is not None:
-            if code >= (1 << 16) or code < 0:
+            if (code > common.STATUS_USER_PRIVATE_MAX or
+                code < common.STATUS_NORMAL_CLOSURE):
                 raise BadOperationException('Status code is out of range')
+            if (code == common.STATUS_NO_STATUS_RECEIVED or
+                code == common.STATUS_ABNORMAL_CLOSURE or
+                code == common.STATUS_TLS_HANDSHAKE):
+                raise BadOperationException('Status code is reserved pseudo '
+                    'code')
             encoded_reason = reason.encode('utf-8')
             body = struct.pack('!H', code) + encoded_reason
 

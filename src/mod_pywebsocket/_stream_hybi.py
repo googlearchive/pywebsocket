@@ -39,6 +39,7 @@ http://tools.ietf.org/html/rfc6455
 from collections import deque
 import os
 import struct
+import time
 
 from mod_pywebsocket import common
 from mod_pywebsocket import util
@@ -296,6 +297,9 @@ class Stream(StreamBase):
             InvalidFrameException: when the frame contains invalid data.
         """
 
+        self._logger.log(common.LOGLEVEL_FINE,
+                         'Receive the first 2 octets of a frame')
+
         received = self.receive_bytes(2)
 
         first_byte = ord(received[0])
@@ -309,6 +313,11 @@ class Stream(StreamBase):
         mask = (second_byte >> 7) & 1
         payload_length = second_byte & 0x7f
 
+        self._logger.log(common.LOGLEVEL_FINE,
+                         'FIN=%s, RSV1=%s, RSV2=%s, RSV3=%s, opcode=%s, '
+                         'Mask=%s, Payload_length=%s',
+                         fin, rsv1, rsv2, rsv3, opcode, mask, payload_length)
+
         if (mask == 1) != self._options.unmask_receive:
             raise InvalidFrameException(
                 'Mask bit on the received frame did\'nt match masking '
@@ -320,6 +329,9 @@ class Stream(StreamBase):
         valid_length_encoding = True
         length_encoding_bytes = 1
         if payload_length == 127:
+            self._logger.log(common.LOGLEVEL_FINE,
+                             'Receive 8-octet extended payload length')
+
             extended_payload_length = self.receive_bytes(8)
             payload_length = struct.unpack(
                 '!Q', extended_payload_length)[0]
@@ -329,13 +341,22 @@ class Stream(StreamBase):
             if self._request.ws_version >= 13 and payload_length < 0x10000:
                 valid_length_encoding = False
                 length_encoding_bytes = 8
+
+            self._logger.log(common.LOGLEVEL_FINE,
+                             'Decoded_payload_length=%s', payload_length)
         elif payload_length == 126:
+            self._logger.log(common.LOGLEVEL_FINE,
+                             'Receive 2-octet extended payload length')
+
             extended_payload_length = self.receive_bytes(2)
             payload_length = struct.unpack(
                 '!H', extended_payload_length)[0]
             if self._request.ws_version >= 13 and payload_length < 126:
                 valid_length_encoding = False
                 length_encoding_bytes = 2
+
+            self._logger.log(common.LOGLEVEL_FINE,
+                             'Decoded_payload_length=%s', payload_length)
 
         if not valid_length_encoding:
             self._logger.warning(
@@ -345,12 +366,38 @@ class Stream(StreamBase):
                 length_encoding_bytes)
 
         if mask == 1:
+            self._logger.log(common.LOGLEVEL_FINE, 'Receive mask')
+
             masking_nonce = self.receive_bytes(4)
             masker = util.RepeatedXorMasker(masking_nonce)
+
+            self._logger.log(common.LOGLEVEL_FINE, 'Mask=%r', masking_nonce)
         else:
             masker = _NOOP_MASKER
 
-        bytes = masker.mask(self.receive_bytes(payload_length))
+        self._logger.log(common.LOGLEVEL_FINE, 'Receive payload data')
+        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
+            receive_start = time.time()
+
+        raw_payload_bytes = self.receive_bytes(payload_length)
+
+        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
+            self._logger.log(
+                common.LOGLEVEL_FINE,
+                'Done receiving payload data at %s MB/s',
+                payload_length / (time.time() - receive_start) / 1000 / 1000)
+        self._logger.log(common.LOGLEVEL_FINE, 'Unmask payload data')
+
+        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
+            unmask_start = time.time()
+
+        bytes = masker.mask(raw_payload_bytes)
+
+        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
+            self._logger.log(
+                common.LOGLEVEL_FINE,
+                'Done unmasking payload data at %s MB/s',
+                payload_length / (time.time() - unmask_start) / 1000 / 1000)
 
         return opcode, bytes, fin, rsv1, rsv2, rsv3
 

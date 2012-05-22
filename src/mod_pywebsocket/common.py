@@ -35,6 +35,9 @@
 from mod_pywebsocket import http_header_util
 
 
+# Additional log level definitions.
+LOGLEVEL_FINE = 9
+
 # Constants indicating WebSocket protocol version.
 VERSION_HIXIE75 = -1
 VERSION_HYBI00 = 0

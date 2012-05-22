@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2011, Google Inc.
+# Copyright 2012, Google Inc.
 # All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
@@ -601,7 +601,13 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         return False
 
 
+def _get_logger_from_class(c):
+    return logging.getLogger('%s.%s' % (c.__module__, c.__name__))
+
+
 def _configure_logging(options):
+    logging.addLevelName(common.LOGLEVEL_FINE, 'FINE')
+
     logger = logging.getLogger()
     logger.setLevel(logging.getLevelName(options.log_level.upper()))
     if options.log_file:
@@ -613,6 +619,13 @@ def _configure_logging(options):
             '[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
     handler.setFormatter(formatter)
     logger.addHandler(handler)
+
+    deflate_log_level_name = logging.getLevelName(
+        options.deflate_log_level.upper())
+    _get_logger_from_class(util._Deflater).setLevel(
+        deflate_log_level_name)
+    _get_logger_from_class(util._Inflater).setLevel(
+        deflate_log_level_name)
 
 
 def _alias_handlers(dispatcher, websock_handlers_map_file):
@@ -704,11 +717,20 @@ def _build_option_parser():
                       default='', help='TLS certificate file.')
     parser.add_option('-l', '--log-file', '--log_file', dest='log_file',
                       default='', help='Log file.')
+    # Custom log level:
+    # - FINE: Prints status of each frame processing step
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
-                      choices=['debug', 'info', 'warning', 'warn', 'error',
+                      choices=['fine',
+                               'debug', 'info', 'warning', 'warn', 'error',
                                'critical'],
                       help='Log level.')
+    parser.add_option('--deflate-log-level', '--deflate_log_level',
+                      type='choice',
+                      dest='deflate_log_level', default='warn',
+                      choices=['debug', 'info', 'warning', 'warn', 'error',
+                               'critical'],
+                      help='Log level for _Deflater and _Inflater.')
     parser.add_option('--thread-monitor-interval-in-sec',
                       '--thread_monitor_interval_in_sec',
                       dest='thread_monitor_interval_in_sec',

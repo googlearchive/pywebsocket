@@ -870,7 +870,7 @@ def _main(args=None):
 
     if options.use_tls:
         if not (_HAS_SSL or _HAS_OPEN_SSL):
-            logging.critical('TLS support requires ssl or pyOpenSSL.')
+            logging.critical('TLS support requires ssl or pyOpenSSL module.')
             sys.exit(1)
         if not options.private_key or not options.certificate:
             logging.critical(
@@ -882,7 +882,7 @@ def _main(args=None):
             logging.critical('TLS must be enabled for client authentication.')
             sys.exit(1)
         if not _HAS_SSL:
-            logging.critical('Client authentication requires ssl.')
+            logging.critical('Client authentication requires ssl module.')
 
     if not options.scan_dir:
         options.scan_dir = options.websock_handlers

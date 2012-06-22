@@ -209,7 +209,7 @@ class Handshaker(object):
                     map(common.ExtensionParameter.name,
                         self._request.ws_extensions))
 
-            self._request.ws_stream = Stream(self._request, stream_options)
+            self._request.ws_stream = self._create_stream(stream_options)
 
             if self._request.ws_requested_protocols is not None:
                 if self._request.ws_protocol is None:
@@ -341,7 +341,10 @@ class Handshaker(object):
 
         return key
 
-    def _send_handshake(self, accept):
+    def _create_stream(self, stream_options):
+        return Stream(self._request, stream_options)
+
+    def _create_handshake_response(self, accept):
         response = []
 
         response.append('HTTP/1.1 101 Switching Protocols\r\n')
@@ -363,7 +366,10 @@ class Handshaker(object):
                 common.format_extensions(self._request.ws_extensions)))
         response.append('\r\n')
 
-        raw_response = ''.join(response)
+        return ''.join(response)
+
+    def _send_handshake(self, accept):
+        raw_response = self._create_handshake_response(accept)
         self._request.connection.write(raw_response)
         self._logger.debug('Sent server\'s opening handshake: %r',
                            raw_response)

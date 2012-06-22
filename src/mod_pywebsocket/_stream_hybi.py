@@ -37,6 +37,7 @@ http://tools.ietf.org/html/rfc6455
 
 
 from collections import deque
+import logging
 import os
 import struct
 import time
@@ -162,6 +163,134 @@ def create_text_frame(
                                frame_filters)
 
 
+def parse_frame(receive_bytes, logger=None,
+                ws_version=common.VERSION_HYBI_LATEST,
+                unmask_receive=True):
+    """Parses a frame. Returns a tuple containing each header field and
+    payload.
+
+    Args:
+        receive_bytes: a function that reads frame data from a stream or
+            something similar. The function takes length of the bytes to be
+            read. The function must raise ConnectionTerminatedException if
+            there is not enough data to be read.
+        logger: a logging object.
+        ws_version: the version of WebSocket protocol.
+        unmask_receive: unmask received frames. When received unmasked
+            frame, raises InvalidFrameException.
+
+    Raises:
+        ConnectionTerminatedException: when receive_bytes raises it.
+        InvalidFrameException: when the frame contains invalid data.
+    """
+
+    if not logger:
+        logger = logging.getLogger()
+
+    logger.log(common.LOGLEVEL_FINE, 'Receive the first 2 octets of a frame')
+
+    received = receive_bytes(2)
+
+    first_byte = ord(received[0])
+    fin = (first_byte >> 7) & 1
+    rsv1 = (first_byte >> 6) & 1
+    rsv2 = (first_byte >> 5) & 1
+    rsv3 = (first_byte >> 4) & 1
+    opcode = first_byte & 0xf
+
+    second_byte = ord(received[1])
+    mask = (second_byte >> 7) & 1
+    payload_length = second_byte & 0x7f
+
+    logger.log(common.LOGLEVEL_FINE,
+               'FIN=%s, RSV1=%s, RSV2=%s, RSV3=%s, opcode=%s, '
+               'Mask=%s, Payload_length=%s',
+               fin, rsv1, rsv2, rsv3, opcode, mask, payload_length)
+
+    if (mask == 1) != unmask_receive:
+        raise InvalidFrameException(
+            'Mask bit on the received frame did\'nt match masking '
+            'configuration for received frames')
+
+    # The HyBi and later specs disallow putting a value in 0x0-0xFFFF
+    # into the 8-octet extended payload length field (or 0x0-0xFD in
+    # 2-octet field).
+    valid_length_encoding = True
+    length_encoding_bytes = 1
+    if payload_length == 127:
+        logger.log(common.LOGLEVEL_FINE,
+                   'Receive 8-octet extended payload length')
+
+        extended_payload_length = receive_bytes(8)
+        payload_length = struct.unpack(
+            '!Q', extended_payload_length)[0]
+        if payload_length > 0x7FFFFFFFFFFFFFFF:
+            raise InvalidFrameException(
+                'Extended payload length >= 2^63')
+        if ws_version >= 13 and payload_length < 0x10000:
+            valid_length_encoding = False
+            length_encoding_bytes = 8
+
+        logger.log(common.LOGLEVEL_FINE,
+                   'Decoded_payload_length=%s', payload_length)
+    elif payload_length == 126:
+        logger.log(common.LOGLEVEL_FINE,
+                   'Receive 2-octet extended payload length')
+
+        extended_payload_length = receive_bytes(2)
+        payload_length = struct.unpack(
+            '!H', extended_payload_length)[0]
+        if ws_version >= 13 and payload_length < 126:
+            valid_length_encoding = False
+            length_encoding_bytes = 2
+
+        logger.log(common.LOGLEVEL_FINE,
+                   'Decoded_payload_length=%s', payload_length)
+
+    if not valid_length_encoding:
+        logger.warning(
+            'Payload length is not encoded using the minimal number of '
+            'bytes (%d is encoded using %d bytes)',
+            payload_length,
+            length_encoding_bytes)
+
+    if mask == 1:
+        logger.log(common.LOGLEVEL_FINE, 'Receive mask')
+
+        masking_nonce = receive_bytes(4)
+        masker = util.RepeatedXorMasker(masking_nonce)
+
+        logger.log(common.LOGLEVEL_FINE, 'Mask=%r', masking_nonce)
+    else:
+        masker = _NOOP_MASKER
+
+    logger.log(common.LOGLEVEL_FINE, 'Receive payload data')
+    if logger.isEnabledFor(common.LOGLEVEL_FINE):
+        receive_start = time.time()
+
+    raw_payload_bytes = receive_bytes(payload_length)
+
+    if logger.isEnabledFor(common.LOGLEVEL_FINE):
+        logger.log(
+            common.LOGLEVEL_FINE,
+            'Done receiving payload data at %s MB/s',
+            payload_length / (time.time() - receive_start) / 1000 / 1000)
+    logger.log(common.LOGLEVEL_FINE, 'Unmask payload data')
+
+    if logger.isEnabledFor(common.LOGLEVEL_FINE):
+        unmask_start = time.time()
+
+    bytes = masker.mask(raw_payload_bytes)
+
+    if logger.isEnabledFor(common.LOGLEVEL_FINE):
+        logger.log(
+            common.LOGLEVEL_FINE,
+            'Done unmasking payload data at %s MB/s',
+            payload_length / (time.time() - unmask_start) / 1000 / 1000)
+
+    return opcode, bytes, fin, rsv1, rsv2, rsv3
+
+
 class FragmentedFrameBuilder(object):
     """A stateful class to send a message as fragments."""
 
@@ -235,6 +364,23 @@ def create_close_frame(body, mask=False, frame_filters=[]):
         common.OPCODE_CLOSE, body, mask, frame_filters)
 
 
+def create_closing_handshake_frame(code, reason, mask=False, frame_filters=[]):
+    body = ''
+    if code is not None:
+        if (code > common.STATUS_USER_PRIVATE_MAX or
+            code < common.STATUS_NORMAL_CLOSURE):
+            raise BadOperationException('Status code is out of range')
+        if (code == common.STATUS_NO_STATUS_RECEIVED or
+            code == common.STATUS_ABNORMAL_CLOSURE or
+            code == common.STATUS_TLS_HANDSHAKE):
+            raise BadOperationException('Status code is reserved pseudo '
+                'code')
+        encoded_reason = reason.encode('utf-8')
+        body = struct.pack('!H', code) + encoded_reason
+
+    return create_close_frame(body, mask, frame_filters)
+
+
 class StreamOptions(object):
     """Holds option values to configure Stream objects."""
 
@@ -297,109 +443,13 @@ class Stream(StreamBase):
             InvalidFrameException: when the frame contains invalid data.
         """
 
-        self._logger.log(common.LOGLEVEL_FINE,
-                         'Receive the first 2 octets of a frame')
+        def _receive_bytes(length):
+            return self.receive_bytes(length)
 
-        received = self.receive_bytes(2)
-
-        first_byte = ord(received[0])
-        fin = (first_byte >> 7) & 1
-        rsv1 = (first_byte >> 6) & 1
-        rsv2 = (first_byte >> 5) & 1
-        rsv3 = (first_byte >> 4) & 1
-        opcode = first_byte & 0xf
-
-        second_byte = ord(received[1])
-        mask = (second_byte >> 7) & 1
-        payload_length = second_byte & 0x7f
-
-        self._logger.log(common.LOGLEVEL_FINE,
-                         'FIN=%s, RSV1=%s, RSV2=%s, RSV3=%s, opcode=%s, '
-                         'Mask=%s, Payload_length=%s',
-                         fin, rsv1, rsv2, rsv3, opcode, mask, payload_length)
-
-        if (mask == 1) != self._options.unmask_receive:
-            raise InvalidFrameException(
-                'Mask bit on the received frame did\'nt match masking '
-                'configuration for received frames')
-
-        # The Hybi-13 and later specs disallow putting a value in 0x0-0xFFFF
-        # into the 8-octet extended payload length field (or 0x0-0xFD in
-        # 2-octet field).
-        valid_length_encoding = True
-        length_encoding_bytes = 1
-        if payload_length == 127:
-            self._logger.log(common.LOGLEVEL_FINE,
-                             'Receive 8-octet extended payload length')
-
-            extended_payload_length = self.receive_bytes(8)
-            payload_length = struct.unpack(
-                '!Q', extended_payload_length)[0]
-            if payload_length > 0x7FFFFFFFFFFFFFFF:
-                raise InvalidFrameException(
-                    'Extended payload length >= 2^63')
-            if self._request.ws_version >= 13 and payload_length < 0x10000:
-                valid_length_encoding = False
-                length_encoding_bytes = 8
-
-            self._logger.log(common.LOGLEVEL_FINE,
-                             'Decoded_payload_length=%s', payload_length)
-        elif payload_length == 126:
-            self._logger.log(common.LOGLEVEL_FINE,
-                             'Receive 2-octet extended payload length')
-
-            extended_payload_length = self.receive_bytes(2)
-            payload_length = struct.unpack(
-                '!H', extended_payload_length)[0]
-            if self._request.ws_version >= 13 and payload_length < 126:
-                valid_length_encoding = False
-                length_encoding_bytes = 2
-
-            self._logger.log(common.LOGLEVEL_FINE,
-                             'Decoded_payload_length=%s', payload_length)
-
-        if not valid_length_encoding:
-            self._logger.warning(
-                'Payload length is not encoded using the minimal number of '
-                'bytes (%d is encoded using %d bytes)',
-                payload_length,
-                length_encoding_bytes)
-
-        if mask == 1:
-            self._logger.log(common.LOGLEVEL_FINE, 'Receive mask')
-
-            masking_nonce = self.receive_bytes(4)
-            masker = util.RepeatedXorMasker(masking_nonce)
-
-            self._logger.log(common.LOGLEVEL_FINE, 'Mask=%r', masking_nonce)
-        else:
-            masker = _NOOP_MASKER
-
-        self._logger.log(common.LOGLEVEL_FINE, 'Receive payload data')
-        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
-            receive_start = time.time()
-
-        raw_payload_bytes = self.receive_bytes(payload_length)
-
-        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
-            self._logger.log(
-                common.LOGLEVEL_FINE,
-                'Done receiving payload data at %s MB/s',
-                payload_length / (time.time() - receive_start) / 1000 / 1000)
-        self._logger.log(common.LOGLEVEL_FINE, 'Unmask payload data')
-
-        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
-            unmask_start = time.time()
-
-        bytes = masker.mask(raw_payload_bytes)
-
-        if self._logger.isEnabledFor(common.LOGLEVEL_FINE):
-            self._logger.log(
-                common.LOGLEVEL_FINE,
-                'Done unmasking payload data at %s MB/s',
-                payload_length / (time.time() - unmask_start) / 1000 / 1000)
-
-        return opcode, bytes, fin, rsv1, rsv2, rsv3
+        return parse_frame(receive_bytes=_receive_bytes,
+                           logger=self._logger,
+                           ws_version=self._request.ws_version,
+                           unmask_receive=self._options.unmask_receive)
 
     def _receive_frame_as_frame_object(self):
         opcode, bytes, fin, rsv1, rsv2, rsv3 = self._receive_frame()
@@ -432,6 +482,182 @@ class Stream(StreamBase):
             self._write(self._writer.build(message, end, binary))
         except ValueError, e:
             raise BadOperationException(e)
+
+    def _get_message_from_frame(self, frame):
+        """Gets a message from frame. If the message is composed of fragmented
+        frames and the frame is not the last fragmented frame, this method
+        returns None. The whole message will be returned when the last
+        fragmented frame is passed to this method.
+
+        Raises:
+            InvalidFrameException: when the frame doesn't match defragmentation
+                context, or the frame contains invalid data.
+        """
+
+        if frame.opcode == common.OPCODE_CONTINUATION:
+            if not self._received_fragments:
+                if frame.fin:
+                    raise InvalidFrameException(
+                        'Received a termination frame but fragmentation '
+                        'not started')
+                else:
+                    raise InvalidFrameException(
+                        'Received an intermediate frame but '
+                        'fragmentation not started')
+
+            if frame.fin:
+                # End of fragmentation frame
+                self._received_fragments.append(frame.payload)
+                message = ''.join(self._received_fragments)
+                self._received_fragments = []
+                return message
+            else:
+                # Intermediate frame
+                self._received_fragments.append(frame.payload)
+                return None
+        else:
+            if self._received_fragments:
+                if frame.fin:
+                    raise InvalidFrameException(
+                        'Received an unfragmented frame without '
+                        'terminating existing fragmentation')
+                else:
+                    raise InvalidFrameException(
+                        'New fragmentation started without terminating '
+                        'existing fragmentation')
+
+            if frame.fin:
+                # Unfragmented frame
+
+                self._original_opcode = frame.opcode
+                return frame.payload
+            else:
+                # Start of fragmentation frame
+
+                if common.is_control_opcode(frame.opcode):
+                    raise InvalidFrameException(
+                        'Control frames must not be fragmented')
+
+                self._original_opcode = frame.opcode
+                self._received_fragments.append(frame.payload)
+                return None
+
+    def _process_close_message(self, message):
+        """Processes close message.
+
+        Args:
+            message: close message.
+
+        Raises:
+            InvalidFrameException: when the message is invalid.
+        """
+
+        self._request.client_terminated = True
+
+        # Status code is optional. We can have status reason only if we
+        # have status code. Status reason can be empty string. So,
+        # allowed cases are
+        # - no application data: no code no reason
+        # - 2 octet of application data: has code but no reason
+        # - 3 or more octet of application data: both code and reason
+        if len(message) == 0:
+            self._logger.debug('Received close frame (empty body)')
+            self._request.ws_close_code = (
+                common.STATUS_NO_STATUS_RECEIVED)
+        elif len(message) == 1:
+            raise InvalidFrameException(
+                'If a close frame has status code, the length of '
+                'status code must be 2 octet')
+        elif len(message) >= 2:
+            self._request.ws_close_code = struct.unpack(
+                '!H', message[0:2])[0]
+            self._request.ws_close_reason = message[2:].decode(
+                'utf-8', 'replace')
+            self._logger.debug(
+                'Received close frame (code=%d, reason=%r)',
+                self._request.ws_close_code,
+                self._request.ws_close_reason)
+
+        # Drain junk data after the close frame if necessary.
+        self._drain_received_data()
+
+        if self._request.server_terminated:
+            self._logger.debug(
+                'Received ack for server-initiated closing handshake')
+            return
+
+        self._logger.debug(
+            'Received client-initiated closing handshake')
+
+        code = common.STATUS_NORMAL_CLOSURE
+        reason = ''
+        if hasattr(self._request, '_dispatcher'):
+            dispatcher = self._request._dispatcher
+            code, reason = dispatcher.passive_closing_handshake(
+                self._request)
+            if code is None and reason is not None and len(reason) > 0:
+                self._logger.warning(
+                    'Handler specified reason despite code being None')
+                reason = ''
+            if reason is None:
+                reason = ''
+        self._send_closing_handshake(code, reason)
+        self._logger.debug(
+            'Sent ack for client-initiated closing handshake '
+            '(code=%r, reason=%r)', code, reason)
+
+    def _process_ping_message(self, message):
+        """Processes ping message.
+
+        Args:
+            message: ping message.
+        """
+
+        try:
+            handler = self._request.on_ping_handler
+            if handler:
+                handler(self._request, message)
+                return
+        except AttributeError, e:
+            pass
+        self._send_pong(message)
+
+    def _process_pong_message(self, message):
+        """Processes pong message.
+
+        Args:
+            message: pong message.
+        """
+
+        # TODO(tyoshino): Add ping timeout handling.
+
+        inflight_pings = deque()
+
+        while True:
+            try:
+                expected_body = self._ping_queue.popleft()
+                if expected_body == message:
+                    # inflight_pings contains pings ignored by the
+                    # other peer. Just forget them.
+                    self._logger.debug(
+                        'Ping %r is acked (%d pings were ignored)',
+                        expected_body, len(inflight_pings))
+                    break
+                else:
+                    inflight_pings.append(expected_body)
+            except IndexError, e:
+                # The received pong was unsolicited pong. Keep the
+                # ping queue as is.
+                self._ping_queue = inflight_pings
+                self._logger.debug('Received a unsolicited pong')
+                break
+
+        try:
+            handler = self._request.on_pong_handler
+            if handler:
+                handler(self._request, message)
+        except AttributeError, e:
+            pass
 
     def receive_message(self):
         """Receive a WebSocket frame and return its payload as a text in
@@ -482,52 +708,9 @@ class Stream(StreamBase):
                     'Unsupported flag is set (rsv = %d%d%d)' %
                     (frame.rsv1, frame.rsv2, frame.rsv3))
 
-            if frame.opcode == common.OPCODE_CONTINUATION:
-                if not self._received_fragments:
-                    if frame.fin:
-                        raise InvalidFrameException(
-                            'Received a termination frame but fragmentation '
-                            'not started')
-                    else:
-                        raise InvalidFrameException(
-                            'Received an intermediate frame but '
-                            'fragmentation not started')
-
-                if frame.fin:
-                    # End of fragmentation frame
-                    self._received_fragments.append(frame.payload)
-                    message = ''.join(self._received_fragments)
-                    self._received_fragments = []
-                else:
-                    # Intermediate frame
-                    self._received_fragments.append(frame.payload)
-                    continue
-            else:
-                if self._received_fragments:
-                    if frame.fin:
-                        raise InvalidFrameException(
-                            'Received an unfragmented frame without '
-                            'terminating existing fragmentation')
-                    else:
-                        raise InvalidFrameException(
-                            'New fragmentation started without terminating '
-                            'existing fragmentation')
-
-                if frame.fin:
-                    # Unfragmented frame
-
-                    self._original_opcode = frame.opcode
-                    message = frame.payload
-                else:
-                    # Start of fragmentation frame
-
-                    if common.is_control_opcode(frame.opcode):
-                        raise InvalidFrameException(
-                            'Control frames must not be fragmented')
-
-                    self._original_opcode = frame.opcode
-                    self._received_fragments.append(frame.payload)
-                    continue
+            message = self._get_message_from_frame(frame)
+            if message is None:
+                continue
 
             if self._original_opcode == common.OPCODE_TEXT:
                 # The WebSocket protocol section 4.4 specifies that invalid
@@ -540,123 +723,19 @@ class Stream(StreamBase):
             elif self._original_opcode == common.OPCODE_BINARY:
                 return message
             elif self._original_opcode == common.OPCODE_CLOSE:
-                self._request.client_terminated = True
-
-                # Status code is optional. We can have status reason only if we
-                # have status code. Status reason can be empty string. So,
-                # allowed cases are
-                # - no application data: no code no reason
-                # - 2 octet of application data: has code but no reason
-                # - 3 or more octet of application data: both code and reason
-                if len(message) == 0:
-                    self._logger.debug('Received close frame (empty body)')
-                    self._request.ws_close_code = (
-                        common.STATUS_NO_STATUS_RECEIVED)
-                elif len(message) == 1:
-                    raise InvalidFrameException(
-                        'If a close frame has status code, the length of '
-                        'status code must be 2 octet')
-                elif len(message) >= 2:
-                    self._request.ws_close_code = struct.unpack(
-                        '!H', message[0:2])[0]
-                    self._request.ws_close_reason = message[2:].decode(
-                        'utf-8', 'replace')
-                    self._logger.debug(
-                        'Received close frame (code=%d, reason=%r)',
-                        self._request.ws_close_code,
-                        self._request.ws_close_reason)
-
-                # Drain junk data after the close frame if necessary.
-                self._drain_received_data()
-
-                if self._request.server_terminated:
-                    self._logger.debug(
-                        'Received ack for server-initiated closing handshake')
-                    return None
-
-                self._logger.debug(
-                    'Received client-initiated closing handshake')
-
-                code = common.STATUS_NORMAL_CLOSURE
-                reason = ''
-                if hasattr(self._request, '_dispatcher'):
-                    dispatcher = self._request._dispatcher
-                    code, reason = dispatcher.passive_closing_handshake(
-                        self._request)
-                    if code is None and reason is not None and len(reason) > 0:
-                        self._logger.warning(
-                            'Handler specified reason despite code being None')
-                        reason = ''
-                    if reason is None:
-                        reason = ''
-                self._send_closing_handshake(code, reason)
-                self._logger.debug(
-                    'Sent ack for client-initiated closing handshake '
-                    '(code=%r, reason=%r)', code, reason)
+                self._process_close_message(message)
                 return None
             elif self._original_opcode == common.OPCODE_PING:
-                try:
-                    handler = self._request.on_ping_handler
-                    if handler:
-                        handler(self._request, message)
-                        continue
-                except AttributeError, e:
-                    pass
-                self._send_pong(message)
+                self._process_ping_message(message)
             elif self._original_opcode == common.OPCODE_PONG:
-                # TODO(tyoshino): Add ping timeout handling.
-
-                inflight_pings = deque()
-
-                while True:
-                    try:
-                        expected_body = self._ping_queue.popleft()
-                        if expected_body == message:
-                            # inflight_pings contains pings ignored by the
-                            # other peer. Just forget them.
-                            self._logger.debug(
-                                'Ping %r is acked (%d pings were ignored)',
-                                expected_body, len(inflight_pings))
-                            break
-                        else:
-                            inflight_pings.append(expected_body)
-                    except IndexError, e:
-                        # The received pong was unsolicited pong. Keep the
-                        # ping queue as is.
-                        self._ping_queue = inflight_pings
-                        self._logger.debug('Received a unsolicited pong')
-                        break
-
-                try:
-                    handler = self._request.on_pong_handler
-                    if handler:
-                        handler(self._request, message)
-                        continue
-                except AttributeError, e:
-                    pass
-
-                continue
+                self._process_pong_message(message)
             else:
                 raise UnsupportedFrameException(
                     'Opcode %d is not supported' % self._original_opcode)
 
     def _send_closing_handshake(self, code, reason):
-        body = ''
-        if code is not None:
-            if (code > common.STATUS_USER_PRIVATE_MAX or
-                code < common.STATUS_NORMAL_CLOSURE):
-                raise BadOperationException('Status code is out of range')
-            if (code == common.STATUS_NO_STATUS_RECEIVED or
-                code == common.STATUS_ABNORMAL_CLOSURE or
-                code == common.STATUS_TLS_HANDSHAKE):
-                raise BadOperationException('Status code is reserved pseudo '
-                    'code')
-            encoded_reason = reason.encode('utf-8')
-            body = struct.pack('!H', code) + encoded_reason
-
-        frame = create_close_frame(
-            body,
-            self._options.mask_send,
+        frame = create_closing_handshake_frame(
+            code, reason, self._options.mask_send,
             self._options.outgoing_frame_filters)
 
         self._request.server_terminated = True

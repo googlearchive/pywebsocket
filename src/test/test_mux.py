@@ -43,7 +43,123 @@ import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket import common
 from mod_pywebsocket import mux
+from mod_pywebsocket._stream_base import ConnectionTerminatedException
+from mod_pywebsocket._stream_hybi import Stream
+from mod_pywebsocket._stream_hybi import StreamOptions
 from mod_pywebsocket._stream_hybi import create_binary_frame
+from mod_pywebsocket._stream_hybi import parse_frame
+
+import mock
+
+
+class _MockMuxConnection(mock.MockBlockingConn):
+    """Mock class of mod_python connection for mux."""
+
+    def __init__(self):
+        mock.MockBlockingConn.__init__(self)
+        self._written_messages = {}
+
+    def write(self, data):
+        """Override MockBlockingConn.write."""
+
+        self._current_data = data
+        self._position = 0
+        def _receive_bytes(length):
+            if self._position + length > len(self._current_data):
+                raise ConnectionTerminatedException(
+                    'Failed to receive %d bytes from encapsulated '
+                    'frame' % length)
+            data = self._current_data[self._position:self._position+length]
+            self._position += length
+            return data
+
+        opcode, payload, fin, rsv1, rsv2, rsv3 = (
+            parse_frame(_receive_bytes, unmask_receive=False))
+
+        parser = mux._MuxFramePayloadParser(payload)
+        channel_id = parser.read_channel_id()
+        if not channel_id in self._written_messages:
+            self._written_messages[channel_id] = []
+        self._written_messages[channel_id].append(parser.remaining_data())
+
+    def get_written_messages(self, channel_id):
+        return self._written_messages[channel_id]
+
+
+class _ChannelEvent(object):
+    """A structure that records channel events."""
+
+    def __init__(self):
+        self.messages = []
+        self.exception = None
+        self.client_initiated_closing = False
+
+
+class _MuxMockDispatcher(object):
+    """Mock class of dispatch.Dispatcher for mux."""
+
+    def __init__(self):
+        self.channel_events = {}
+
+    def do_extra_handshake(self, request):
+        pass
+
+    def _do_echo(self, request, channel_events):
+        while True:
+            message = request.ws_stream.receive_message()
+            if message == None:
+                channel_events.client_initiated_closing = True
+                return
+            if message == 'Goodbye':
+                return
+            channel_events.messages.append(message)
+            # echo back
+            request.ws_stream.send_message(message)
+
+    def transfer_data(self, request):
+        self.channel_events[request.channel_id] = _ChannelEvent()
+
+        try:
+            # Note: more handler will be added.
+            if request.uri.endswith('echo'):
+                self._do_echo(request,
+                              self.channel_events[request.channel_id])
+            else:
+                raise ValueError('Cannot handle path %r' % request.path)
+        except Exception, e:
+            self.channel_events[request.channel_id].exception = e
+            raise
+
+        request.ws_stream.close_connection()
+
+
+def _create_mock_request():
+    headers = {'Host': 'server.example.com',
+               'Upgrade': 'websocket',
+               'Connection': 'Upgrade',
+               'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+               'Sec-WebSocket-Version': '13',
+               'Origin': 'http://example.com'}
+    request = mock.MockRequest(uri='/echo',
+                               headers_in=headers,
+                               connection=_MockMuxConnection())
+    request.ws_stream = Stream(request, options=StreamOptions())
+    return request
+
+
+def _create_add_channel_request_frame(channel_id, encoding, encoded_handshake):
+    if encoding != 0 and encoding != 1:
+        raise ValueError('Invalid encoding')
+    block = mux._create_control_block_length_value(
+               channel_id, mux._MUX_OPCODE_ADD_CHANNEL_REQUEST, encoding,
+               encoded_handshake)
+    payload = mux._encode_channel_id(mux._CONTROL_CHANNEL_ID) + block
+    return create_binary_frame(payload, mask=True)
+
+
+def _create_logical_frame(channel_id, message):
+    message = mux._encode_channel_id(channel_id) + message
+    return create_binary_frame(message, mask=True)
 
 
 def _create_request_header(path='/echo'):
@@ -218,6 +334,49 @@ class MuxTest(unittest.TestCase):
                          headers['Sec-WebSocket-Key'])
         self.assertEqual('13', headers['Sec-WebSocket-Version'])
         self.assertEqual('http://example.com', headers['Origin'])
+
+
+class MuxHandlerTest(unittest.TestCase):
+
+    def test_add_channel(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+                                  channel_id=2, encoding=0,
+                                  encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+                                  channel_id=3, encoding=0,
+                                  encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=3, message='World'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=3, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertEqual([], dispatcher.channel_events[1].messages)
+        self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        self.assertEqual(['World'], dispatcher.channel_events[3].messages)
+        self.assertEqual(request.connection.get_written_messages(2), ['Hello'])
+        self.assertEqual(request.connection.get_written_messages(3), ['World'])
+        control_blocks = request.connection.get_written_messages(0)
+        # Two AddChannelResponses should be written.
+        self.assertEqual(2, len(control_blocks))
 
 
 if __name__ == '__main__':

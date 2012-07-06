@@ -58,6 +58,7 @@ class _MockMuxConnection(mock.MockBlockingConn):
     def __init__(self):
         mock.MockBlockingConn.__init__(self)
         self._written_messages = {}
+        self._pending_fragments = {}
 
     def write(self, data):
         """Override MockBlockingConn.write."""
@@ -78,9 +79,19 @@ class _MockMuxConnection(mock.MockBlockingConn):
 
         parser = mux._MuxFramePayloadParser(payload)
         channel_id = parser.read_channel_id()
+        if not channel_id in self._pending_fragments:
+            self._pending_fragments[channel_id] = []
         if not channel_id in self._written_messages:
             self._written_messages[channel_id] = []
-        self._written_messages[channel_id].append(parser.remaining_data())
+
+        if not fin:
+            self._pending_fragments[channel_id].append(parser.remaining_data())
+        else:
+            inner_frame = (''.join(self._pending_fragments[channel_id]) +
+                           parser.remaining_data())
+            self._pending_fragments[channel_id] = []
+            # Remove the first byte that contains opcode and flags.
+            self._written_messages[channel_id].append(inner_frame[1:])
 
     def get_written_messages(self, channel_id):
         return self._written_messages[channel_id]
@@ -157,9 +168,10 @@ def _create_add_channel_request_frame(channel_id, encoding, encoded_handshake):
     return create_binary_frame(payload, mask=True)
 
 
-def _create_logical_frame(channel_id, message):
-    message = mux._encode_channel_id(channel_id) + message
-    return create_binary_frame(message, mask=True)
+def _create_logical_frame(channel_id, message, opcode=common.OPCODE_BINARY):
+    bits = chr(0x80 | opcode)
+    payload = mux._encode_channel_id(channel_id) + bits + message
+    return create_binary_frame(payload, mask=True)
 
 
 def _create_request_header(path='/echo'):
@@ -215,28 +227,28 @@ class MuxTest(unittest.TestCase):
         block = mux._create_control_block_length_value(
             channel_id=1, opcode=mux._MUX_OPCODE_ADD_CHANNEL_REQUEST,
             flags=0x7, value=data)
-        expected = '\x01\x1c\x0dHello, world!'
+        expected = '\x1c\x01\x0dHello, world!'
         self.assertEqual(expected, block)
 
         data = 'a' * (2 ** 8)
         block = mux._create_control_block_length_value(
             channel_id=2, opcode=mux._MUX_OPCODE_ADD_CHANNEL_RESPONSE,
             flags=0x0, value=data)
-        expected = '\x02\x21\x01\x00' + data
+        expected = '\x21\x02\x01\x00' + data
         self.assertEqual(expected, block)
 
         data = 'b' * (2 ** 16)
         block = mux._create_control_block_length_value(
             channel_id=3, opcode=mux._MUX_OPCODE_DROP_CHANNEL,
             flags=0x0, value=data)
-        expected = '\x03\x62\x01\x00\x00' + data
+        expected = '\x62\x03\x01\x00\x00' + data
         self.assertEqual(expected, block)
 
     def test_read_control_blocks(self):
-        data = ('\x01\x00\00'
-                '\x02\x61\x01\x00%s'
-                '\x03\x0a\x01\x00\x00%s'
-                '\x04\x63\x01\x00\x00\x00%s') % (
+        data = ('\x00\x01\00'
+                '\x61\x02\x01\x00%s'
+                '\x0a\x03\x01\x00\x00%s'
+                '\x63\x04\x01\x00\x00\x00%s') % (
             'a' * 0x0100, 'b' * 0x010000, 'c' * 0x01000000)
         parser = mux._MuxFramePayloadParser(data)
         blocks = list(parser.read_control_blocks())
@@ -260,65 +272,34 @@ class MuxTest(unittest.TestCase):
 
         self.assertEqual(len(data), parser._read_position)
 
-    def test_read_encapsulated_control_frame(self):
-        data = '\x01\x80\x88\x06FooBar'
-        parser = mux._MuxFramePayloadParser(data)
-        blocks = list(parser.read_control_blocks())
-        self.assertEqual(1, len(blocks))
-        self.assertEqual(1, blocks[0].channel_id)
-        self.assertEqual(common.OPCODE_CLOSE, blocks[0].frame.opcode)
-        self.assertEqual(1, blocks[0].frame.fin)
-        self.assertEqual('FooBar', blocks[0].frame.payload)
-
-        # fin is not set
-        data = '\x01\x80\x08\x06FooBar'
-        parser = mux._MuxFramePayloadParser(data)
-        # Use lambda: list(...) because parser.read_control_blocks() returns
-        # a generator and it doesn't throw exceptions until it is used
-        self.assertRaises(mux.InvalidMuxControlBlockException,
-                          lambda: list(parser.read_control_blocks()))
-
-        # opcode is not a control opcode
-        data = '\x01\x80\x80\x06FooBar'
-        parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
-                          lambda: list(parser.read_control_blocks()))
-
     def test_create_add_channel_response(self):
         data = mux._create_add_channel_response(channel_id=1,
                                                 encoded_handshake='FooBar',
                                                 encoding=0,
                                                 rejected=False)
-        self.assertEqual('\x82\x0a\x00\x01\x20\x06FooBar', data)
+        self.assertEqual('\x82\x0a\x00\x20\x01\x06FooBar', data)
 
         data = mux._create_add_channel_response(channel_id=2,
                                                 encoded_handshake='Hello',
                                                 encoding=1,
                                                 rejected=True)
-        self.assertEqual('\x82\x09\x00\x02\x34\x05Hello', data)
+        self.assertEqual('\x82\x09\x00\x34\x02\x05Hello', data)
 
     def test_drop_channel(self):
         data = mux._create_drop_channel(channel_id=1,
                                         reason='',
                                         mux_error=False)
-        self.assertEqual('\x82\x04\x00\x01\x60\x00', data)
+        self.assertEqual('\x82\x04\x00\x60\x01\x00', data)
 
         data = mux._create_drop_channel(channel_id=1,
                                         reason='error',
                                         mux_error=True)
-        self.assertEqual('\x82\x09\x00\x01\x70\x05error', data)
+        self.assertEqual('\x82\x09\x00\x70\x01\x05error', data)
 
         # reason must be empty if mux_error is False.
         self.assertRaises(ValueError,
                           mux._create_drop_channel,
                           1, 'FooBar', False)
-
-    def test_create_encapsulated_control_frame(self):
-        inner_frame = create_binary_frame(
-            message="FooBar", fin=1, opcode=common.OPCODE_CLOSE)
-        data = mux._create_encapsulated_control_frame(
-            objective_channel_id=1, inner_frame=inner_frame)
-        self.assertEqual('\x82\x0b\x00\x01\x80\x88\x06FooBar', data)
 
     def test_parse_request_text(self):
         request_text = _create_request_header()
@@ -372,8 +353,14 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertEqual([], dispatcher.channel_events[1].messages)
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
         self.assertEqual(['World'], dispatcher.channel_events[3].messages)
-        self.assertEqual(request.connection.get_written_messages(2), ['Hello'])
-        self.assertEqual(request.connection.get_written_messages(3), ['World'])
+        # Channel 2
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('Hello', messages[0])
+        # Channel 3
+        messages = request.connection.get_written_messages(3)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('World', messages[0])
         control_blocks = request.connection.get_written_messages(0)
         # Two AddChannelResponses should be written.
         self.assertEqual(2, len(control_blocks))

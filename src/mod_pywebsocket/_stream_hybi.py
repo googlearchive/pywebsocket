@@ -364,7 +364,7 @@ def create_close_frame(body, mask=False, frame_filters=[]):
         common.OPCODE_CLOSE, body, mask, frame_filters)
 
 
-def create_closing_handshake_frame(code, reason, mask=False, frame_filters=[]):
+def create_closing_handshake_body(code, reason):
     body = ''
     if code is not None:
         if (code > common.STATUS_USER_PRIVATE_MAX or
@@ -377,8 +377,7 @@ def create_closing_handshake_frame(code, reason, mask=False, frame_filters=[]):
                 'code')
         encoded_reason = reason.encode('utf-8')
         body = struct.pack('!H', code) + encoded_reason
-
-    return create_close_frame(body, mask, frame_filters)
+    return body
 
 
 class StreamOptions(object):
@@ -734,9 +733,10 @@ class Stream(StreamBase):
                     'Opcode %d is not supported' % self._original_opcode)
 
     def _send_closing_handshake(self, code, reason):
-        frame = create_closing_handshake_frame(
-            code, reason, self._options.mask_send,
-            self._options.outgoing_frame_filters)
+        body = create_closing_handshake_body(code, reason)
+        frame = create_close_frame(
+            body, mask=self._options.mask_send,
+            frame_filters=self._options.outgoing_frame_filters)
 
         self._request.server_terminated = True
 

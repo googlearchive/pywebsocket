@@ -31,7 +31,7 @@
 """This file provides classes and helper functions for multiplexing extension.
 
 Specification:
-http://tools.ietf.org/html/draft-ietf-hybi-websocket-multiplexing-01
+http://tools.ietf.org/html/draft-ietf-hybi-websocket-multiplexing-03
 """
 
 
@@ -53,7 +53,8 @@ from mod_pywebsocket._stream_hybi import Frame
 from mod_pywebsocket._stream_hybi import Stream
 from mod_pywebsocket._stream_hybi import StreamOptions
 from mod_pywebsocket._stream_hybi import create_binary_frame
-from mod_pywebsocket._stream_hybi import create_closing_handshake_frame
+from mod_pywebsocket._stream_hybi import create_closing_handshake_body
+from mod_pywebsocket._stream_hybi import create_header
 from mod_pywebsocket._stream_hybi import parse_frame
 from mod_pywebsocket.handshake import hybi
 
@@ -65,7 +66,7 @@ _MUX_OPCODE_ADD_CHANNEL_REQUEST = 0
 _MUX_OPCODE_ADD_CHANNEL_RESPONSE = 1
 _MUX_OPCODE_FLOW_CONTROL = 2
 _MUX_OPCODE_DROP_CHANNEL = 3
-_MUX_OPCODE_ENCAPSULATED_CONTROL_FRAME = 4
+_MUX_OPCODE_NEW_CHANNEL_SLOT = 4
 
 _MAX_CHANNEL_ID = 2 ** 29 - 1
 
@@ -132,7 +133,8 @@ def _create_control_block_length_value(channel_id, opcode, flags, value):
 
     if channel_id < 0 or channel_id > _MAX_CHANNEL_ID:
         raise ValueError('Invalid channel id: %d' % channel_id)
-    if opcode < 0 or opcode > _MUX_OPCODE_ENCAPSULATED_CONTROL_FRAME:
+    if (opcode < 0 or opcode > _MUX_OPCODE_DROP_CHANNEL or
+        opcode == _MUX_OPCODE_FLOW_CONTROL):
         raise ValueError('Invalid opcode: %d' % opcode)
     if flags < 0 or flags > 7:
         raise ValueError('Invalid flags: %x' % flags)
@@ -162,7 +164,7 @@ def _create_control_block_length_value(channel_id, opcode, flags, value):
     else:
         encoded_length = struct.pack('!L', length)
 
-    return (_encode_channel_id(channel_id) + chr(first_byte) +
+    return (chr(first_byte) + _encode_channel_id(channel_id) +
             encoded_length + value)
 
 
@@ -191,14 +193,6 @@ def _create_drop_channel(channel_id, reason='', mux_error=False):
     return create_binary_frame(payload, mask=False)
 
 
-def _create_encapsulated_control_frame(objective_channel_id, inner_frame):
-    payload = (_encode_channel_id(_CONTROL_CHANNEL_ID) +
-               _encode_channel_id(objective_channel_id) +
-               chr(_MUX_OPCODE_ENCAPSULATED_CONTROL_FRAME << 5) +
-               inner_frame)
-    return create_binary_frame(payload, mask=False)
-
-
 def _parse_request_text(request_text):
     request_line, header_lines = request_text.split('\r\n', 1)
 
@@ -223,9 +217,8 @@ class _ControlBlock(object):
     AddChannelResponse)
     """
 
-    def __init__(self, opcode, channel_id):
+    def __init__(self, opcode):
         self.opcode = opcode
-        self.channel_id = channel_id
 
 
 class _MuxFramePayloadParser(object):
@@ -276,6 +269,30 @@ class _MuxFramePayloadParser(object):
 
         return channel_id
 
+    def read_inner_frame(self):
+        """Reads an inner frame.
+
+        Raises:
+            InvalidMuxFrameException: when the inner frame is invalid.
+        """
+
+        if len(self._data) == self._read_position:
+            raise InvalidMuxFrameException('No inner frame bits found')
+        bits = ord(self._data[self._read_position])
+        self._read_position += 1
+        fin = (bits & 0x80) == 0x80
+        rsv1 = (bits & 0x40) == 0x40
+        rsv2 = (bits & 0x20) == 0x20
+        rsv3 = (bits & 0x10) == 0x10
+        opcode = bits & 0xf
+        payload = self.remaining_data()
+        # Consume rest of the message which is payload data of the original
+        # frame.
+        self._read_position = len(self._data)
+        header = create_header(opcode, len(payload), fin, rsv1, rsv2, rsv3,
+                               mask=False)
+        return header + payload
+
     def _read_opcode_specific_data(self, opcode, size_of_size):
         """Reads opcode specific data that consists of followings:
             - the size of the opcode specific data (1-4 bytes)
@@ -320,6 +337,7 @@ class _MuxFramePayloadParser(object):
         encoding = (first_byte >> 2) & 0x3
         size_of_handshake_size = (first_byte & 0x3) + 1
 
+        control_block.channel_id = self.read_channel_id()
         encoded_handshake = self._read_opcode_specific_data(
                                 _MUX_OPCODE_ADD_CHANNEL_REQUEST,
                                 size_of_handshake_size)
@@ -336,6 +354,7 @@ class _MuxFramePayloadParser(object):
         reserved = (first_byte >> 2) & 0x3
         size_of_reason_size = (first_byte & 0x3) + 1
 
+        control_block.channel_id = self.read_channel_id()
         reason = self._read_opcode_specific_data(
                      _MUX_OPCODE_ADD_CHANNEL_RESPONSE,
                      size_of_reason_size)
@@ -346,32 +365,9 @@ class _MuxFramePayloadParser(object):
         control_block.reason = reason
         return control_block
 
-    def _read_encapsulated_control_frame(self, first_byte, control_block):
-        def _receive_bytes(length):
-            if self._read_position + length > len(self._data):
-                raise ConnectionTerminatedException(
-                    'Incomplete encapsulated control frame received.')
-            data = self._data[self._read_position:self._read_position+length]
-            self._read_position += length
-            return data
-
-        try:
-            opcode, payload, fin, rsv1, rsv2, rsv3 = (
-                parse_frame(_receive_bytes, self._logger,
-                            unmask_receive=False))
-        except ConnectionTerminatedException, e:
-            raise InvalidMuxControlBlockException(e)
-
-        if not fin:
-            raise InvalidMuxControlBlockException(
-                'Encapsulated control frames must not be fragmented')
-        if not common.is_control_opcode(opcode):
-            raise InvalidMuxControlBlockException(
-                'Opcode %d is not a control opcode' % opcode)
-
-        control_block.frame = Frame(fin=fin, rsv1=rsv1, rsv2=rsv2, rsv3=rsv3,
-                                    opcode=opcode, payload=payload)
-        return control_block
+    def _read_new_channel_slot(self, first_byte, control_block):
+        # TODO(bashi): Implement
+        raise MuxNotImplementedException('NewChannelSlot is not implemented')
 
     def read_control_blocks(self):
         """Reads control block(s).
@@ -383,24 +379,21 @@ class _MuxFramePayloadParser(object):
         """
 
         while self._read_position < len(self._data):
-            objective_channel_id = self.read_channel_id()
             if self._read_position >= len(self._data):
                 raise InvalidMuxControlBlockException(
                     'No control opcode found')
             first_byte = ord(self._data[self._read_position])
             self._read_position += 1
             opcode = (first_byte >> 5) & 0x7
-            control_block = _ControlBlock(opcode=opcode,
-                                          channel_id=objective_channel_id)
+            control_block = _ControlBlock(opcode=opcode)
             if opcode == _MUX_OPCODE_ADD_CHANNEL_REQUEST:
                 yield self._read_add_channel_request(first_byte, control_block)
             elif opcode == _MUX_OPCODE_FLOW_CONTROL:
                 yield self._read_flow_control(first_byte, control_block)
             elif opcode == _MUX_OPCODE_DROP_CHANNEL:
                 yield self._read_drop_channel(first_byte, control_block)
-            elif opcode == _MUX_OPCODE_ENCAPSULATED_CONTROL_FRAME:
-                yield self._read_encapsulated_control_frame(first_byte,
-                                                            control_block)
+            elif opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
+                yield self._read_new_channel_slot(first_byte, control_block)
             else:
                 raise InvalidMuxControlBlockException(
                     'Invalid opcode %d' % opcode)
@@ -616,6 +609,15 @@ class _LogicalStream(Stream):
         stream_options.unmask_receive = False
         Stream.__init__(self, request, stream_options)
 
+    def _create_inner_frame(self, opcode, payload, end=True):
+        # TODO(bashi): Support extensions that use reserved bits.
+        bits = (end << 7) | opcode
+        if opcode == common.OPCODE_TEXT:
+            payload = payload.encode('utf-8')
+
+        return (_encode_channel_id(self._request.channel_id) +
+                chr(bits) + payload)
+
     def send_message(self, message, end=True, binary=False):
         """Override Stream.send_message."""
 
@@ -628,13 +630,19 @@ class _LogicalStream(Stream):
                 'Message for binary frame must be instance of str')
 
         try:
-            # TODO(bashi): Framing may change.
-            payload = _encode_channel_id(self._request.channel_id) + message
-            frame_data = self._writer.build(payload, end, binary)
+            if binary:
+                opcode = common.OPCODE_BINARY
+            else:
+                opcode = common.OPCODE_TEXT
+
+            payload = self._create_inner_frame(opcode, message, end)
+            frame_data = self._writer.build(payload, end=True, binary=True)
             self._request.connection.write(frame_data)
         except ValueError, e:
             raise BadOperationException(e)
 
+    # TODO(bashi): It seems that we don't need to override this method as of
+    # draft version 3. Revisit.
     def receive_message(self):
         """Overrides Stream.receive_message."""
 
@@ -651,11 +659,6 @@ class _LogicalStream(Stream):
                 # logical connection has closed gracefully.
                 self._logger.debug('%s', e)
                 return None
-
-            if common.is_control_opcode(frame.opcode):
-                raise InvalidMuxFrameException(
-                    'Multiplexed control frame must be sent via '
-                    'control channel')
 
             for frame_filter in self._options.incoming_frame_filters:
                 frame_filter.filter(frame)
@@ -676,6 +679,10 @@ class _LogicalStream(Stream):
                     raise InvalidUTF8Exception(e)
             elif self._original_opcode == common.OPCODE_BINARY:
                 return message
+            elif common.is_control_opcode(self._original_opcode):
+                # TODO(bashi): Implement
+                raise MuxNotImplementedException(
+                    'Received control opcode on logical connection')
             else:
                 raise UnsupportedFrameException(
                     'Opcode %d is not supported on logical connection' %
@@ -684,14 +691,13 @@ class _LogicalStream(Stream):
     def _send_closing_handshake(self, code, reason):
         """Overrides Stream._send_closing_handshake."""
 
-        inner_frame = create_closing_handshake_frame(code, reason)
-        frame_data = _create_encapsulated_control_frame(
-            self._request.channel_id, inner_frame)
+        body = create_closing_handshake_body(code, reason)
+        data = self._create_inner_frame(common.OPCODE_CLOSE, body, end=True)
 
         self._request.server_terminated = True
         self._logger.debug('Sending closing handshake for %d: %r' %
-                           (self._request.channel_id, frame_data))
-        self._request.connection.write_control_data(frame_data)
+                           (self._request.channel_id, data))
+        self._request.connection.write_control_data(data)
 
     def send_ping(self, body=''):
         """Overrides Stream.send_ping"""
@@ -1147,10 +1153,10 @@ class _MuxHandler(object):
         # TODO(bashi): Implement
         raise MuxNotImplementedException('DropChannel is not implemented')
 
-    def _process_encapsulated_control_frame(self, block):
+    def _process_new_channel_slot(self, block):
         # TODO(bashi): Implement
         raise MuxNotImplementedException(
-            'EncapsulatedControlFrame is not implemented')
+            'NewChannelSlot is not implemented')
 
     def _process_control_blocks(self, parser):
         for control_block in parser.read_control_blocks():
@@ -1162,9 +1168,8 @@ class _MuxHandler(object):
                 self._process_flow_control(control_block)
             elif opcode == _MUX_OPCODE_DROP_CHANNEL:
                 self._process_drop_channel(control_block)
-            elif opcode == _MUX_OPCODE_ENCAPSULATED_CONTROL_FRAME:
-                self._process_encapsulated_control_frame(control_block)
-            # TODO(bashi): Support NewChannelSlot
+            elif opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
+                self._process_new_channel_slot(control_block)
             else:
                 raise InvalidMuxControlBlockException(
                     'Invalid opcode')
@@ -1194,14 +1199,8 @@ class _MuxHandler(object):
         if channel_id == _CONTROL_CHANNEL_ID:
             self._process_control_blocks(parser)
         else:
-            if common.is_control_opcode(frame.opcode):
-                raise InvalidMuxFrame(
-                    'Control frames must be sent with channel id 0')
             self._logger.debug('Received a frame. channel id=%d' % channel_id)
-            frame_data = create_binary_frame(
-                             message=parser.remaining_data(),
-                             opcode=frame.opcode,
-                             fin=frame.fin)
+            frame_data = parser.read_inner_frame()
             self._dispatch_frame_to_logical_channel(channel_id, frame_data)
 
     def notify_worker_done(self, channel_id):

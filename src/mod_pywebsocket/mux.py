@@ -46,6 +46,7 @@ import threading
 import traceback
 
 from mod_pywebsocket import common
+from mod_pywebsocket import handshake
 from mod_pywebsocket import util
 from mod_pywebsocket._stream_base import BadOperationException
 from mod_pywebsocket._stream_base import ConnectionTerminatedException
@@ -1122,7 +1123,13 @@ class _MuxHandler(object):
         self._logical_channels_condition.release()
 
     def _process_add_channel_request(self, block):
-        logical_request = self._create_logical_request(block)
+        try:
+            logical_request = self._create_logical_request(block)
+        except ValueError, e:
+            self._logger.debug('Failed to create logical request: %r' % e)
+            self._send_error_add_channel_response(
+                block.channel_id, status=common.HTTP_STATUS_BAD_REQUEST)
+            return
         if self._do_handshake_for_logical_request(logical_request):
             self._add_logical_channel(logical_request)
 

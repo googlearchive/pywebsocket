@@ -382,6 +382,57 @@ class MuxHandlerTest(unittest.TestCase):
         # Two AddChannelResponses should be written.
         self.assertEqual(2, len(control_blocks))
 
+    def test_add_channel_incomplete_handshake(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        incomplete_encoded_handshake = 'GET /echo HTTP/1.1'
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=incomplete_encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertTrue(1 in dispatcher.channel_events)
+        self.assertTrue(not 2 in dispatcher.channel_events)
+
+    def test_add_channel_invalid_version_handshake(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        encoded_handshake = (
+            'GET /echo HTTP/1.1\r\n'
+            'Host: example.com\r\n'
+            'Connection: Upgrade\r\n'
+            'Sec-WebSocket-Key2: 12998 5 Y3 1  .P00\r\n'
+            'Sec-WebSocket-Protocol: sample\r\n'
+            'Upgrade: WebSocket\r\n'
+            'Sec-WebSocket-Key1: 4 @1  46546xW%0l 1 5\r\n'
+            'Origin: http://example.com\r\n'
+            '\r\n'
+            '^n:ds[4U')
+
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertTrue(1 in dispatcher.channel_events)
+        self.assertTrue(not 2 in dispatcher.channel_events)
+
     def test_receive_drop_channel(self):
         request = _create_mock_request()
         dispatcher = _MuxMockDispatcher()

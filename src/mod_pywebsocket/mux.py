@@ -133,8 +133,9 @@ def _create_control_block_length_value(channel_id, opcode, flags, value):
 
     if channel_id < 0 or channel_id > _MAX_CHANNEL_ID:
         raise ValueError('Invalid channel id: %d' % channel_id)
-    if (opcode < 0 or opcode > _MUX_OPCODE_DROP_CHANNEL or
-        opcode == _MUX_OPCODE_FLOW_CONTROL):
+    if (opcode != _MUX_OPCODE_ADD_CHANNEL_REQUEST and
+        opcode != _MUX_OPCODE_ADD_CHANNEL_RESPONSE and
+        opcode != _MUX_OPCODE_DROP_CHANNEL):
         raise ValueError('Invalid opcode: %d' % opcode)
     if flags < 0 or flags > 7:
         raise ValueError('Invalid flags: %x' % flags)
@@ -142,9 +143,8 @@ def _create_control_block_length_value(channel_id, opcode, flags, value):
     if length < 0 or length > 2 ** 32 - 1:
         raise ValueError('Invalid length: %d' % length)
 
-    # The first byte comes after the objective channel id consists of
-    # opcode, opcode specific flags, and size of the size of value in bytes
-    # minus 1.
+    # The first byte consists of opcode, opcode specific flags, and size of
+    # the size of value in bytes minus 1.
     if length > 0:
         # Calculate the minimum number of bits that are required to store the
         # value of length.
@@ -641,63 +641,29 @@ class _LogicalStream(Stream):
         except ValueError, e:
             raise BadOperationException(e)
 
-    # TODO(bashi): It seems that we don't need to override this method as of
-    # draft version 3. Revisit.
     def receive_message(self):
         """Overrides Stream.receive_message."""
 
-        if self._request.client_terminated:
-            raise BadOperationException(
-                'Requested receive_message after receiving a closing '
-                'handshake')
-
-        while True:
-            try:
-                frame = self._receive_frame_as_frame_object()
-            except LogicalConnectionClosedException, e:
-                # Catching a LogicalConnectionClosedException means the
-                # logical connection has closed gracefully.
-                self._logger.debug('%s', e)
-                return None
-
-            for frame_filter in self._options.incoming_frame_filters:
-                frame_filter.filter(frame)
-
-            if frame.rsv1 or frame.rsv2 or frame.rsv3:
-                raise InvalidMuxFrameException(
-                    'Unsupported flag is set (rsv = %d%d%d)' %
-                    (frame.rsv1, frame.rsv2, frame.rsv3))
-
-            message = self._get_message_from_frame(frame)
-            if message is None:
-                continue
-
-            if self._original_opcode == common.OPCODE_TEXT:
-                try:
-                    return message.decode('utf-8')
-                except UnicodeDecodeError, e:
-                    raise InvalidUTF8Exception(e)
-            elif self._original_opcode == common.OPCODE_BINARY:
-                return message
-            elif common.is_control_opcode(self._original_opcode):
-                # TODO(bashi): Implement
-                raise MuxNotImplementedException(
-                    'Received control opcode on logical connection')
-            else:
-                raise UnsupportedFrameException(
-                    'Opcode %d is not supported on logical connection' %
-                    self._original_opcode)
+        # Just call Stream.receive_message(), but catch
+        # LogicalConnectionClosedException, which is raised when the logical
+        # connection has closed gracefully.
+        try:
+            return Stream.receive_message(self)
+        except LogicalConnectionClosedException, e:
+            self._logger.debug('%s', e)
+            return None
 
     def _send_closing_handshake(self, code, reason):
         """Overrides Stream._send_closing_handshake."""
 
         body = create_closing_handshake_body(code, reason)
         data = self._create_inner_frame(common.OPCODE_CLOSE, body, end=True)
+        frame_data = create_binary_frame(data, mask=False)
 
         self._request.server_terminated = True
         self._logger.debug('Sending closing handshake for %d: %r' %
-                           (self._request.channel_id, data))
-        self._request.connection.write_control_data(data)
+                           (self._request.channel_id, frame_data))
+        self._request.connection.write_control_data(frame_data)
 
     def send_ping(self, body=''):
         """Overrides Stream.send_ping"""

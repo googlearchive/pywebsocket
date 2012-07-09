@@ -137,6 +137,9 @@ class _MuxMockDispatcher(object):
             # echo back
             request.ws_stream.send_message(message)
 
+    def _do_ping(self, request, channel_events):
+        request.ws_stream.send_ping('Ping!')
+
     def transfer_data(self, request):
         self.channel_events[request.channel_id] = _ChannelEvent()
 
@@ -144,6 +147,9 @@ class _MuxMockDispatcher(object):
             # Note: more handler will be added.
             if request.uri.endswith('echo'):
                 self._do_echo(request,
+                              self.channel_events[request.channel_id])
+            elif request.uri.endswith('ping'):
+                self._do_ping(request,
                               self.channel_events[request.channel_id])
             else:
                 raise ValueError('Cannot handle path %r' % request.path)
@@ -400,6 +406,53 @@ class MuxHandlerTest(unittest.TestCase):
 
         exception = dispatcher.channel_events[2].exception
         self.assertTrue(exception.__class__ == ConnectionTerminatedException)
+
+    def test_receive_ping_frame(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+                                  channel_id=2, encoding=0,
+                                  encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        ping_frame = _create_logical_frame(channel_id=2,
+                                           message='Hello World!',
+                                           opcode=common.OPCODE_PING)
+        request.connection.put_bytes(ping_frame)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        messages = request.connection.get_written_control_messages(2)
+        self.assertEqual('\x8aHello World!', messages[0])
+
+    def test_send_ping(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        encoded_handshake = _create_request_header(path='/ping')
+        add_channel_request = _create_add_channel_request_frame(
+                                  channel_id=2, encoding=0,
+                                  encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        messages = request.connection.get_written_control_messages(2)
+        self.assertEqual('\x89Ping!', messages[0])
 
 
 if __name__ == '__main__':

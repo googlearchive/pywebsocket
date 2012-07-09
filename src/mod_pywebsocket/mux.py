@@ -671,14 +671,26 @@ class _LogicalStream(Stream):
     def send_ping(self, body=''):
         """Overrides Stream.send_ping"""
 
-        # TODO(bashi): Implement
-        raise MuxNotImplementedException('send_ping is not implemented')
+        data = self._create_inner_frame(common.OPCODE_PING, body,
+                                        end=True)
+        frame_data = create_binary_frame(data, mask=False)
+
+        self._logger.debug('Sending ping on logical channel %d: %r' %
+                           (self._request.channel_id, frame_data))
+        self._request.connection.write(frame_data)
+
+        self._ping_queue.append(body)
 
     def _send_pong(self, body):
         """Overrides Stream._send_pong"""
 
-        # TODO(bashi): Implement
-        raise MuxNotImplementedException('_send_pong is not implemented')
+        data = self._create_inner_frame(common.OPCODE_PONG, body,
+                                        end=True)
+        frame_data = create_binary_frame(data, mask=False)
+
+        self._logger.debug('Sending pong on logical channel %d: %r' %
+                           (self._request.channel_id, frame_data))
+        self._request.connection.write(frame_data)
 
     def close_connection(self, code=common.STATUS_NORMAL_CLOSURE, reason=''):
         """Overrides Stream.close_connection."""

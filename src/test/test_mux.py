@@ -57,7 +57,10 @@ class _MockMuxConnection(mock.MockBlockingConn):
 
     def __init__(self):
         mock.MockBlockingConn.__init__(self)
+        # For non-control messages
         self._written_messages = {}
+        # For control messages
+        self._written_control_messages = {}
         self._pending_fragments = {}
 
     def write(self, data):
@@ -81,8 +84,8 @@ class _MockMuxConnection(mock.MockBlockingConn):
         channel_id = parser.read_channel_id()
         if not channel_id in self._pending_fragments:
             self._pending_fragments[channel_id] = []
-        if not channel_id in self._written_messages:
             self._written_messages[channel_id] = []
+            self._written_control_messages[channel_id] = []
 
         if not fin:
             self._pending_fragments[channel_id].append(parser.remaining_data())
@@ -90,11 +93,18 @@ class _MockMuxConnection(mock.MockBlockingConn):
             inner_frame = (''.join(self._pending_fragments[channel_id]) +
                            parser.remaining_data())
             self._pending_fragments[channel_id] = []
-            # Remove the first byte that contains opcode and flags.
-            self._written_messages[channel_id].append(inner_frame[1:])
+            opcode = ord(inner_frame[0]) & 0xf;
+            if opcode == common.OPCODE_TEXT or opcode == common.OPCODE_BINARY:
+                # Remove the first byte that contains opcode and flags.
+                self._written_messages[channel_id].append(inner_frame[1:])
+            else:
+                self._written_control_messages[channel_id].append(inner_frame)
 
     def get_written_messages(self, channel_id):
         return self._written_messages[channel_id]
+
+    def get_written_control_messages(self, channel_id):
+        return self._written_control_messages[channel_id]
 
 
 class _ChannelEvent(object):
@@ -168,10 +178,11 @@ def _create_add_channel_request_frame(channel_id, encoding, encoded_handshake):
     return create_binary_frame(payload, mask=True)
 
 
-def _create_logical_frame(channel_id, message, opcode=common.OPCODE_BINARY):
+def _create_logical_frame(channel_id, message, opcode=common.OPCODE_BINARY,
+                          mask=True):
     bits = chr(0x80 | opcode)
     payload = mux._encode_channel_id(channel_id) + bits + message
-    return create_binary_frame(payload, mask=True)
+    return create_binary_frame(payload, mask=mask)
 
 
 def _create_request_header(path='/echo'):
@@ -361,9 +372,34 @@ class MuxHandlerTest(unittest.TestCase):
         messages = request.connection.get_written_messages(3)
         self.assertEqual(1, len(messages))
         self.assertEqual('World', messages[0])
-        control_blocks = request.connection.get_written_messages(0)
+        control_blocks = request.connection.get_written_control_messages(0)
         # Two AddChannelResponses should be written.
         self.assertEqual(2, len(control_blocks))
+
+    def test_receive_drop_channel(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+                                  channel_id=2, encoding=0,
+                                  encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        drop_channel = mux._create_drop_channel(channel_id=2,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(drop_channel)
+
+        # Terminate implicitly opened channel.
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        exception = dispatcher.channel_events[2].exception
+        self.assertTrue(exception.__class__ == ConnectionTerminatedException)
 
 
 if __name__ == '__main__':

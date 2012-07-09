@@ -169,7 +169,8 @@ def _create_control_block_length_value(channel_id, opcode, flags, value):
 
 
 def _create_add_channel_response(channel_id, encoded_handshake,
-                                 encoding=0, rejected=False):
+                                 encoding=0, rejected=False,
+                                 outer_frame_mask=False):
     if encoding != 0 and encoding != 1:
         raise ValueError('Invalid encoding %d' % encoding)
 
@@ -178,10 +179,11 @@ def _create_add_channel_response(channel_id, encoded_handshake,
                 channel_id, _MUX_OPCODE_ADD_CHANNEL_RESPONSE,
                 flags, encoded_handshake)
     payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=False)
+    return create_binary_frame(payload, mask=outer_frame_mask)
 
 
-def _create_drop_channel(channel_id, reason='', mux_error=False):
+def _create_drop_channel(channel_id, reason='', mux_error=False,
+                         outer_frame_mask=False):
     if not mux_error and len(reason) > 0:
         raise ValueError('Reason must be empty if mux_error is False')
 
@@ -190,7 +192,7 @@ def _create_drop_channel(channel_id, reason='', mux_error=False):
                 channel_id, _MUX_OPCODE_DROP_CHANNEL,
                 flags, reason)
     payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=False)
+    return create_binary_frame(payload, mask=outer_frame_mask)
 
 
 def _parse_request_text(request_text):
@@ -582,7 +584,8 @@ class _LogicalConnection(object):
             new_state: state to be set. new_state must be one of followings:
             - STATE_GRACEFULLY_CLOSED: when closing handshake for this
                 connection has been received.
-            - STATE_TERMINATED: when the physical connection has closed.
+            - STATE_TERMINATED: when the physical connection has closed or
+                DropChannel of this connection has received.
         """
 
         self._read_condition.acquire()
@@ -663,7 +666,7 @@ class _LogicalStream(Stream):
         self._request.server_terminated = True
         self._logger.debug('Sending closing handshake for %d: %r' %
                            (self._request.channel_id, frame_data))
-        self._request.connection.write_control_data(frame_data)
+        self._request.connection.write(frame_data)
 
     def send_ping(self, body=''):
         """Overrides Stream.send_ping"""
@@ -1116,8 +1119,22 @@ class _MuxHandler(object):
         raise MuxNotImplementedException('FlowControl is not implemented')
 
     def _process_drop_channel(self, block):
-        # TODO(bashi): Implement
-        raise MuxNotImplementedException('DropChannel is not implemented')
+        self._logger.debug('DropChannel received for %d: reason=%r' %
+                           (block.channel_id, block.reason))
+        try:
+            self._logical_channels_condition.acquire()
+            if not block.channel_id in self._logical_channels:
+                return
+            channel_data = self._logical_channels[block.channel_id]
+            if not block.mux_error:
+                channel_data.request.connection.set_read_state(
+                    _LogicalConnection.STATE_TERMINATED)
+            else:
+                # TODO(bashi): What should we do?
+                channel_data.request.connection.set_read_state(
+                    _LogicalConnection.STATE_TERMINATED)
+        finally:
+            self._logical_channels_condition.release()
 
     def _process_new_channel_slot(self, block):
         # TODO(bashi): Implement

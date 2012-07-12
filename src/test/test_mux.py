@@ -68,6 +68,7 @@ class _MockMuxConnection(mock.MockBlockingConn):
 
         self._current_data = data
         self._position = 0
+
         def _receive_bytes(length):
             if self._position + length > len(self._current_data):
                 raise ConnectionTerminatedException(
@@ -344,14 +345,14 @@ class MuxHandlerTest(unittest.TestCase):
 
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
-                                  channel_id=2, encoding=0,
-                                  encoded_handshake=encoded_handshake)
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
-                                  channel_id=3, encoding=0,
-                                  encoded_handshake=encoded_handshake)
+            channel_id=3, encoding=0,
+            encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
         request.connection.put_bytes(
@@ -441,8 +442,8 @@ class MuxHandlerTest(unittest.TestCase):
 
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
-                                  channel_id=2, encoding=0,
-                                  encoded_handshake=encoded_handshake)
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
         drop_channel = mux._create_drop_channel(channel_id=2,
@@ -466,8 +467,8 @@ class MuxHandlerTest(unittest.TestCase):
 
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
-                                  channel_id=2, encoding=0,
-                                  encoded_handshake=encoded_handshake)
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
         ping_frame = _create_logical_frame(channel_id=2,
@@ -493,8 +494,8 @@ class MuxHandlerTest(unittest.TestCase):
 
         encoded_handshake = _create_request_header(path='/ping')
         add_channel_request = _create_add_channel_request_frame(
-                                  channel_id=2, encoding=0,
-                                  encoded_handshake=encoded_handshake)
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
         request.connection.put_bytes(

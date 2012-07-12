@@ -825,13 +825,19 @@ class _PhysicalConnectionReader(threading.Thread):
         while True:
             try:
                 physical_stream = self._mux_handler.physical_stream
-                frame = physical_stream._receive_frame_as_frame_object()
+                message = physical_stream.receive_message()
+                if not message:
+                    break
+                opcode = physical_stream.get_last_received_opcode()
+                if opcode == common.OPCODE_TEXT:
+                    raise MuxUnexpectedException(
+                        'Received a text messge on physical connection')
             except ConnectionTerminatedException, e:
                 self._logger.debug('%s', e)
                 break
 
             try:
-                self._mux_handler.dispatch_frame(frame)
+                self._mux_handler.dispatch_message(message)
             except Exception, e:
                 self._logger.debug(traceback.format_exc())
                 break
@@ -1187,16 +1193,16 @@ class _MuxHandler(object):
         finally:
             self._logical_channels_condition.release()
 
-    def dispatch_frame(self, frame):
-        """Dispatches frame. The reader thread calls this method.
+    def dispatch_message(self, message):
+        """Dispatches message. The reader thread calls this method.
 
         Args:
-            frame: a multiplexed frame to be dispatched.
+            message: a message that contains encapsulated frame.
         Raises:
-            InvalidMuxFrame: if the frame is invalid.
+            InvalidMuxFrameException: if the message is invalid.
         """
 
-        parser = _MuxFramePayloadParser(frame.payload)
+        parser = _MuxFramePayloadParser(message)
         channel_id = parser.read_channel_id()
         if channel_id == _CONTROL_CHANNEL_ID:
             self._process_control_blocks(parser)

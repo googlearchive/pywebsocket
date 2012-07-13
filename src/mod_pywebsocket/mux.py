@@ -826,12 +826,12 @@ class _PhysicalConnectionReader(threading.Thread):
             try:
                 physical_stream = self._mux_handler.physical_stream
                 message = physical_stream.receive_message()
-                if not message:
+                if message is None:
                     break
                 opcode = physical_stream.get_last_received_opcode()
                 if opcode == common.OPCODE_TEXT:
                     raise MuxUnexpectedException(
-                        'Received a text messge on physical connection')
+                        'Received a text message on physical connection')
             except ConnectionTerminatedException, e:
                 self._logger.debug('%s', e)
                 break

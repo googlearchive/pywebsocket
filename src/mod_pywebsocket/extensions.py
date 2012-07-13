@@ -38,6 +38,9 @@ _available_processors = {}
 
 class ExtensionProcessorInterface(object):
 
+    def name(self):
+        return None
+
     def get_extension_response(self):
         return None
 
@@ -52,6 +55,9 @@ class DeflateStreamExtensionProcessor(ExtensionProcessorInterface):
         self._logger = util.get_class_logger(self)
 
         self._request = request
+
+    def name(self):
+        return common.DEFLATE_STREAM_EXTENSION
 
     def get_extension_response(self):
         if len(self._request.get_parameter_names()) != 0:
@@ -95,6 +101,9 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
         self._total_incoming_payload_bytes = 0
         # Total number of incoming bytes obtained after applying this filter.
         self._total_filtered_incoming_payload_bytes = 0
+
+    def name(self):
+        return common.DEFLATE_FRAME_EXTENSION
 
     def get_extension_response(self):
         # Any unknown parameter will be just ignored.
@@ -282,6 +291,9 @@ class PerFrameCompressionExtensionProcessor(ExtensionProcessorInterface):
         self._compression_method_name = None
         self._compression_processor = None
 
+    def name(self):
+        return common.PERFRAME_COMPRESSION_EXTENSION
+
     def _lookup_compression_processor(self, method_desc):
         if method_desc.name() == self._DEFLATE_METHOD:
             return DeflateFrameExtensionProcessor(method_desc)
@@ -343,6 +355,40 @@ class PerFrameCompressionExtensionProcessor(ExtensionProcessorInterface):
 
 _available_processors[common.PERFRAME_COMPRESSION_EXTENSION] = (
     PerFrameCompressionExtensionProcessor)
+
+
+class MuxExtensionProcessor(ExtensionProcessorInterface):
+    """WebSocket multiplexing extension processor."""
+
+    def __init__(self, request):
+        self._request = request
+
+    def name(self):
+        return common.MUX_EXTENSION
+
+    def get_extension_response(self, ws_request,
+                               logical_channel_extensions):
+        # Mux extension cannot be used after extensions that depend on
+        # frame boundary, extension data field, or any reserved bits
+        # which are attributed to each frame.
+        for extension in logical_channel_extensions:
+            name = extension.name()
+            if (name == common.PERFRAME_COMPRESSION_EXTENSION or
+                name == common.DEFLATE_FRAME_EXTENSION or
+                name == common.X_WEBKIT_DEFLATE_FRAME_EXTENSION):
+                return None
+
+        # TODO(bashi): Process flow control parameter.
+
+        ws_request.mux = True
+        ws_request.mux_extensions = logical_channel_extensions
+        return common.ExtensionParameter(common.MUX_EXTENSION)
+
+    def setup_stream_options(self, stream_options):
+        pass
+
+
+_available_processors[common.MUX_EXTENSION] = MuxExtensionProcessor
 
 
 def get_extension_processor(extension_request):

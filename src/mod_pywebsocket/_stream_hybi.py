@@ -811,8 +811,9 @@ class Stream(StreamBase):
         self._write(frame)
 
     def get_last_received_opcode(self):
-        """Returns the opcode of the last WebSocket message. The return value
-        is valid iff immediately after receive_message call.
+        """Returns the opcode of the WebSocket message which the last received
+        frame belongs to. The return value is valid iff immediately after
+        receive_message call.
         """
 
         return self._original_opcode

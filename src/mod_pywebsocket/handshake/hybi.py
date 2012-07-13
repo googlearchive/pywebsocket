@@ -182,32 +182,58 @@ class Handshaker(object):
 
             # Extra handshake handler may modify/remove processors.
             self._dispatcher.do_extra_handshake(self._request)
+            processors = filter(lambda processor: processor is not None,
+                                self._request.ws_extension_processors)
+
+            accepted_extensions = []
+
+            # We need to take care of mux extension here. Extensions that
+            # are placed before mux should be applied to logical channels.
+            mux_index = -1
+            for i, processor in enumerate(processors):
+                if processor.name() == common.MUX_EXTENSION:
+                    mux_index = i
+                    break
+            if mux_index >= 0:
+                mux_processor = processors[mux_index]
+                logical_channel_processors = processors[:mux_index]
+                processors = processors[mux_index+1:]
+
+                for processor in logical_channel_processors:
+                    extension_response = processor.get_extension_response()
+                    if extension_response is None:
+                        # Rejected.
+                        continue
+                    accepted_extensions.append(extension_response)
+                # Pass a shallow copy of accepted_extensions as extensions for
+                # logical channels.
+                mux_response = mux_processor.get_extension_response(
+                    self._request, accepted_extensions[:])
+                if mux_response is not None:
+                    accepted_extensions.append(mux_response)
 
             stream_options = StreamOptions()
 
-            self._request.ws_extensions = None
-            for processor in self._request.ws_extension_processors:
-                if processor is None:
-                    # Some processors may be removed by extra handshake
-                    # handler.
-                    continue
+            # When there is mux extension, here, |processors| contain only
+            # prosessors for extensions placed after mux.
+            for processor in processors:
 
                 extension_response = processor.get_extension_response()
                 if extension_response is None:
                     # Rejected.
                     continue
 
-                if self._request.ws_extensions is None:
-                    self._request.ws_extensions = []
-                self._request.ws_extensions.append(extension_response)
+                accepted_extensions.append(extension_response)
 
                 processor.setup_stream_options(stream_options)
 
-            if self._request.ws_extensions is not None:
+            if len(accepted_extensions) > 0:
+                self._request.ws_extensions = accepted_extensions
                 self._logger.debug(
                     'Extensions accepted: %r',
-                    map(common.ExtensionParameter.name,
-                        self._request.ws_extensions))
+                    map(common.ExtensionParameter.name, accepted_extensions))
+            else:
+                self._request.ws_extensions = None
 
             self._request.ws_stream = self._create_stream(stream_options)
 

@@ -295,6 +295,36 @@ class HandshakerTest(unittest.TestCase):
         # not caught by do_handshake.
         self.assertRaises(AbortedByUserException, handshaker.do_handshake)
 
+    def test_do_handshake_with_mux_and_deflateframe(self):
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Extensions'] = ('%s, %s' % (
+                common.MUX_EXTENSION,
+                common.DEFLATE_FRAME_EXTENSION))
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(2, len(request.ws_extensions))
+        self.assertEqual(common.MUX_EXTENSION,
+                         request.ws_extensions[0].name())
+        self.assertEqual(common.DEFLATE_FRAME_EXTENSION,
+                         request.ws_extensions[1].name())
+        self.assertTrue(request.mux)
+        self.assertEqual(0, len(request.mux_extensions))
+
+    def test_do_handshake_with_deflateframe_and_mux(self):
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Extensions'] = ('%s, %s' % (
+                common.DEFLATE_FRAME_EXTENSION,
+                common.MUX_EXTENSION))
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        # mux should be rejected.
+        self.assertEqual(1, len(request.ws_extensions))
+        first_extension = request.ws_extensions[0]
+        self.assertEqual(common.DEFLATE_FRAME_EXTENSION,
+                         first_extension.name())
+
     def test_bad_requests(self):
         bad_cases = [
             ('HTTP request',

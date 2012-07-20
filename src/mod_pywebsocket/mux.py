@@ -1250,4 +1250,15 @@ class _MuxHandler(object):
         self._logical_channels_condition.release()
 
 
+def use_mux(request):
+    return hasattr(request, 'mux') and request.mux
+
+
+def start(request, dispatcher):
+    mux_handler = _MuxHandler(request, dispatcher)
+    mux_handler.start()
+
+    mux_handler.wait_until_done()
+
+
 # vi:sts=4 sw=4 et

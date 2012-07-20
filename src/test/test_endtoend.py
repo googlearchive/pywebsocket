@@ -45,6 +45,7 @@ import unittest
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from test import client_for_testing
+from test import mux_client_for_testing
 
 
 # Special message that tells the echo server to start closing handshake
@@ -116,6 +117,33 @@ def _unmasked_frame_check_procedure(client):
     client.assert_receive_close(client_for_testing.STATUS_PROTOCOL_ERROR, '')
 
     client.assert_connection_closed()
+
+
+def _mux_echo_check_procedure(mux_client):
+    mux_client.connect()
+
+    mux_client.send_message(1, 'test')
+    mux_client.assert_receive(1, 'test')
+
+    logical_channel_options = client_for_testing.ClientOptions()
+    logical_channel_options.server_host = 'localhost'
+    logical_channel_options.server_port = 80
+    logical_channel_options.origin = 'http://localhost'
+    logical_channel_options.resource = '/echo'
+    mux_client.add_channel(2, logical_channel_options)
+
+    mux_client.send_message(1, 'hello')
+    mux_client.send_message(2, 'world')
+    mux_client.assert_receive(1, 'hello')
+    mux_client.assert_receive(2, 'world')
+
+    mux_client.send_close(1)
+    mux_client.send_close(2)
+    mux_client.assert_receive_close(1)
+    mux_client.assert_receive_close(2)
+
+    mux_client.send_physical_connection_close()
+    mux_client.assert_physical_connection_receive_close()
 
 
 class EndToEndTest(unittest.TestCase):
@@ -205,7 +233,7 @@ class EndToEndTest(unittest.TestCase):
         try:
             time.sleep(0.2)
 
-            self._options.use_deflate_stream = True
+            self._options.enable_deflate_stream()
             client = client_for_testing.create_client(self._options)
             try:
                 test_function(client)
@@ -219,7 +247,7 @@ class EndToEndTest(unittest.TestCase):
         try:
             time.sleep(0.2)
 
-            self._options.use_deflate_frame = True
+            self._options.enable_deflate_frame()
             client = client_for_testing.create_client(self._options)
             try:
                 test_function(client)
@@ -260,6 +288,19 @@ class EndToEndTest(unittest.TestCase):
         finally:
             self._kill_process(server.pid)
 
+    def _run_hybi_mux_test(self, test_function):
+        server = self._run_server()
+        try:
+            time.sleep(0.2)
+
+            client = mux_client_for_testing.MuxClient(self._options)
+            try:
+                test_function(client)
+            finally:
+                client.close_socket()
+        finally:
+            self._kill_process(server.pid)
+
     def test_echo(self):
         self._run_hybi_test(_echo_check_procedure)
 
@@ -294,6 +335,9 @@ class EndToEndTest(unittest.TestCase):
         self._options.resource = '/close'
         self._run_hybi_close_with_code_and_reason_test(
             _echo_check_procedure_with_code_and_reason, None, '')
+
+    def test_mux_echo(self):
+        self._run_hybi_mux_test(_mux_echo_check_procedure)
 
     def test_close_on_protocol_error(self):
         """Tests that the server sends a close frame with protocol error status

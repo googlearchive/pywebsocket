@@ -63,10 +63,10 @@ To support TLS, run standalone.py with -t, -k, and -c options.
 SUPPORTING CLIENT AUTHENTICATION
 
 To support client authentication with TLS, run standalone.py with -t, -k, -c,
-and --ca-certificate options.
+and --tls-client-auth, and --tls-client-ca options.
 
 E.g., $./standalone.py -d ../example -p 10443 -t -c ../test/cert/cert.pem -k
-../test/cert/key.pem --ca-certificate=../test/cert/cacert.pem
+../test/cert/key.pem --tls-client-auth --tls-client-ca=../test/cert/cacert.pem
 
 
 CONFIGURATION FILE
@@ -325,7 +325,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                 continue
             if self.websocket_server_options.use_tls:
                 if _HAS_SSL:
-                    if self.websocket_server_options.ca_certificate:
+                    if self.websocket_server_options.tls_client_auth:
                         client_cert_ = ssl.CERT_REQUIRED
                     else:
                         client_cert_ = ssl.CERT_NONE
@@ -333,7 +333,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                         keyfile=self.websocket_server_options.private_key,
                         certfile=self.websocket_server_options.certificate,
                         ssl_version=ssl.PROTOCOL_SSLv23,
-                        ca_certs=self.websocket_server_options.ca_certificate,
+                        ca_certs=self.websocket_server_options.tls_client_ca,
                         cert_reqs=client_cert_)
                 if _HAS_OPEN_SSL:
                     ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
@@ -735,9 +735,13 @@ def _build_option_parser():
                       default='', help='TLS private key file.')
     parser.add_option('-c', '--certificate', dest='certificate',
                       default='', help='TLS certificate file.')
-    parser.add_option('--ca-certificate', dest='ca_certificate', default='',
-                      help=('TLS CA certificate file for client '
-                            'authentication.'))
+    parser.add_option('--tls-client-auth', dest='tls_client_auth',
+                      action='store_true', default=False,
+                      help='Requires TLS client auth on every connection.')
+    parser.add_option('--tls-client-ca', dest='tls_client_ca', default='',
+                      help=('Specifies a pem file which contains a set of '
+                            'concatenated CA certificates which are used to '
+                            'validate certificates passed from clients'))
     parser.add_option('-l', '--log-file', '--log_file', dest='log_file',
                       default='', help='Log file.')
     # Custom log level:
@@ -877,7 +881,7 @@ def _main(args=None):
                     'To use TLS, specify private_key and certificate.')
             sys.exit(1)
 
-    if options.ca_certificate:
+    if options.tls_client_auth:
         if not options.use_tls:
             logging.critical('TLS must be enabled for client authentication.')
             sys.exit(1)

@@ -294,11 +294,14 @@ def parse_frame(receive_bytes, logger=None,
 class FragmentedFrameBuilder(object):
     """A stateful class to send a message as fragments."""
 
-    def __init__(self, mask, frame_filters=[]):
+    def __init__(self, mask, frame_filters=[], encode_utf8=True):
         """Constructs an instance."""
 
         self._mask = mask
         self._frame_filters = frame_filters
+        # This is for skipping UTF-8 encoding when building text type frames
+        # from compressed data.
+        self._encode_utf8 = encode_utf8
 
         self._started = False
 
@@ -327,7 +330,7 @@ class FragmentedFrameBuilder(object):
             self._started = True
             fin = 0
 
-        if binary:
+        if binary or not self._encode_utf8:
             return create_binary_frame(
                 message, opcode, fin, self._mask, self._frame_filters)
         else:
@@ -393,6 +396,11 @@ class StreamOptions(object):
         self.outgoing_frame_filters = []
         self.incoming_frame_filters = []
 
+        # Filters applied to messages. Control frames are not affected by them.
+        self.outgoing_message_filters = []
+        self.incoming_message_filters = []
+
+        self.encode_text_message_to_utf8 = True
         self.mask_send = False
         self.unmask_receive = True
 
@@ -428,7 +436,8 @@ class Stream(StreamBase):
         self._original_opcode = None
 
         self._writer = FragmentedFrameBuilder(
-            self._options.mask_send, self._options.outgoing_frame_filters)
+            self._options.mask_send, self._options.outgoing_frame_filters,
+            self._options.encode_text_message_to_utf8)
 
         self._ping_queue = deque()
 
@@ -476,6 +485,9 @@ class Stream(StreamBase):
         if binary and isinstance(message, unicode):
             raise BadOperationException(
                 'Message for binary frame must be instance of str')
+
+        for message_filter in self._options.outgoing_message_filters:
+            message = message_filter.filter(message, end, binary)
 
         try:
             self._write(self._writer.build(message, end, binary))
@@ -710,6 +722,9 @@ class Stream(StreamBase):
             message = self._get_message_from_frame(frame)
             if message is None:
                 continue
+
+            for message_filter in self._options.incoming_message_filters:
+                message = message_filter.filter(message)
 
             if self._original_opcode == common.OPCODE_TEXT:
                 # The WebSocket protocol section 4.4 specifies that invalid

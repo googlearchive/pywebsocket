@@ -71,6 +71,9 @@ _MUX_OPCODE_NEW_CHANNEL_SLOT = 4
 
 _MAX_CHANNEL_ID = 2 ** 29 - 1
 
+_INITIAL_NUMBER_OF_CHANNEL_SLOTS = 64
+_INITIAL_QUOTA_FOR_CLIENT = 8 * 1024
+
 # We need only these status code for now.
 _HTTP_BAD_RESPONSE_MESSAGES = {
     common.HTTP_STATUS_BAD_REQUEST: 'Bad Request',
@@ -120,6 +123,34 @@ def _encode_channel_id(channel_id):
     raise ValueError('Channel id %d is too large' % channel_id)
 
 
+def _size_of_number_in_bytes_minus_1(number):
+    # Calculate the minimum number of bytes minus 1 that are required to store
+    # the data.
+    if number < 0:
+        raise ValueError('Invalid number: %d' % number)
+    elif number < 2 ** 8:
+        return 0
+    elif number < 2 ** 16:
+        return 1
+    elif number < 2 ** 24:
+        return 2
+    elif number < 2 ** 32:
+        return 3
+    else:
+        raise ValueError('Invalid number %d' % number)
+
+
+def _encode_number(number):
+    if number < 2 ** 8:
+        return chr(number)
+    elif number < 2 ** 16:
+        return struct.pack('!H', number)
+    elif number < 2 ** 24:
+        return chr(number >> 16) + struct.pack('!H', number & 0xffff)
+    else:
+        return struct.pack('!L', number)
+
+
 def _create_control_block_length_value(channel_id, opcode, flags, value):
     """Creates a control block that consists of objective channel id, opcode,
     flags, encoded length of opcode specific value, and the value.
@@ -146,24 +177,10 @@ def _create_control_block_length_value(channel_id, opcode, flags, value):
 
     # The first byte consists of opcode, opcode specific flags, and size of
     # the size of value in bytes minus 1.
-    if length > 0:
-        # Calculate the minimum number of bits that are required to store the
-        # value of length.
-        bits_of_length = int(math.floor(math.log(length, 2)))
-        first_byte = (opcode << 5) | (flags << 2) | (bits_of_length / 8)
-    else:
-        first_byte = (opcode << 5) | (flags << 2) | 0
+    bytes_of_length = _size_of_number_in_bytes_minus_1(length)
+    first_byte = (opcode << 5) | (flags << 2) | bytes_of_length
 
-    encoded_length = ''
-    if length < 2 ** 8:
-        encoded_length = chr(length)
-    elif length < 2 ** 16:
-        encoded_length = struct.pack('!H', length)
-    elif length < 2 ** 24:
-        encoded_length = chr(length >> 16) + struct.pack('!H',
-                                                         length & 0xffff)
-    else:
-        encoded_length = struct.pack('!L', length)
+    encoded_length = _encode_number(length)
 
     return (chr(first_byte) + _encode_channel_id(channel_id) +
             encoded_length + value)
@@ -177,8 +194,7 @@ def _create_add_channel_response(channel_id, encoded_handshake,
 
     flags = (rejected << 2) | encoding
     block = _create_control_block_length_value(
-                channel_id, _MUX_OPCODE_ADD_CHANNEL_RESPONSE,
-                flags, encoded_handshake)
+        channel_id, _MUX_OPCODE_ADD_CHANNEL_RESPONSE, flags, encoded_handshake)
     payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
     return create_binary_frame(payload, mask=outer_frame_mask)
 
@@ -190,9 +206,35 @@ def _create_drop_channel(channel_id, reason='', mux_error=False,
 
     flags = mux_error << 2
     block = _create_control_block_length_value(
-                channel_id, _MUX_OPCODE_DROP_CHANNEL,
-                flags, reason)
+        channel_id, _MUX_OPCODE_DROP_CHANNEL, flags, reason)
     payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
+    return create_binary_frame(payload, mask=outer_frame_mask)
+
+
+def _create_flow_control(channel_id, replenished_quota,
+                         outer_frame_mask=False):
+    if replenished_quota < 0 or replenished_quota >= 2 ** 32:
+        raise ValueError('Invalid quota: %d' % replenished_quota)
+    first_byte = ((_MUX_OPCODE_FLOW_CONTROL << 5) |
+                  _size_of_number_in_bytes_minus_1(replenished_quota))
+    payload = (_encode_channel_id(_CONTROL_CHANNEL_ID) + chr(first_byte) +
+               _encode_channel_id(channel_id) +
+               _encode_number(replenished_quota))
+    return create_binary_frame(payload, mask=outer_frame_mask)
+
+
+def _create_new_channel_slot(slots, send_quota, outer_frame_mask=False):
+    if slots < 0 or slots >= 2 ** 32:
+        raise ValueError('Invalid number of slots: %d' % slots)
+    if send_quota < 0 or send_quota >= 2 ** 32:
+        raise ValueError('Invalid send quota: %d' % send_quota)
+    slots_size = _size_of_number_in_bytes_minus_1(slots)
+    send_quota_size = _size_of_number_in_bytes_minus_1(send_quota)
+
+    first_byte = ((_MUX_OPCODE_NEW_CHANNEL_SLOT << 5) |
+                  (slots_size << 2) | send_quota_size)
+    payload = (_encode_channel_id(_CONTROL_CHANNEL_ID) + chr(first_byte) +
+               _encode_number(slots) + _encode_number(send_quota))
     return create_binary_frame(payload, mask=outer_frame_mask)
 
 
@@ -292,9 +334,30 @@ class _MuxFramePayloadParser(object):
         # Consume rest of the message which is payload data of the original
         # frame.
         self._read_position = len(self._data)
-        header = create_header(opcode, len(payload), fin, rsv1, rsv2, rsv3,
-                               mask=False)
-        return header + payload
+        return fin, rsv1, rsv2, rsv3, opcode, payload
+
+    def _read_number(self, size):
+        if self._read_position + size > len(self._data):
+            raise InvalidMuxControlBlock(
+                'Cannot read %d byte(s) number' % size)
+
+        pos = self._read_position
+        if size == 1:
+            self._read_position += 1
+            return ord(self._data[pos])
+        elif size == 2:
+            self._read_position += 2
+            return struct.unpack('!H', self._data[pos:pos+2])[0]
+        elif size == 3:
+            self._read_position += 3
+            return ((ord(self._data[pos]) << 16)
+                    + struct.unpack('!H', self._data[pos+1:pos+3])[0])
+        elif size == 4:
+            self._read_position += 4
+            return struct.unpack('!L', self._data[pos:pos+4])[0]
+        else:
+            raise InvalidMuxControlBlockException(
+                'Cannot read %d byte(s) number' % size)
 
     def _read_opcode_specific_data(self, opcode, size_of_size):
         """Reads opcode specific data that consists of followings:
@@ -307,32 +370,16 @@ class _MuxFramePayloadParser(object):
             raise InvalidMuxControlBlockException(
                 'No size field for opcode %d' % opcode)
 
-        pos = self._read_position
-        size = 0
-        if size_of_size == 1:
-            size = ord(self._data[pos])
-            pos += 1
-        elif size_of_size == 2:
-            size = struct.unpack('!H', self._data[pos:pos+2])[0]
-            pos += 2
-        elif size_of_size == 3:
-            size = ord(self._data[pos]) << 16
-            size += struct.unpack('!H', self._data[pos+1:pos+3])[0]
-            pos += 3
-        elif size_of_size == 4:
-            size = struct.unpack('!L', self._data[pos:pos+4])[0]
-            pos += 4
-        else:
-            raise InvalidMuxControlBlockException(
-                'Invalid size of the size field for opcode %d' % opcode)
+        size = self._read_number(size_of_size)
 
+        pos = self._read_position
         if pos + size > len(self._data):
             raise InvalidMuxControlBlockException(
                 'No data field for opcode %d (%d + %d > %d)' %
                 (opcode, pos, size, len(self._data)))
 
         specific_data = self._data[pos:pos+size]
-        self._read_position = pos + size
+        self._read_position += size
         return specific_data
 
     def _read_add_channel_request(self, first_byte, control_block):
@@ -349,8 +396,10 @@ class _MuxFramePayloadParser(object):
         return control_block
 
     def _read_flow_control(self, first_byte, control_block):
-        # TODO(bashi): Implement
-        raise MuxNotImplementedException('FlowControl is not implemented')
+        quota_size = (first_byte & 0x3) + 1
+        control_block.channel_id = self.read_channel_id()
+        control_block.send_quota = self._read_number(quota_size)
+        return control_block
 
     def _read_drop_channel(self, first_byte, control_block):
         mux_error = (first_byte >> 4) & 0x1
@@ -600,27 +649,105 @@ class _LogicalStream(Stream):
     frames.
     """
 
-    def __init__(self, request):
+    def __init__(self, request, send_quota, receive_quota):
         """Constructs an instance.
 
         Args:
             request: _LogicalRequest instance.
+            send_quota: Initial send quota.
+            receive_quota: Initial receive quota.
         """
 
         # TODO(bashi): Support frame filters.
         stream_options = StreamOptions()
         # Physical stream is responsible for masking.
         stream_options.unmask_receive = False
+        # Control frames can be fragmented on logical channel.
+        stream_options.allow_fragmented_control_frame = True
         Stream.__init__(self, request, stream_options)
+        self._send_quota = send_quota
+        self._send_quota_condition = threading.Condition()
+        self._receive_quota = receive_quota
+        self._write_inner_frame_semaphore = threading.Semaphore()
 
     def _create_inner_frame(self, opcode, payload, end=True):
         # TODO(bashi): Support extensions that use reserved bits.
-        bits = (end << 7) | opcode
-        if opcode == common.OPCODE_TEXT:
-            payload = payload.encode('utf-8')
-
+        first_byte = (end << 7) | opcode
         return (_encode_channel_id(self._request.channel_id) +
-                chr(bits) + payload)
+                chr(first_byte) + payload)
+
+    def _write_inner_frame(self, opcode, payload, end=True):
+        payload_length = len(payload)
+        write_position = 0
+
+        try:
+            # An inner frame will be fragmented if there is no enough send
+            # quota. This semaphore ensures that fragmented inner frames are
+            # sent in order on the logical channel.
+            # Note that frames that come from other logical channels or
+            # multiplexing control blocks can be inserted between fragmented
+            # inner frames on the physical channel.
+            self._write_inner_frame_semaphore.acquire()
+            while write_position < payload_length:
+                try:
+                    self._send_quota_condition.acquire()
+                    while self._send_quota == 0:
+                        self._logger.debug(
+                            'No quota. Waiting FlowControl message for %d.' %
+                            self._request.channel_id)
+                        self._send_quota_condition.wait()
+
+                    remaining = payload_length - write_position
+                    write_length = min(self._send_quota, remaining)
+                    inner_frame_end = (
+                        end and
+                        (write_position + write_length == payload_length))
+
+                    inner_frame = self._create_inner_frame(
+                        opcode,
+                        payload[write_position:write_position+write_length],
+                        inner_frame_end)
+                    frame_data = self._writer.build(
+                        inner_frame, end=True, binary=True)
+                    self._send_quota -= write_length
+                    self._logger.debug('Consumed quota=%d, remaining=%d' %
+                                       (write_length, self._send_quota))
+                finally:
+                    self._send_quota_condition.release()
+
+                # Writing data will block the worker so we need to release
+                # _send_quota_condition before writing.
+                self._logger.debug('Sending inner frame: %r' % frame_data)
+                self._request.connection.write(frame_data)
+                write_position += write_length
+
+                opcode = common.OPCODE_CONTINUATION
+
+        except ValueError, e:
+            raise BadOperationException(e)
+        finally:
+            self._write_inner_frame_semaphore.release()
+
+    def replenish_send_quota(self, send_quota):
+        """Replenish send quota."""
+
+        self._send_quota_condition.acquire()
+        self._send_quota += send_quota
+        self._logger.debug('Replenished send quota for channel id %d: %d' %
+                           (self._request.channel_id, self._send_quota))
+        self._send_quota_condition.notify()
+        self._send_quota_condition.release()
+
+    def consume_receive_quota(self, amount):
+        """Consumes receive quota. Returns False on failure."""
+
+        if self._receive_quota < amount:
+            self._logger.debug('Violate quota on channel id %d: %d < %d' %
+                               (self._request.channel_id,
+                                self._receive_quota, amount))
+            return False
+        self._receive_quota -= amount
+        return True
 
     def send_message(self, message, end=True, binary=False):
         """Override Stream.send_message."""
@@ -633,17 +760,32 @@ class _LogicalStream(Stream):
             raise BadOperationException(
                 'Message for binary frame must be instance of str')
 
-        try:
-            if binary:
-                opcode = common.OPCODE_BINARY
-            else:
-                opcode = common.OPCODE_TEXT
+        if binary:
+            opcode = common.OPCODE_BINARY
+        else:
+            opcode = common.OPCODE_TEXT
+            message = message.encode('utf-8')
 
-            payload = self._create_inner_frame(opcode, message, end)
-            frame_data = self._writer.build(payload, end=True, binary=True)
-            self._request.connection.write(frame_data)
-        except ValueError, e:
-            raise BadOperationException(e)
+        self._write_inner_frame(opcode, message, end)
+
+    def _receive_frame(self):
+        """Overrides Stream._receive_frame.
+
+        In addition to call Stream._receive_frame, this method adds the amount
+        of payload to receiving quota and sends FlowControl to the client.
+        We need to do it here because Stream.receive_message() handles
+        control frames internally.
+        """
+
+        opcode, payload, fin, rsv1, rsv2, rsv3 = Stream._receive_frame(self)
+        amount = len(payload)
+        self._receive_quota += amount
+        frame_data = _create_flow_control(self._request.channel_id,
+                                          amount)
+        self._logger.debug('Sending flow control for %d, replenished=%d' %
+                           (self._request.channel_id, amount))
+        self._request.connection.write_control_data(frame_data)
+        return opcode, payload, fin, rsv1, rsv2, rsv3
 
     def receive_message(self):
         """Overrides Stream.receive_message."""
@@ -661,37 +803,27 @@ class _LogicalStream(Stream):
         """Overrides Stream._send_closing_handshake."""
 
         body = create_closing_handshake_body(code, reason)
-        data = self._create_inner_frame(common.OPCODE_CLOSE, body, end=True)
-        frame_data = create_binary_frame(data, mask=False)
+        self._logger.debug('Sending closing handshake for %d: (%r, %r)' %
+                           (self._request.channel_id, code, reason))
+        self._write_inner_frame(common.OPCODE_CLOSE, body, end=True)
 
         self._request.server_terminated = True
-        self._logger.debug('Sending closing handshake for %d: %r' %
-                           (self._request.channel_id, frame_data))
-        self._request.connection.write(frame_data)
 
     def send_ping(self, body=''):
         """Overrides Stream.send_ping"""
 
-        data = self._create_inner_frame(common.OPCODE_PING, body,
-                                        end=True)
-        frame_data = create_binary_frame(data, mask=False)
-
         self._logger.debug('Sending ping on logical channel %d: %r' %
-                           (self._request.channel_id, frame_data))
-        self._request.connection.write(frame_data)
+                           (self._request.channel_id, body))
+        self._write_inner_frame(common.OPCODE_PING, body, end=True)
 
         self._ping_queue.append(body)
 
     def _send_pong(self, body):
         """Overrides Stream._send_pong"""
 
-        data = self._create_inner_frame(common.OPCODE_PONG, body,
-                                        end=True)
-        frame_data = create_binary_frame(data, mask=False)
-
         self._logger.debug('Sending pong on logical channel %d: %r' %
-                           (self._request.channel_id, frame_data))
-        self._request.connection.write(frame_data)
+                           (self._request.channel_id, body))
+        self._write_inner_frame(common.OPCODE_PONG, body, end=True)
 
     def close_connection(self, code=common.STATUS_NORMAL_CLOSURE, reason=''):
         """Overrides Stream.close_connection."""
@@ -877,21 +1009,26 @@ class _Worker(threading.Thread):
 class _MuxHandshaker(hybi.Handshaker):
     """Opening handshake processor for multiplexing."""
 
-    def __init__(self, request, dispatcher):
+    def __init__(self, request, dispatcher, send_quota, receive_quota):
         """Constructs an instance.
         Args:
             request: _LogicalRequest instance.
             dispatcher: Dispatcher instance (dispatch.Dispatcher).
+            send_quota: Initial send quota.
+            receive_quota: Initial receive quota.
         """
 
         hybi.Handshaker.__init__(self, request, dispatcher)
+        self._send_quota = send_quota
+        self._receive_quota = receive_quota
 
     def _create_stream(self, stream_options):
         """Override hybi.Handshaker._create_stream."""
 
         self._logger.debug('Creating logical stream for %d' %
                            self._request.channel_id)
-        return _LogicalStream(self._request)
+        return _LogicalStream(self._request, self._send_quota,
+                              self._receive_quota)
 
     def _send_handshake(self, accept):
         """Override hybi.Handshaker._send_handshake."""
@@ -910,13 +1047,14 @@ class _MuxHandshaker(hybi.Handshaker):
 
 
 class _LogicalChannelData(object):
-    """A structure that holds the logical request and the worker thread
-    which are associated with a corresponding logical channel.
+    """A structure that holds information about logical channel.
     """
 
     def __init__(self, request, worker):
         self.request = request
         self.worker = worker
+        self.mux_error_occurred = False
+        self.mux_error_reason = ''
 
 
 class _MuxHandler(object):
@@ -949,10 +1087,11 @@ class _MuxHandler(object):
         self.dispatcher = dispatcher
         self.physical_connection = request.connection
         self.physical_stream = request.ws_stream
-
         self._logger = util.get_class_logger(self)
         self._logical_channels = {}
         self._logical_channels_condition = threading.Condition()
+        # Holds client's initial quota
+        self._channel_slots = collections.deque()
         self._worker_done_notify_received = False
         self._reader = None
         self._writer = None
@@ -983,10 +1122,33 @@ class _MuxHandler(object):
                                           self.original_request.uri,
                                           headers_in,
                                           logical_connection)
-        if not self._do_handshake_for_logical_request(logical_request):
+        # Client's send quota for the implicitly opened connection is zero,
+        # but we will send FlowControl later so set the initial quota to
+        # _INITIAL_QUOTA_FOR_CLIENT.
+        self._channel_slots.append(_INITIAL_QUOTA_FOR_CLIENT)
+        if not self._do_handshake_for_logical_request(
+            logical_request, send_quota=self.original_request.mux_quota):
             raise MuxUnexpectedException(
                 'Failed handshake on the default channel id')
         self._add_logical_channel(logical_request)
+
+        # Send FlowControl for the implicitly opened connection.
+        frame_data = _create_flow_control(_DEFAULT_CHANNEL_ID,
+                                          _INITIAL_QUOTA_FOR_CLIENT)
+        logical_request.connection.write_control_data(frame_data)
+
+    def add_channel_slots(self, slots, send_quota):
+        """Adds channel slots.
+
+        Args:
+            slots: number of slots to be added.
+            send_quota: initial send quota for slots.
+        """
+
+        self._channel_slots.extend([send_quota] * slots)
+        # Send NewChannelSlot to client.
+        frame_data = _create_new_channel_slot(slots, send_quota)
+        self.send_control_data(frame_data)
 
     def wait_until_done(self, timeout=None):
         """Waits until all workers are done. Returns False when timeout has
@@ -1095,8 +1257,14 @@ class _MuxHandler(object):
 
         return request
 
-    def _do_handshake_for_logical_request(self, request):
-        handshaker = _MuxHandshaker(request, self.dispatcher)
+    def _do_handshake_for_logical_request(self, request, send_quota=0):
+        try:
+            receive_quota = self._channel_slots.popleft()
+        except IndexError:
+            raise MuxUnexpectedException('No room in channel pool')
+
+        handshaker = _MuxHandshaker(request, self.dispatcher,
+                                    send_quota, receive_quota)
         try:
             handshaker.do_handshake()
         except handshake.VersionException, e:
@@ -1117,16 +1285,17 @@ class _MuxHandler(object):
         return True
 
     def _add_logical_channel(self, logical_request):
-        self._logical_channels_condition.acquire()
-        if logical_request.channel_id in self._logical_channels:
+        try:
+            self._logical_channels_condition.acquire()
+            if logical_request.channel_id in self._logical_channels:
+                raise MuxUnexpectedException('Channel id %d already exists' %
+                                             logical_request.channel_id)
+            worker = _Worker(self, logical_request)
+            channel_data = _LogicalChannelData(logical_request, worker)
+            self._logical_channels[logical_request.channel_id] = channel_data
+            worker.start()
+        finally:
             self._logical_channels_condition.release()
-            raise MuxUnexpectedException(
-                'Channel id %d already exists' % logical_request.channel_id)
-        worker = _Worker(self, logical_request)
-        channel_data = _LogicalChannelData(logical_request, worker)
-        self._logical_channels[logical_request.channel_id] = channel_data
-        worker.start()
-        self._logical_channels_condition.release()
 
     def _process_add_channel_request(self, block):
         try:
@@ -1138,10 +1307,20 @@ class _MuxHandler(object):
             return
         if self._do_handshake_for_logical_request(logical_request):
             self._add_logical_channel(logical_request)
+        else:
+            self._send_error_add_channel_response(
+                block.channel_id, status=common.HTTP_STATUS_BAD_REQUEST)
 
     def _process_flow_control(self, block):
-        # TODO(bashi): Implement
-        raise MuxNotImplementedException('FlowControl is not implemented')
+        try:
+            self._logical_channels_condition.acquire()
+            if not block.channel_id in self._logical_channels:
+                return
+            channel_data = self._logical_channels[block.channel_id]
+            channel_data.request.ws_stream.replenish_send_quota(
+                block.send_quota)
+        finally:
+            self._logical_channels_condition.release()
 
     def _process_drop_channel(self, block):
         self._logger.debug('DropChannel received for %d: reason=%r' %
@@ -1162,9 +1341,7 @@ class _MuxHandler(object):
             self._logical_channels_condition.release()
 
     def _process_new_channel_slot(self, block):
-        # TODO(bashi): Implement
-        raise MuxNotImplementedException(
-            'NewChannelSlot is not implemented')
+        raise MuxUnexpectedException('Client should not send NewChannelSlot')
 
     def _process_control_blocks(self, parser):
         for control_block in parser.read_control_blocks():
@@ -1182,13 +1359,26 @@ class _MuxHandler(object):
                 raise InvalidMuxControlBlockException(
                     'Invalid opcode')
 
-    def _dispatch_frame_to_logical_channel(self, channel_id, frame_data):
+    def _process_logical_frame(self, channel_id, parser):
+        self._logger.debug('Received a frame. channel id=%d' % channel_id)
         try:
             self._logical_channels_condition.acquire()
             if not channel_id in self._logical_channels:
                 raise MuxUnexpectedException(
                     'Channel id %d not found' % channel_id)
             channel_data = self._logical_channels[channel_id]
+            fin, rsv1, rsv2, rsv3, opcode, payload = parser.read_inner_frame()
+            if not channel_data.request.ws_stream.consume_receive_quota(
+                len(payload)):
+                # The client violates quota. Close logical channel.
+                channel_data.mux_error_occurred = True
+                channel_data.mux_error_reason = 'Quota violation'
+                channel_data.request.connection.set_read_state(
+                    _LogicalConnection.STATE_TERMINATED)
+                return
+            header = create_header(opcode, len(payload), fin, rsv1, rsv2, rsv3,
+                                   mask=False)
+            frame_data = header + payload
             channel_data.request.connection.append_frame_data(frame_data)
         finally:
             self._logical_channels_condition.release()
@@ -1207,9 +1397,7 @@ class _MuxHandler(object):
         if channel_id == _CONTROL_CHANNEL_ID:
             self._process_control_blocks(parser)
         else:
-            self._logger.debug('Received a frame. channel id=%d' % channel_id)
-            frame_data = parser.read_inner_frame()
-            self._dispatch_frame_to_logical_channel(channel_id, frame_data)
+            self._process_logical_frame(channel_id, parser)
 
     def notify_worker_done(self, channel_id):
         """Called when a worker has finished.
@@ -1231,7 +1419,12 @@ class _MuxHandler(object):
             self._logical_channels_condition.release()
 
         if not channel_data.request.server_terminated:
-            self._send_drop_channel(channel_id)
+            if channel_data.mux_error_occurred:
+                self._send_drop_channel(
+                    channel_id, reason=channel_data.mux_error_reason,
+                    mux_error=True)
+            else:
+                self._send_drop_channel(channel_id)
 
     def notify_reader_done(self):
         """This method is called by the reader thread when the reader has
@@ -1257,6 +1450,9 @@ def use_mux(request):
 def start(request, dispatcher):
     mux_handler = _MuxHandler(request, dispatcher)
     mux_handler.start()
+
+    mux_handler.add_channel_slots(_INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                  _INITIAL_QUOTA_FOR_CLIENT)
 
     mux_handler.wait_until_done()
 

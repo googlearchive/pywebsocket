@@ -42,6 +42,7 @@ NOTE: This code is far from robust like client_for_testing.py.
 
 import Queue
 import base64
+import collections
 import email
 import email.parser
 import logging
@@ -62,7 +63,9 @@ _DEFAULT_CHANNEL_ID = 1
 
 _MUX_OPCODE_ADD_CHANNEL_REQUEST = 0
 _MUX_OPCODE_ADD_CHANNEL_RESPONSE = 1
+_MUX_OPCODE_FLOW_CONTROL = 2
 _MUX_OPCODE_DROP_CHANNEL = 3
+_MUX_OPCODE_NEW_CHANNEL_SLOT = 4
 
 
 class _ControlBlock:
@@ -116,23 +119,26 @@ def _parse_channel_id(data, offset=0):
     return channel_id, channel_id_length
 
 
+def _read_number(data, size_of_size, offset=0):
+    if size_of_size == 1:
+        return ord(data[offset])
+    elif size_of_size == 2:
+        return struct.unpack('!H', data[offset:offset+2])[0]
+    elif size_of_size == 3:
+        return ((ord(data[offset]) << 16)
+                + struct.unpack('!H', data[offset+1:offset+3])[0])
+    elif size_of_size == 4:
+        return struct.unpack('!L', data[offset:offset+4])[0]
+    else:
+        raise Exception('Invalid "size of size" in control block')
+
+
 def _parse_control_block_specific_data(data, size_of_size, offset=0):
     remaining = len(data) - offset
     if remaining < size_of_size:
         raise Exception('Invalid control block received')
 
-    size = 0
-    if size_of_size == 1:
-        size = ord(data[offset])
-    elif size_of_size == 2:
-        size = struct.unpack('!H', data[offset:offset+2])[0]
-    elif size_of_size == 3:
-        size = ord(data[offset]) << 16
-        size += struct.unpack('!H', data[offset+1:offset+3])[0]
-    elif size_of_size == 4:
-        size = struct.unpack('!L', data[offset:offset+4])[0]
-    else:
-        raise Exception('Invalid "size of size" in control block')
+    size = _read_number(data, size_of_size, offset)
 
     start_position = offset + size_of_size
     end_position = start_position + size
@@ -181,6 +187,22 @@ def _parse_control_blocks(data):
             block.reason = reason
             pos += size
             blocks.append(block)
+        elif opcode == _MUX_OPCODE_FLOW_CONTROL:
+            channel_id, advance = _parse_channel_id(data, pos)
+            block.channel_id = channel_id
+            pos += advance
+            size_of_quota = (first_byte & 3) + 1
+            block.send_quota = _read_number(data, size_of_quota, pos)
+            pos += size_of_quota
+            blocks.append(block)
+        elif opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
+            size_of_slots = ((first_byte >> 2) & 3) + 1
+            size_of_quota = (first_byte & 3) + 1
+            block.slots = _read_number(data, size_of_slots, pos)
+            pos += size_of_slots
+            block.send_quota = _read_number(data, size_of_quota, pos)
+            pos += size_of_quota
+            blocks.append(block)
         else:
             raise Exception(
                 'Unsupported mux opcode %d received' % opcode)
@@ -205,38 +227,52 @@ def _encode_channel_id(channel_id):
     raise ValueError('Channel id %d is too large' % channel_id)
 
 
+def _size_of_number_in_bytes_minus_1(number):
+    # Calculate the minimum number of bytes minus 1 that are required to store
+    # the data.
+    if number < 0:
+        raise ValueError('Invalid number: %d' % number)
+    elif number < 2 ** 8:
+        return 0
+    elif number < 2 ** 16:
+        return 1
+    elif number < 2 ** 24:
+        return 2
+    elif number < 2 ** 32:
+        return 3
+    else:
+        raise ValueError('Invalid number %d' % number)
+
+
+def _encode_number(number):
+    if number < 2 ** 8:
+        return chr(number)
+    elif number < 2 ** 16:
+        return struct.pack('!H', number)
+    elif number < 2 ** 24:
+        return chr(number >> 16) + struct.pack('!H', number & 0xffff)
+    else:
+        return struct.pack('!L', number)
+
+
 def _create_add_channel_request(channel_id, encoded_handshake,
                                 encoding=0):
     length = len(encoded_handshake)
-    if length < 0:
-        raise ValueError('Invalid length')
-    elif length < 2 ** 8:
-        size_of_length = 0
-    elif length < 2 ** 16:
-        size_of_length = 1
-    elif length < 2 ** 24:
-        size_of_length = 2
-    elif length < 2 ** 32:
-        size_of_length = 3
-    else:
-        raise ValueError('Invalid length')
+    size_of_length = _size_of_number_in_bytes_minus_1(length)
 
     first_byte = ((_MUX_OPCODE_ADD_CHANNEL_REQUEST << 5) | (encoding << 2) |
                   size_of_length)
-
-    encoded_length = ''
-    if length < 2 ** 8:
-        encoded_length = chr(length)
-    elif length < 2 ** 16:
-        encoded_length = struct.pack('!H', length)
-    elif length < 2 ** 24:
-        encoded_length = chr(length >> 16) + struct.pack('!H',
-                                                         length & 0xffff)
-    else:
-        encoded_length = struct.pack('!L', length)
+    encoded_length = _encode_number(length)
 
     return (chr(first_byte) + _encode_channel_id(channel_id) +
             encoded_length + encoded_handshake)
+
+
+def _create_flow_control(channel_id, replenished_quota):
+    size_of_quota = _size_of_number_in_bytes_minus_1(replenished_quota)
+    first_byte = ((_MUX_OPCODE_FLOW_CONTROL << 5) | size_of_quota)
+    return (chr(first_byte) + _encode_channel_id(channel_id) +
+            _encode_number(replenished_quota))
 
 
 class _MuxReaderThread(threading.Thread):
@@ -326,6 +362,13 @@ class _InnerFrame(object):
         self.payload = payload
 
 
+class _LogicalChannelData(object):
+    def __init__(self):
+        self.queue = Queue.Queue()
+        self.send_quota = 0
+        self.receive_quota = 0
+
+
 class MuxClient(object):
     """WebSocket mux client.
 
@@ -348,7 +391,9 @@ class MuxClient(object):
         self._read_thread = None
         self._control_blocks_condition = threading.Condition()
         self._control_blocks = []
-        self._logical_channels_queue = {}
+        self._channel_slots = collections.deque()
+        self._logical_channels_condition = threading.Condition();
+        self._logical_channels = {}
         self._timeout = 2
         self._physical_connection_close_event = None
         self._physical_connection_close_message = None
@@ -372,21 +417,51 @@ class MuxClient(object):
 
         return _InnerFrame(fin, rsv1, rsv2, rsv3, opcode, payload)
 
+    def _process_mux_control_blocks(self):
+        for block in self._control_blocks:
+            if block.opcode == _MUX_OPCODE_ADD_CHANNEL_RESPONSE:
+                # AddChannelResponse will be handled in add_channel().
+                continue
+            elif block.opcode == _MUX_OPCODE_FLOW_CONTROL:
+                try:
+                    self._logical_channels_condition.acquire()
+                    if not block.channel_id in self._logical_channels:
+                        raise Exception('Invalid flow control received for '
+                                        'channel id %d' % block.channel_id)
+                    self._logical_channels[block.channel_id].send_quota += (
+                        block.send_quota)
+                    self._logical_channels_condition.notify()
+                finally:
+                    self._logical_channels_condition.release()
+            elif block.opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
+                self._channel_slots.extend([block.send_quota] * block.slots)
+
     def _dispatch_frame(self, channel_id, payload):
         if channel_id == _CONTROL_CHANNEL_ID:
             try:
                 self._control_blocks_condition.acquire()
                 self._control_blocks += _parse_control_blocks(payload)
+                self._process_mux_control_blocks()
                 self._control_blocks_condition.notify()
             finally:
                 self._control_blocks_condition.release()
         else:
-            if not channel_id in self._logical_channels_queue:
-                # Add the payload to the logical channel anyway
-                self._logical_channels_queue[channel_id] = Queue.Queue()
+            try:
+                self._logical_channels_condition.acquire()
+                if not channel_id in self._logical_channels:
+                    raise Exception('Received logical frame on channel id '
+                                    '%d, which is not established' %
+                                    channel_id)
 
-            self._logical_channels_queue[channel_id].put(
-                self._parse_inner_frame(payload))
+                inner_frame = self._parse_inner_frame(payload)
+                self._logical_channels[channel_id].receive_quota -= (
+                        len(inner_frame.payload))
+                if self._logical_channels[channel_id].receive_quota < 0:
+                    raise Exception('The server violates quota on '
+                                    'channel id %d' % channel_id)
+            finally:
+                self._logical_channels_condition.release()
+            self._logical_channels[channel_id].queue.put(inner_frame)
 
     def _process_control_message(self, opcode, message):
         # Ping/Pong are not supported.
@@ -404,6 +479,31 @@ class MuxClient(object):
         self._logger.debug('Read thread terminated.')
         self.close_socket()
 
+    def _assert_channel_slot_available(self):
+        try:
+            self._control_blocks_condition.acquire()
+            if len(self._channel_slots) == 0:
+                # Wait once
+                self._control_blocks_condition.wait(timeout=self._timeout)
+        finally:
+            self._control_blocks_condition.release()
+
+        if len(self._channel_slots) == 0:
+            raise Exception('Failed to receive NewChannelSlot')
+
+    def _assert_send_quota_available(self, channel_id):
+        try:
+            self._logical_channels_condition.acquire()
+            if self._logical_channels[channel_id].send_quota == 0:
+                # Wait once
+                self._logical_channels_condition.wait(timeout=self._timeout)
+        finally:
+            self._logical_channels_condition.release()
+
+        if self._logical_channels[channel_id].send_quota == 0:
+            raise Exception('Failed to receive FlowControl for channel id %d' %
+                            channel_id)
+
     def connect(self):
         self._socket = socket.socket()
         self._socket.settimeout(self._options.socket_timeout)
@@ -417,10 +517,13 @@ class MuxClient(object):
         self._stream = client_for_testing.WebSocketStream(
             self._socket, self._handshake)
 
-        self._logical_channels_queue[_DEFAULT_CHANNEL_ID] = Queue.Queue()
+        self._logical_channels[_DEFAULT_CHANNEL_ID] = _LogicalChannelData()
 
         self._read_thread = _MuxReaderThread(self)
         self._read_thread.start()
+
+        self._assert_channel_slot_available()
+        self._assert_send_quota_available(_DEFAULT_CHANNEL_ID)
 
         self._is_active = True
         self._logger.info('Connection established')
@@ -429,8 +532,13 @@ class MuxClient(object):
         if not self._is_active:
             raise Exception('Mux client is not active')
 
-        if channel_id in self._logical_channels_queue:
+        if channel_id in self._logical_channels:
             raise Exception('Channel id %d already exists' % channel_id)
+
+        try:
+            send_quota = self._channel_slots.popleft()
+        except IndexError, e:
+            raise Exception('No channel slots: %r' % e)
 
         # Create AddChannel request
         request_line = 'GET %s HTTP/1.1\r\n' % options.resource
@@ -518,7 +626,10 @@ class MuxClient(object):
                 'Invalid Sec-WebSocket-Accept header: %r (expected) != %r '
                 '(actual)' % (accept, expected_accept))
 
-        self._logical_channels_queue[channel_id] = Queue.Queue()
+        self._logical_channels_condition.acquire()
+        self._logical_channels[channel_id] = _LogicalChannelData()
+        self._logical_channels[channel_id].send_quota = send_quota
+        self._logical_channels_condition.release()
 
         self._logger.debug('Logical channel %d established' % channel_id)
 
@@ -526,12 +637,25 @@ class MuxClient(object):
         if not self._is_active:
             raise Exception('Mux client is not active')
 
-        if not channel_id in self._logical_channels_queue:
+        if not channel_id in self._logical_channels:
             raise Exception('Logical channel %d is not established.')
 
     def drop_channel(self, channel_id):
         # TODO(bashi): Implement
         pass
+
+    def send_flow_control(self, channel_id, replenished_quota):
+        self._check_logical_channel_is_opened(channel_id)
+        flow_control = _create_flow_control(channel_id, replenished_quota)
+        payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + flow_control
+        # Replenish receive quota
+        try:
+            self._logical_channels_condition.acquire()
+            self._logical_channels[channel_id].receive_quota += (
+                replenished_quota)
+        finally:
+            self._logical_channels_condition.release()
+        self._stream.send_binary(payload)
 
     def send_message(self, channel_id, message, end=True, binary=False):
         self._check_logical_channel_is_opened(channel_id)
@@ -542,6 +666,16 @@ class MuxClient(object):
             first_byte = (end << 7) | client_for_testing.OPCODE_TEXT
             message = message.encode('utf-8')
 
+        try:
+            self._logical_channels_condition.acquire()
+            if self._logical_channels[channel_id].send_quota < len(message):
+                raise Exception('Send quota violation: %d < %d' % (
+                        self._logical_channels[channel_id].send_quota,
+                        len(message)))
+
+            self._logical_channels[channel_id].send_quota -= len(message)
+        finally:
+            self._logical_channels_condition.release()
         payload = _encode_channel_id(channel_id) + chr(first_byte) + message
         self._stream.send_binary(payload)
 
@@ -549,7 +683,7 @@ class MuxClient(object):
         self._check_logical_channel_is_opened(channel_id)
 
         try:
-            inner_frame = self._logical_channels_queue[channel_id].get(
+            inner_frame = self._logical_channels[channel_id].queue.get(
                 timeout=self._timeout)
         except Queue.Empty, e:
             raise Exception('Cannot receive message from channel id %d' %
@@ -583,7 +717,7 @@ class MuxClient(object):
         self._check_logical_channel_is_opened(channel_id)
 
         try:
-            inner_frame = self._logical_channels_queue[channel_id].get(
+            inner_frame = self._logical_channels[channel_id].queue.get(
                 timeout=self._timeout)
         except Queue.Empty, e:
             raise Exception('Cannot receive message from channel id %d' %

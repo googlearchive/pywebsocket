@@ -403,6 +403,9 @@ class StreamOptions(object):
         self.encode_text_message_to_utf8 = True
         self.mask_send = False
         self.unmask_receive = True
+        # RFC6455 disallows fragmented control frames, but mux extension
+        # relaxes the restriction.
+        self.allow_fragmented_control_frame = False
 
 
 class Stream(StreamBase):
@@ -545,7 +548,8 @@ class Stream(StreamBase):
             else:
                 # Start of fragmentation frame
 
-                if common.is_control_opcode(frame.opcode):
+                if (not self._options.allow_fragmented_control_frame and
+                    common.is_control_opcode(frame.opcode)):
                     raise InvalidFrameException(
                         'Control frames must not be fragmented')
 

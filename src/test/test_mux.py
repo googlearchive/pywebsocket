@@ -52,16 +52,25 @@ from mod_pywebsocket._stream_hybi import parse_frame
 import mock
 
 
+class _OutgoingChannelData(object):
+    def __init__(self):
+        self.messages = []
+        self.control_messages = []
+
+        self.current_opcode = None
+        self.pending_fragments = []
+
+
 class _MockMuxConnection(mock.MockBlockingConn):
     """Mock class of mod_python connection for mux."""
 
     def __init__(self):
         mock.MockBlockingConn.__init__(self)
-        # For non-control messages
-        self._written_messages = {}
-        # For control messages
-        self._written_control_messages = {}
-        self._pending_fragments = {}
+        self._control_blocks = []
+        self._channel_data = {}
+
+        self._current_opcode = None
+        self._pending_fragments = []
 
     def write(self, data):
         """Override MockBlockingConn.write."""
@@ -81,31 +90,66 @@ class _MockMuxConnection(mock.MockBlockingConn):
         opcode, payload, fin, rsv1, rsv2, rsv3 = (
             parse_frame(_receive_bytes, unmask_receive=False))
 
-        parser = mux._MuxFramePayloadParser(payload)
-        channel_id = parser.read_channel_id()
-        if not channel_id in self._pending_fragments:
-            self._pending_fragments[channel_id] = []
-            self._written_messages[channel_id] = []
-            self._written_control_messages[channel_id] = []
+        self._pending_fragments.append(payload)
 
-        if not fin:
-            self._pending_fragments[channel_id].append(parser.remaining_data())
+        if self._current_opcode is None:
+            if opcode == common.OPCODE_CONTINUATION:
+                raise Exception('Sending invalid continuation opcode')
+            self._current_opcode = opcode
         else:
-            inner_frame = (''.join(self._pending_fragments[channel_id]) +
-                           parser.remaining_data())
-            self._pending_fragments[channel_id] = []
-            opcode = ord(inner_frame[0]) & 0xf;
-            if opcode == common.OPCODE_TEXT or opcode == common.OPCODE_BINARY:
-                # Remove the first byte that contains opcode and flags.
-                self._written_messages[channel_id].append(inner_frame[1:])
-            else:
-                self._written_control_messages[channel_id].append(inner_frame)
+            if opcode != common.OPCODE_CONTINUATION:
+                raise Exception('Sending invalid opcode %d' % opcode)
+        if not fin:
+            return
+
+        inner_frame_data = ''.join(self._pending_fragments)
+        self._pending_fragments = []
+        self._current_opcode = None
+
+        parser = mux._MuxFramePayloadParser(inner_frame_data)
+        channel_id = parser.read_channel_id()
+        if channel_id == mux._CONTROL_CHANNEL_ID:
+            self._control_blocks.append(parser.remaining_data())
+            return
+
+        if not channel_id in self._channel_data:
+            self._channel_data[channel_id] = _OutgoingChannelData()
+        channel_data = self._channel_data[channel_id]
+
+        (inner_fin, inner_rsv1, inner_rsv2, inner_rsv3, inner_opcode,
+         inner_payload) = parser.read_inner_frame()
+        channel_data.pending_fragments.append(inner_payload)
+
+        if channel_data.current_opcode is None:
+            if inner_opcode == common.OPCODE_CONTINUATION:
+                raise Exception('Sending invalid continuation opcode')
+            channel_data.current_opcode = inner_opcode
+        else:
+            if inner_opcode != common.OPCODE_CONTINUATION:
+                raise Exception('Sending invalid opcode %d' % inner_opcode)
+        if not inner_fin:
+            return
+
+        message = ''.join(channel_data.pending_fragments)
+        channel_data.pending_fragments = []
+
+        if (channel_data.current_opcode == common.OPCODE_TEXT or
+            channel_data.current_opcode == common.OPCODE_BINARY):
+            channel_data.messages.append(message)
+        else:
+            channel_data.control_messages.append(
+                {'opcode': channel_data.current_opcode,
+                 'message': message})
+        channel_data.current_opcode = None
+
+    def get_written_control_blocks(self):
+        return self._control_blocks
 
     def get_written_messages(self, channel_id):
-        return self._written_messages[channel_id]
+        return self._channel_data[channel_id].messages
 
     def get_written_control_messages(self, channel_id):
-        return self._written_control_messages[channel_id]
+        return self._channel_data[channel_id].control_messages
 
 
 class _ChannelEvent(object):
@@ -154,11 +198,13 @@ class _MuxMockDispatcher(object):
                               self.channel_events[request.channel_id])
             else:
                 raise ValueError('Cannot handle path %r' % request.path)
+            if not request.server_terminated:
+                request.ws_stream.close_connection()
+        except ConnectionTerminatedException, e:
+            self.channel_events[request.channel_id].exception = e
         except Exception, e:
             self.channel_events[request.channel_id].exception = e
             raise
-
-        request.ws_stream.close_connection()
 
 
 def _create_mock_request():
@@ -172,6 +218,9 @@ def _create_mock_request():
                                headers_in=headers,
                                connection=_MockMuxConnection())
     request.ws_stream = Stream(request, options=StreamOptions())
+    request.mux = True
+    request.mux_extensions = []
+    request.mux_quota = 8 * 1024
     return request
 
 
@@ -342,6 +391,8 @@ class MuxHandlerTest(unittest.TestCase):
         dispatcher = _MuxMockDispatcher()
         mux_handler = mux._MuxHandler(request, dispatcher)
         mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
 
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
@@ -349,11 +400,21 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
             channel_id=3, encoding=0,
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=3,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Hello'))
@@ -379,15 +440,21 @@ class MuxHandlerTest(unittest.TestCase):
         messages = request.connection.get_written_messages(3)
         self.assertEqual(1, len(messages))
         self.assertEqual('World', messages[0])
-        control_blocks = request.connection.get_written_control_messages(0)
-        # Two AddChannelResponses should be written.
-        self.assertEqual(2, len(control_blocks))
+        control_blocks = request.connection.get_written_control_blocks()
+        # There should be 8 control blocks:
+        #   - 1 NewChannelSlot
+        #   - 2 AddChannelResponses for channel id 2 and 3
+        #   - 6 FlowControls for channel id 1 (initialize), 'Hello', 'World',
+        #     and 3 'Goodbye's
+        self.assertEqual(9, len(control_blocks))
 
     def test_add_channel_incomplete_handshake(self):
         request = _create_mock_request()
         dispatcher = _MuxMockDispatcher()
         mux_handler = mux._MuxHandler(request, dispatcher)
         mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
 
         incomplete_encoded_handshake = 'GET /echo HTTP/1.1'
         add_channel_request = _create_add_channel_request_frame(
@@ -408,6 +475,8 @@ class MuxHandlerTest(unittest.TestCase):
         dispatcher = _MuxMockDispatcher()
         mux_handler = mux._MuxHandler(request, dispatcher)
         mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
 
         encoded_handshake = (
             'GET /echo HTTP/1.1\r\n'
@@ -439,6 +508,8 @@ class MuxHandlerTest(unittest.TestCase):
         dispatcher = _MuxMockDispatcher()
         mux_handler = mux._MuxHandler(request, dispatcher)
         mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
 
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
@@ -464,12 +535,19 @@ class MuxHandlerTest(unittest.TestCase):
         dispatcher = _MuxMockDispatcher()
         mux_handler = mux._MuxHandler(request, dispatcher)
         mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
 
         encoded_handshake = _create_request_header(path='/echo')
         add_channel_request = _create_add_channel_request_frame(
             channel_id=2, encoding=0,
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=12,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
 
         ping_frame = _create_logical_frame(channel_id=2,
                                            message='Hello World!',
@@ -484,13 +562,16 @@ class MuxHandlerTest(unittest.TestCase):
         mux_handler.wait_until_done(timeout=2)
 
         messages = request.connection.get_written_control_messages(2)
-        self.assertEqual('\x8aHello World!', messages[0])
+        self.assertEqual(common.OPCODE_PONG, messages[0]['opcode'])
+        self.assertEqual('Hello World!', messages[0]['message'])
 
     def test_send_ping(self):
         request = _create_mock_request()
         dispatcher = _MuxMockDispatcher()
         mux_handler = mux._MuxHandler(request, dispatcher)
         mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
 
         encoded_handshake = _create_request_header(path='/ping')
         add_channel_request = _create_add_channel_request_frame(
@@ -498,16 +579,208 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
         mux_handler.wait_until_done(timeout=2)
 
         messages = request.connection.get_written_control_messages(2)
-        self.assertEqual('\x89Ping!', messages[0])
+        self.assertEqual(common.OPCODE_PING, messages[0]['opcode'])
+        self.assertEqual('Ping!', messages[0]['message'])
+
+    def test_two_flow_control(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Replenish 5 bytes.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        # Send 10 bytes. The server will try echo back 10 bytes.
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='HelloWorld'))
+
+        # Replenish 5 bytes again.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(['HelloWorld'], messages)
+
+    def test_no_send_quota_on_server(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='HelloWorld'))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=1)
+
+        # No message should be sent on channel 2.
+        self.assertRaises(KeyError,
+                          request.connection.get_written_messages,
+                          2)
+
+    def test_quota_violation_by_client(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS, 0)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='HelloWorld'))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+        control_blocks = request.connection.get_written_control_blocks()
+        # The first block is FlowControl for channel id 1.
+        # The next two blocks are NewChannelSlot and AddChannelResponse.
+        # The 4th block or the last block should be DropChannels for channel 2.
+        # (The order can be mixed up)
+        # The remaining block should be FlowControl for 'Goodbye'.
+        self.assertEqual(5, len(control_blocks))
+        expected_opcode_and_flag = ((mux._MUX_OPCODE_DROP_CHANNEL << 5) |
+                                    (1 << 4))
+        self.assertTrue((expected_opcode_and_flag ==
+                        (ord(control_blocks[3][0]) & 0xf0)) or
+                        (expected_opcode_and_flag ==
+                        (ord(control_blocks[4][0]) & 0xf0)))
+
+    def test_fragmented_control_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/ping')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Replenish total 5 bytes in 3 FlowControls.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=1,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=2,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=2,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        messages = request.connection.get_written_control_messages(2)
+        self.assertEqual(common.OPCODE_PING, messages[0]['opcode'])
+        self.assertEqual('Ping!', messages[0]['message'])
+
+    def test_channel_slot_violation_by_client(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(slots=1,
+                                      send_quota=mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=10,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+
+        # This request should be rejected.
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=3, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+        flow_control = mux._create_flow_control(channel_id=3,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=3, message='Hello'))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        self.assertFalse(dispatcher.channel_events.has_key(3))
 
 
 if __name__ == '__main__':
     unittest.main()
+
 
 # vi:sts=4 sw=4 et

@@ -625,6 +625,8 @@ _available_processors[common.PERMESSAGE_COMPRESSION_EXTENSION] = (
 class MuxExtensionProcessor(ExtensionProcessorInterface):
     """WebSocket multiplexing extension processor."""
 
+    _QUOTA_PARAM = 'quota'
+
     def __init__(self, request):
         self._request = request
 
@@ -643,7 +645,17 @@ class MuxExtensionProcessor(ExtensionProcessorInterface):
                 name == common.X_WEBKIT_DEFLATE_FRAME_EXTENSION):
                 return None
 
-        # TODO(bashi): Process flow control parameter.
+        quota = self._request.get_parameter_value(self._QUOTA_PARAM)
+        if quota is None:
+            ws_request.mux_quota = 0
+        else:
+            try:
+                quota = int(quota)
+            except ValueError, e:
+                return None
+            if quota < 0 or quota >= 2 ** 32:
+                return None
+            ws_request.mux_quota = quota
 
         ws_request.mux = True
         ws_request.mux_extensions = logical_channel_extensions

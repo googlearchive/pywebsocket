@@ -110,6 +110,7 @@ import CGIHTTPServer
 import SimpleHTTPServer
 import SocketServer
 import ConfigParser
+import base64
 import httplib
 import logging
 import logging.handlers
@@ -513,6 +514,17 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
         # attributes).
         if not CGIHTTPServer.CGIHTTPRequestHandler.parse_request(self):
             return False
+
+        if self._options.use_basic_auth:
+            auth = self.headers.getheader('Authorization')
+            if auth != self._options.basic_auth_credential:
+                self.send_response(401)
+                self.send_header('WWW-Authenticate',
+                                 'Basic realm="Pywebsocket"')
+                self.end_headers()
+                self._logger.info('Request basic authentication')
+                return True
+
         host, port, resource = http_header_util.parse_uri(self.path)
         if resource is None:
             self._logger.info('Invalid URI: %r', self.path)
@@ -742,6 +754,13 @@ def _build_option_parser():
                       help=('Specifies a pem file which contains a set of '
                             'concatenated CA certificates which are used to '
                             'validate certificates passed from clients'))
+    parser.add_option('--basic-auth', dest='use_basic_auth',
+                      action='store_true', default=False,
+                      help='Requires Basic authentication.')
+    parser.add_option('--basic-auth-credential',
+                      dest='basic_auth_credential', default='test:test',
+                      help='Specifies the credential of basic authentication '
+                      'by username:password pair (e.g. test:test).')
     parser.add_option('-l', '--log-file', '--log_file', dest='log_file',
                       default='', help='Log file.')
     # Custom log level:
@@ -890,6 +909,10 @@ def _main(args=None):
 
     if not options.scan_dir:
         options.scan_dir = options.websock_handlers
+
+    if options.use_basic_auth:
+        options.basic_auth_credential = 'Basic ' + base64.b64encode(
+            options.basic_auth_credential)
 
     try:
         if options.thread_monitor_interval_in_sec > 0:

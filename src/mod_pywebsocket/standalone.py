@@ -387,6 +387,10 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         for socketinfo in failed_sockets:
             self._sockets.remove(socketinfo)
 
+        if len(self._sockets) == 0:
+            self._logger.critical(
+                'No sockets activated. Use info log level to see the reason.')
+
     def server_close(self):
         """Override SocketServer.TCPServer.server_close to enable multiple
         sockets close.

@@ -32,27 +32,44 @@
 
 """Standalone WebSocket server.
 
+Use this file to launch pywebsocket without Apache HTTP Server.
+
+
 BASIC USAGE
 
-Use this server to run mod_pywebsocket without Apache HTTP Server.
+Go to the src directory and run
 
-Usage:
-    python standalone.py [-p <ws_port>] [-w <websock_handlers>]
-                         [-s <scan_dir>]
-                         [-d <document_root>]
-                         [-m <websock_handlers_map_file>]
-                         ... for other options, see _main below ...
+  $ python mod_pywebsocket/standalone.py [-p <ws_port>]
+                                         [-w <websock_handlers>]
+                                         [-d <document_root>]
 
 <ws_port> is the port number to use for ws:// connection.
 
 <document_root> is the path to the root directory of HTML files.
 
 <websock_handlers> is the path to the root directory of WebSocket handlers.
-See __init__.py for details of <websock_handlers> and how to write WebSocket
-handlers. If this path is relative, <document_root> is used as the base.
+If not specified, <document_root> will be used. See __init__.py (or
+run $ pydoc mod_pywebsocket) for how to write WebSocket handlers.
 
-<scan_dir> is a path under the root directory. If specified, only the
-handlers under scan_dir are scanned. This is useful in saving scan time.
+For more detail and other options, run
+
+  $ python mod_pywebsocket/standalone.py --help
+
+or see _build_option_parser method below.
+
+For trouble shooting, adding "--log_level debug" might help you.
+
+
+TRY DEMO
+
+Go to the src directory and run
+
+  $ python standalone.py -d example
+
+to launch pywebsocket with the sample handler and html on port 80. Open
+http://localhost/console.html, click the connect button, type something into
+the text box next to the send button and click the send button. If everything
+is working, you'll see the message you typed echoed by the server.
 
 
 SUPPORTING TLS
@@ -716,7 +733,9 @@ def _build_option_parser():
     parser.add_option('-w', '--websock-handlers', '--websock_handlers',
                       dest='websock_handlers',
                       default='.',
-                      help='WebSocket handlers root directory.')
+                      help=('The root directory of WebSocket handler files. '
+                            'If the path is relative, --document-root is used '
+                            'as the base.'))
     parser.add_option('-m', '--websock-handlers-map-file',
                       '--websock_handlers_map_file',
                       dest='websock_handlers_map_file',
@@ -726,15 +745,20 @@ def _build_option_parser():
                             'existing_resource_path, separated by spaces.'))
     parser.add_option('-s', '--scan-dir', '--scan_dir', dest='scan_dir',
                       default=None,
-                      help=('WebSocket handlers scan directory. '
-                            'Must be a directory under websock_handlers.'))
+                      help=('Must be a directory under --websock-handlers. '
+                            'Only handlers under this directory are scanned '
+                            'and registered to the server. '
+                            'Useful for saving scan time when the handler '
+                            'root directory contains lots of files that are '
+                            'not handler file or are handler files but you '
+                            'don\'t want them to be registered. '))
     parser.add_option('--allow-handlers-outside-root-dir',
                       '--allow_handlers_outside_root_dir',
                       dest='allow_handlers_outside_root_dir',
                       action='store_true',
                       default=False,
                       help=('Scans WebSocket handlers even if their canonical '
-                            'path is not under websock_handlers.'))
+                            'path is not under --websock-handlers.'))
     parser.add_option('-d', '--document-root', '--document_root',
                       dest='document_root', default='.',
                       help='Document root directory.')

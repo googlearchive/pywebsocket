@@ -282,6 +282,32 @@ class _StandaloneSSLConnection(object):
         return socket._fileobject(self._connection, mode, bufsize)
 
 
+def _alias_handlers(dispatcher, websock_handlers_map_file):
+    """Set aliases specified in websock_handler_map_file in dispatcher.
+
+    Args:
+        dispatcher: dispatch.Dispatcher instance
+        websock_handler_map_file: alias map file
+    """
+
+    fp = open(websock_handlers_map_file)
+    try:
+        for line in fp:
+            if line[0] == '#' or line.isspace():
+                continue
+            m = re.match('(\S+)\s+(\S+)', line)
+            if not m:
+                logging.warning('Wrong format in map file:' + line)
+                continue
+            try:
+                dispatcher.add_resource_path_alias(
+                    m.group(1), m.group(2))
+            except dispatch.DispatchException, e:
+                logging.error(str(e))
+    finally:
+        fp.close()
+
+
 class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     """HTTPServer specialized for WebSocket."""
 
@@ -295,6 +321,20 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         socket object to self.socket before server_bind and server_activate,
         if necessary.
         """
+
+        # Share a Dispatcher among request handlers to save time for
+        # instantiation.  Dispatcher can be shared because it is thread-safe.
+        options.dispatcher = dispatch.Dispatcher(
+            options.websock_handlers,
+            options.scan_dir,
+            options.allow_handlers_outside_root_dir)
+        if options.websock_handlers_map_file:
+            _alias_handlers(options.dispatcher,
+                            options.websock_handlers_map_file)
+        warnings = options.dispatcher.source_warnings()
+        if warnings:
+            for warning in warnings:
+                logging.warning('mod_pywebsocket: %s' % warning)
 
         self._logger = util.get_class_logger(self)
 
@@ -681,32 +721,6 @@ def _configure_logging(options):
         deflate_log_level_name)
 
 
-def _alias_handlers(dispatcher, websock_handlers_map_file):
-    """Set aliases specified in websock_handler_map_file in dispatcher.
-
-    Args:
-        dispatcher: dispatch.Dispatcher instance
-        websock_handler_map_file: alias map file
-    """
-
-    fp = open(websock_handlers_map_file)
-    try:
-        for line in fp:
-            if line[0] == '#' or line.isspace():
-                continue
-            m = re.match('(\S+)\s+(\S+)', line)
-            if not m:
-                logging.warning('Wrong format in map file:' + line)
-                continue
-            try:
-                dispatcher.add_resource_path_alias(
-                    m.group(1), m.group(2))
-            except dispatch.DispatchException, e:
-                logging.error(str(e))
-    finally:
-        fp.close()
-
-
 def _build_option_parser():
     parser = optparse.OptionParser()
 
@@ -947,20 +961,6 @@ def _main(args=None):
             # Run a thread monitor to show the status of server threads for
             # debugging.
             ThreadMonitor(options.thread_monitor_interval_in_sec).start()
-
-        # Share a Dispatcher among request handlers to save time for
-        # instantiation.  Dispatcher can be shared because it is thread-safe.
-        options.dispatcher = dispatch.Dispatcher(
-            options.websock_handlers,
-            options.scan_dir,
-            options.allow_handlers_outside_root_dir)
-        if options.websock_handlers_map_file:
-            _alias_handlers(options.dispatcher,
-                            options.websock_handlers_map_file)
-        warnings = options.dispatcher.source_warnings()
-        if warnings:
-            for warning in warnings:
-                logging.warning('mod_pywebsocket: %s' % warning)
 
         server = WebSocketServer(options)
         server.serve_forever()

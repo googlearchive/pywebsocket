@@ -420,6 +420,15 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                 self._logger.info('Skip by failure: %r', e)
                 socket_.close()
                 failed_sockets.append(socketinfo)
+            if self.server_address[1] == 0:
+                # The operating system assigns the actual port number for port
+                # number 0. This case, the second and later sockets should use
+                # the same port number. Also self.server_port is rewritten
+                # because it is exported, and will be used by external code.
+                self.server_address = (
+                    self.server_name, socket_.getsockname()[1])
+                self.server_port = self.server_address[1]
+                self._logger.info('Port %r is assigned', self.server_port)
 
         for socketinfo in failed_sockets:
             self._sockets.remove(socketinfo)

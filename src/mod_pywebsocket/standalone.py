@@ -915,6 +915,12 @@ def _parse_args_and_config(args):
 
 
 def _main(args=None):
+    """You can call this function from your own program, but please note that
+    this function has some side-effects that might affect your program. For
+    example, util.wrap_popen3_for_win use in this method replaces implementation
+    of os.popen3.
+    """
+
     options, args = _parse_args_and_config(args=args)
 
     os.chdir(options.document_root)

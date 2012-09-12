@@ -31,7 +31,7 @@
 """This file provides classes and helper functions for multiplexing extension.
 
 Specification:
-http://tools.ietf.org/html/draft-ietf-hybi-websocket-multiplexing-03
+http://tools.ietf.org/html/draft-ietf-hybi-websocket-multiplexing-05
 """
 
 
@@ -56,6 +56,7 @@ from mod_pywebsocket._stream_hybi import StreamOptions
 from mod_pywebsocket._stream_hybi import create_binary_frame
 from mod_pywebsocket._stream_hybi import create_closing_handshake_body
 from mod_pywebsocket._stream_hybi import create_header
+from mod_pywebsocket._stream_hybi import create_length_header
 from mod_pywebsocket._stream_hybi import parse_frame
 from mod_pywebsocket.handshake import hybi
 
@@ -79,6 +80,12 @@ _HTTP_BAD_RESPONSE_MESSAGES = {
     common.HTTP_STATUS_BAD_REQUEST: 'Bad Request',
 }
 
+# DropChannel reason code
+# TODO(bashi): Define all reason code defined in -05 draft.
+_DROP_CODE_NORMAL_CLOSURE = 1000
+
+_DROP_CODE_SEND_QUOTA_VIOLATION = 3005
+_DROP_CODE_ACKNOWLEDGED = 3008
 
 class MuxUnexpectedException(Exception):
     """Exception in handling multiplexing extension."""
@@ -123,67 +130,8 @@ def _encode_channel_id(channel_id):
     raise ValueError('Channel id %d is too large' % channel_id)
 
 
-def _size_of_number_in_bytes_minus_1(number):
-    # Calculate the minimum number of bytes minus 1 that are required to store
-    # the data.
-    if number < 0:
-        raise ValueError('Invalid number: %d' % number)
-    elif number < 2 ** 8:
-        return 0
-    elif number < 2 ** 16:
-        return 1
-    elif number < 2 ** 24:
-        return 2
-    elif number < 2 ** 32:
-        return 3
-    else:
-        raise ValueError('Invalid number %d' % number)
-
-
 def _encode_number(number):
-    if number < 2 ** 8:
-        return chr(number)
-    elif number < 2 ** 16:
-        return struct.pack('!H', number)
-    elif number < 2 ** 24:
-        return chr(number >> 16) + struct.pack('!H', number & 0xffff)
-    else:
-        return struct.pack('!L', number)
-
-
-def _create_control_block_length_value(channel_id, opcode, flags, value):
-    """Creates a control block that consists of objective channel id, opcode,
-    flags, encoded length of opcode specific value, and the value.
-    Most of control blocks have this structure.
-
-    Args:
-        channel_id: objective channel id.
-        opcode: opcode of the control block.
-        flags: 3bit opcode specific flags.
-        value: opcode specific data.
-    """
-
-    if channel_id < 0 or channel_id > _MAX_CHANNEL_ID:
-        raise ValueError('Invalid channel id: %d' % channel_id)
-    if (opcode != _MUX_OPCODE_ADD_CHANNEL_REQUEST and
-        opcode != _MUX_OPCODE_ADD_CHANNEL_RESPONSE and
-        opcode != _MUX_OPCODE_DROP_CHANNEL):
-        raise ValueError('Invalid opcode: %d' % opcode)
-    if flags < 0 or flags > 7:
-        raise ValueError('Invalid flags: %x' % flags)
-    length = len(value)
-    if length < 0 or length > 2 ** 32 - 1:
-        raise ValueError('Invalid length: %d' % length)
-
-    # The first byte consists of opcode, opcode specific flags, and size of
-    # the size of value in bytes minus 1.
-    bytes_of_length = _size_of_number_in_bytes_minus_1(length)
-    first_byte = (opcode << 5) | (flags << 2) | bytes_of_length
-
-    encoded_length = _encode_number(length)
-
-    return (chr(first_byte) + _encode_channel_id(channel_id) +
-            encoded_length + value)
+    return create_length_header(number, False)
 
 
 def _create_add_channel_response(channel_id, encoded_handshake,
@@ -192,49 +140,59 @@ def _create_add_channel_response(channel_id, encoded_handshake,
     if encoding != 0 and encoding != 1:
         raise ValueError('Invalid encoding %d' % encoding)
 
-    flags = (rejected << 2) | encoding
-    block = _create_control_block_length_value(
-        channel_id, _MUX_OPCODE_ADD_CHANNEL_RESPONSE, flags, encoded_handshake)
+    first_byte = ((_MUX_OPCODE_ADD_CHANNEL_RESPONSE << 5) |
+                  (rejected << 4) | encoding)
+    block = (chr(first_byte) +
+             _encode_channel_id(channel_id) +
+             _encode_number(len(encoded_handshake)) +
+             encoded_handshake)
     payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
     return create_binary_frame(payload, mask=outer_frame_mask)
 
 
-def _create_drop_channel(channel_id, reason='', mux_error=False,
+def _create_drop_channel(channel_id, code=None, message='',
                          outer_frame_mask=False):
-    if not mux_error and len(reason) > 0:
-        raise ValueError('Reason must be empty if mux_error is False')
+    if len(message) > 0 and code is None:
+        raise ValueError('Code must be specified if message is specified')
 
-    flags = mux_error << 2
-    block = _create_control_block_length_value(
-        channel_id, _MUX_OPCODE_DROP_CHANNEL, flags, reason)
+    first_byte = _MUX_OPCODE_DROP_CHANNEL << 5
+    block = chr(first_byte) + _encode_channel_id(channel_id)
+    if code is None:
+        block += _encode_number(0) # Reason size
+    else:
+        reason = struct.pack('!H', code) + message
+        reason_size = _encode_number(len(reason))
+        block += reason_size + reason
+
     payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
     return create_binary_frame(payload, mask=outer_frame_mask)
 
 
 def _create_flow_control(channel_id, replenished_quota,
                          outer_frame_mask=False):
-    if replenished_quota < 0 or replenished_quota >= 2 ** 32:
-        raise ValueError('Invalid quota: %d' % replenished_quota)
-    first_byte = ((_MUX_OPCODE_FLOW_CONTROL << 5) |
-                  _size_of_number_in_bytes_minus_1(replenished_quota))
-    payload = (_encode_channel_id(_CONTROL_CHANNEL_ID) + chr(first_byte) +
-               _encode_channel_id(channel_id) +
-               _encode_number(replenished_quota))
+    first_byte = _MUX_OPCODE_FLOW_CONTROL << 5
+    block = (chr(first_byte) +
+             _encode_channel_id(channel_id) +
+             _encode_number(replenished_quota))
+    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
     return create_binary_frame(payload, mask=outer_frame_mask)
 
 
 def _create_new_channel_slot(slots, send_quota, outer_frame_mask=False):
-    if slots < 0 or slots >= 2 ** 32:
-        raise ValueError('Invalid number of slots: %d' % slots)
-    if send_quota < 0 or send_quota >= 2 ** 32:
-        raise ValueError('Invalid send quota: %d' % send_quota)
-    slots_size = _size_of_number_in_bytes_minus_1(slots)
-    send_quota_size = _size_of_number_in_bytes_minus_1(send_quota)
+    if slots < 0 or send_quota < 0:
+        raise ValueError('slots and send_quota must be non-negative.')
+    first_byte = _MUX_OPCODE_NEW_CHANNEL_SLOT << 5
+    block = (chr(first_byte) +
+             _encode_number(slots) +
+             _encode_number(send_quota))
+    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
+    return create_binary_frame(payload, mask=outer_frame_mask)
 
-    first_byte = ((_MUX_OPCODE_NEW_CHANNEL_SLOT << 5) |
-                  (slots_size << 2) | send_quota_size)
-    payload = (_encode_channel_id(_CONTROL_CHANNEL_ID) + chr(first_byte) +
-               _encode_number(slots) + _encode_number(send_quota))
+
+def _create_fallback_new_channel_slot(outer_frame_mask=False):
+    first_byte = (_MUX_OPCODE_NEW_CHANNEL_SLOT << 5) | 1 # Set the F flag
+    block = (chr(first_byte) + _encode_number(0) + _encode_number(0))
+    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
     return create_binary_frame(payload, mask=outer_frame_mask)
 
 
@@ -336,85 +294,79 @@ class _MuxFramePayloadParser(object):
         self._read_position = len(self._data)
         return fin, rsv1, rsv2, rsv3, opcode, payload
 
-    def _read_number(self, size):
-        if self._read_position + size > len(self._data):
-            raise InvalidMuxControlBlock(
-                'Cannot read %d byte(s) number' % size)
+    def _read_number(self):
+        if self._read_position + 1 > len(self._data):
+            raise InvalidMuxControlBlockException(
+                'Cannot read the first byte of number field')
 
+        # TODO(bashi): Maybe throw an exception when the msb is 1
+        # TODO(bashi): Throw an exception when it's not encoded by the
+        # minimal number of bytes.
+        number = ord(self._data[self._read_position]) & 0x7f
+        self._read_position += 1
         pos = self._read_position
-        if size == 1:
-            self._read_position += 1
-            return ord(self._data[pos])
-        elif size == 2:
+        if number == 127:
+            if self._read_position + 8 > len(self._data):
+                raise InvalidMuxControlBlockException('Invalid number field')
+            self._read_position += 8
+            number = struct.unpack('!Q', self._data[pos:pos+8])[0]
+            if number > 0x7FFFFFFFFFFFFFFF:
+                raise InvalidMuxControlBlockException('Encoded number >= 2^63')
+            return number
+        if number == 126:
+            if self._read_position + 2 > len(self._data):
+                raise InvalidMuxControlBlockException('Invalid number field')
             self._read_position += 2
             return struct.unpack('!H', self._data[pos:pos+2])[0]
-        elif size == 3:
-            self._read_position += 3
-            return ((ord(self._data[pos]) << 16)
-                    + struct.unpack('!H', self._data[pos+1:pos+3])[0])
-        elif size == 4:
-            self._read_position += 4
-            return struct.unpack('!L', self._data[pos:pos+4])[0]
-        else:
-            raise InvalidMuxControlBlockException(
-                'Cannot read %d byte(s) number' % size)
+        return number
 
-    def _read_opcode_specific_data(self, opcode, size_of_size):
-        """Reads opcode specific data that consists of followings:
-            - the size of the opcode specific data (1-4 bytes)
-            - the opcode specific data
-        AddChannelRequest and DropChannel have this structure.
+    def _read_size_and_contents(self):
+        """Reads data that consists of followings:
+            - the size of the contents encoded the same way as payload length
+              of the WebSocket Protocol with 1 bit padding at the head.
+            - the contents.
         """
 
-        if self._read_position + size_of_size > len(self._data):
-            raise InvalidMuxControlBlockException(
-                'No size field for opcode %d' % opcode)
-
-        size = self._read_number(size_of_size)
-
+        size = self._read_number()
         pos = self._read_position
         if pos + size > len(self._data):
             raise InvalidMuxControlBlockException(
-                'No data field for opcode %d (%d + %d > %d)' %
-                (opcode, pos, size, len(self._data)))
+                'Cannot read %d bytes data' % size)
 
-        specific_data = self._data[pos:pos+size]
         self._read_position += size
-        return specific_data
+        return self._data[pos:pos+size]
 
+    # TODO(bashi): 8.1 _Fail the Logical Channel_ with 3002 if |encoding|
+    # or |reserved| of control blocks is invalid.
     def _read_add_channel_request(self, first_byte, control_block):
-        reserved = (first_byte >> 4) & 0x1
-        encoding = (first_byte >> 2) & 0x3
-        size_of_handshake_size = (first_byte & 0x3) + 1
+        reserved = (first_byte >> 2) & 0x3
+        encoding = first_byte & 0x3
 
         control_block.channel_id = self.read_channel_id()
-        encoded_handshake = self._read_opcode_specific_data(
-                                _MUX_OPCODE_ADD_CHANNEL_REQUEST,
-                                size_of_handshake_size)
         control_block.encoding = encoding
+        encoded_handshake = self._read_size_and_contents()
         control_block.encoded_handshake = encoded_handshake
         return control_block
 
     def _read_flow_control(self, first_byte, control_block):
-        quota_size = (first_byte & 0x3) + 1
+        reserved = first_byte & 0x1f
         control_block.channel_id = self.read_channel_id()
-        control_block.send_quota = self._read_number(quota_size)
+        control_block.send_quota = self._read_number()
         return control_block
 
     def _read_drop_channel(self, first_byte, control_block):
-        mux_error = (first_byte >> 4) & 0x1
-        reserved = (first_byte >> 2) & 0x3
-        size_of_reason_size = (first_byte & 0x3) + 1
-
+        reserved = first_byte & 0x1f
         control_block.channel_id = self.read_channel_id()
-        reason = self._read_opcode_specific_data(
-                     _MUX_OPCODE_ADD_CHANNEL_RESPONSE,
-                     size_of_reason_size)
-        if mux_error and len(reason) > 0:
+        reason = self._read_size_and_contents()
+        if len(reason) == 0:
+            control_block.drop_code = None
+            control_block.drop_message = ''
+        elif len(reason) >= 2:
+            control_block.drop_code = struct.unpack('!H', reason[:2])[0]
+            control_block.drop_message = reason[2:]
+        else:
             raise InvalidMuxControlBlockException(
-                'Reason must be empty when F bit is set')
-        control_block.mux_error = mux_error
-        control_block.reason = reason
+                'Received DropChannel contains invalid reason')
         return control_block
 
     def _read_new_channel_slot(self, first_byte, control_block):
@@ -431,13 +383,12 @@ class _MuxFramePayloadParser(object):
         """
 
         while self._read_position < len(self._data):
-            if self._read_position >= len(self._data):
-                raise InvalidMuxControlBlockException(
-                    'No control opcode found')
             first_byte = ord(self._data[self._read_position])
             self._read_position += 1
             opcode = (first_byte >> 5) & 0x7
             control_block = _ControlBlock(opcode=opcode)
+            # TODO(bashi): 8. _Fail the Physical Connection_ with 2004 if
+            # there is incompatible control blocks.
             if opcode == _MUX_OPCODE_ADD_CHANNEL_REQUEST:
                 yield self._read_add_channel_request(first_byte, control_block)
             elif opcode == _MUX_OPCODE_FLOW_CONTROL:
@@ -447,6 +398,7 @@ class _MuxFramePayloadParser(object):
             elif opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
                 yield self._read_new_channel_slot(first_byte, control_block)
             else:
+                # TODO(bashi): 8. _Fail the Physical Connection_ with 2004
                 raise InvalidMuxControlBlockException(
                     'Invalid opcode %d' % opcode)
         assert self._read_position == len(self._data)
@@ -961,6 +913,7 @@ class _PhysicalConnectionReader(threading.Thread):
                 if message is None:
                     break
                 opcode = physical_stream.get_last_received_opcode()
+                # TODO(bashi): 8. _Fail the Physical Connection_ with 2001.
                 if opcode == common.OPCODE_TEXT:
                     raise MuxUnexpectedException(
                         'Received a text message on physical connection')
@@ -1053,8 +1006,8 @@ class _LogicalChannelData(object):
     def __init__(self, request, worker):
         self.request = request
         self.worker = worker
-        self.mux_error_occurred = False
-        self.mux_error_reason = ''
+        self.drop_code = _DROP_CODE_NORMAL_CLOSURE
+        self.drop_message = ''
 
 
 class _MuxHandler(object):
@@ -1218,8 +1171,8 @@ class _MuxHandler(object):
         self._writer.put_outgoing_data(_OutgoingData(
                 channel_id=channel_id, data=data))
 
-    def _send_drop_channel(self, channel_id, reason='', mux_error=False):
-        frame_data = _create_drop_channel(channel_id, reason, mux_error)
+    def _send_drop_channel(self, channel_id, code=None, message=''):
+        frame_data = _create_drop_channel(channel_id, code, message)
         self._logger.debug(
             'Sending drop channel for channel id %d' % channel_id)
         self.send_control_data(frame_data)
@@ -1261,6 +1214,7 @@ class _MuxHandler(object):
         try:
             receive_quota = self._channel_slots.popleft()
         except IndexError:
+            # TODO(bashi): Should _Fail the Logical Channel_ with code 2007.
             raise MuxUnexpectedException('No room in channel pool')
 
         handshaker = _MuxHandshaker(request, self.dispatcher,
@@ -1323,20 +1277,18 @@ class _MuxHandler(object):
             self._logical_channels_condition.release()
 
     def _process_drop_channel(self, block):
-        self._logger.debug('DropChannel received for %d: reason=%r' %
-                           (block.channel_id, block.reason))
+        self._logger.debug(
+            'DropChannel received for %d: code=%r, reason=%r' %
+            (block.channel_id, block.drop_code, block.drop_reason))
         try:
             self._logical_channels_condition.acquire()
             if not block.channel_id in self._logical_channels:
                 return
             channel_data = self._logical_channels[block.channel_id]
-            if not block.mux_error:
-                channel_data.request.connection.set_read_state(
-                    _LogicalConnection.STATE_TERMINATED)
-            else:
-                # TODO(bashi): What should we do?
-                channel_data.request.connection.set_read_state(
-                    _LogicalConnection.STATE_TERMINATED)
+            channel_data.drop_code = _DROP_CODE_ACKNOWLEDGED
+            # Close the logical channel
+            channel_data.request.connection.set_read_state(
+                _LogicalConnection.STATE_TERMINATED)
         finally:
             self._logical_channels_condition.release()
 
@@ -1371,8 +1323,7 @@ class _MuxHandler(object):
             if not channel_data.request.ws_stream.consume_receive_quota(
                 len(payload)):
                 # The client violates quota. Close logical channel.
-                channel_data.mux_error_occurred = True
-                channel_data.mux_error_reason = 'Quota violation'
+                channel_data.drop_code = _DROP_CODE_SEND_QUOTA_VIOLATION
                 channel_data.request.connection.set_read_state(
                     _LogicalConnection.STATE_TERMINATED)
                 return
@@ -1393,7 +1344,11 @@ class _MuxHandler(object):
         """
 
         parser = _MuxFramePayloadParser(message)
+        # TODO(bashi): 7. _Fail the Physical Connection_ with 2002 if parsing
+        # channel_id is failed.
         channel_id = parser.read_channel_id()
+        # TODO(bashi): 7. _Fail the Physical Connection_ with 2003 if |message|
+        # doesn't contain payload
         if channel_id == _CONTROL_CHANNEL_ID:
             self._process_control_blocks(parser)
         else:
@@ -1419,12 +1374,9 @@ class _MuxHandler(object):
             self._logical_channels_condition.release()
 
         if not channel_data.request.server_terminated:
-            if channel_data.mux_error_occurred:
-                self._send_drop_channel(
-                    channel_id, reason=channel_data.mux_error_reason,
-                    mux_error=True)
-            else:
-                self._send_drop_channel(channel_id)
+            self._send_drop_channel(
+                channel_id, code=channel_data.drop_code,
+                message=channel_data.drop_message)
 
     def notify_reader_done(self):
         """This method is called by the reader thread when the reader has

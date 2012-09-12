@@ -119,33 +119,30 @@ def _parse_channel_id(data, offset=0):
     return channel_id, channel_id_length
 
 
-def _read_number(data, size_of_size, offset=0):
-    if size_of_size == 1:
-        return ord(data[offset])
-    elif size_of_size == 2:
-        return struct.unpack('!H', data[offset:offset+2])[0]
-    elif size_of_size == 3:
-        return ((ord(data[offset]) << 16)
-                + struct.unpack('!H', data[offset+1:offset+3])[0])
-    elif size_of_size == 4:
-        return struct.unpack('!L', data[offset:offset+4])[0]
-    else:
-        raise Exception('Invalid "size of size" in control block')
+def _parse_number(data, offset=0):
+    first_byte = ord(data[offset])
+    if (first_byte & 0x80) != 0:
+        raise Exception('The MSB of number field must be unset')
+    first_byte = first_byte & 0x7f
+    if first_byte == 127:
+        if offset + 9 > len(data):
+            raise Exception('Invalid number')
+        return struct.unpack('!Q', data[offset+1:offset+9])[0], 9
+    if first_byte == 126:
+        if offset + 3 > len(data):
+            raise Exception('Invalid number')
+        return struct.unpack('!H', data[offset+1:offset+3])[0], 3
+    return first_byte, 1
 
 
-def _parse_control_block_specific_data(data, size_of_size, offset=0):
-    remaining = len(data) - offset
-    if remaining < size_of_size:
-        raise Exception('Invalid control block received')
-
-    size = _read_number(data, size_of_size, offset)
-
-    start_position = offset + size_of_size
+def _parse_size_and_contents(data, offset=0):
+    size, advance = _parse_number(data, offset)
+    start_position = offset + advance
     end_position = start_position + size
     if len(data) < end_position:
         raise Exception('Invalid size of control block (%d < %d)' % (
                 len(data), end_position))
-    return data[start_position:end_position], size_of_size + size
+    return data[start_position:end_position], size + advance
 
 
 def _parse_control_blocks(data):
@@ -161,47 +158,55 @@ def _parse_control_blocks(data):
 
         # TODO(bashi): Support more opcode
         if opcode == _MUX_OPCODE_ADD_CHANNEL_RESPONSE:
-            block.encode = (first_byte >> 2) & 3
+            block.encode = first_byte & 3
             block.rejected = (first_byte >> 4) & 1
 
             channel_id, advance = _parse_channel_id(data, pos)
             block.channel_id = channel_id
             pos += advance
 
-            size_of_size = (first_byte & 3) + 1
-            encoded_handshake, advance = _parse_control_block_specific_data(
-                data, size_of_size, pos)
+            encoded_handshake, advance = _parse_size_and_contents(data, pos)
             block.encoded_handshake = encoded_handshake
             pos += advance
             blocks.append(block)
         elif opcode == _MUX_OPCODE_DROP_CHANNEL:
             block.mux_error = (first_byte >> 4) & 1
 
-            channel_id, channel_id_length = _parse_channel_id(data, pos)
+            channel_id, advance = _parse_channel_id(data, pos)
             block.channel_id = channel_id
-            pos += channel_id_length
+            pos += advance
 
-            size_of_size = first_byte & 3
-            reason, size = _parse_control_block_specific_data(
-                data, size_of_size, pos)
-            block.reason = reason
-            pos += size
+            reason, advance = _parse_size_and_contents(data, pos)
+            if len(reason) == 0:
+                block.drop_code = None
+                block.drop_message = ''
+            elif len(reason) >= 2:
+                block.drop_code = struct.unpack('!H', reason[:2])[0]
+                block.drop_message = reason[2:]
+            else:
+                raise Exception('Invalid DropChannel')
+            pos += advance
             blocks.append(block)
         elif opcode == _MUX_OPCODE_FLOW_CONTROL:
             channel_id, advance = _parse_channel_id(data, pos)
             block.channel_id = channel_id
             pos += advance
-            size_of_quota = (first_byte & 3) + 1
-            block.send_quota = _read_number(data, size_of_quota, pos)
-            pos += size_of_quota
+            send_quota, advance = _parse_number(data, pos)
+            block.send_quota = send_quota
+            pos += advance
             blocks.append(block)
         elif opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
-            size_of_slots = ((first_byte >> 2) & 3) + 1
-            size_of_quota = (first_byte & 3) + 1
-            block.slots = _read_number(data, size_of_slots, pos)
-            pos += size_of_slots
-            block.send_quota = _read_number(data, size_of_quota, pos)
-            pos += size_of_quota
+            fallback = first_byte & 1
+            slots, advance = _parse_number(data, pos)
+            pos += advance
+            send_quota, advance = _parse_number(data, pos)
+            pos += advance
+            if fallback == 1 and (slots != 0 or send_quota != 0):
+                raise Exception('slots and send_quota must be zero if F bit '
+                                'is set')
+            block.fallback = fallback
+            block.slots = slots
+            block.send_quota = send_quota
             blocks.append(block)
         else:
             raise Exception(
@@ -227,50 +232,29 @@ def _encode_channel_id(channel_id):
     raise ValueError('Channel id %d is too large' % channel_id)
 
 
-def _size_of_number_in_bytes_minus_1(number):
-    # Calculate the minimum number of bytes minus 1 that are required to store
-    # the data.
-    if number < 0:
-        raise ValueError('Invalid number: %d' % number)
-    elif number < 2 ** 8:
-        return 0
-    elif number < 2 ** 16:
-        return 1
-    elif number < 2 ** 24:
-        return 2
-    elif number < 2 ** 32:
-        return 3
-    else:
-        raise ValueError('Invalid number %d' % number)
-
-
 def _encode_number(number):
-    if number < 2 ** 8:
+    if number <= 125:
         return chr(number)
-    elif number < 2 ** 16:
-        return struct.pack('!H', number)
-    elif number < 2 ** 24:
-        return chr(number >> 16) + struct.pack('!H', number & 0xffff)
+    elif number < (1 << 16):
+        return chr(0xfe) + struct.pack('!H', number)
+    elif number < (1 << 63):
+        return chr(0xff) + struct.pack('!Q', number)
     else:
-        return struct.pack('!L', number)
+        raise Exception('Invalid number')
 
 
 def _create_add_channel_request(channel_id, encoded_handshake,
                                 encoding=0):
     length = len(encoded_handshake)
-    size_of_length = _size_of_number_in_bytes_minus_1(length)
+    handshake_length = _encode_number(length)
 
-    first_byte = ((_MUX_OPCODE_ADD_CHANNEL_REQUEST << 5) | (encoding << 2) |
-                  size_of_length)
-    encoded_length = _encode_number(length)
-
+    first_byte = (_MUX_OPCODE_ADD_CHANNEL_REQUEST << 5) | encoding
     return (chr(first_byte) + _encode_channel_id(channel_id) +
-            encoded_length + encoded_handshake)
+            handshake_length + encoded_handshake)
 
 
 def _create_flow_control(channel_id, replenished_quota):
-    size_of_quota = _size_of_number_in_bytes_minus_1(replenished_quota)
-    first_byte = ((_MUX_OPCODE_FLOW_CONTROL << 5) | size_of_quota)
+    first_byte = (_MUX_OPCODE_FLOW_CONTROL << 5)
     return (chr(first_byte) + _encode_channel_id(channel_id) +
             _encode_number(replenished_quota))
 

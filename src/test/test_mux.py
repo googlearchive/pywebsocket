@@ -394,6 +394,24 @@ class MuxTest(unittest.TestCase):
         self.assertRaises(mux.InvalidMuxControlBlockException,
                           parser._read_number)
 
+        # The msb of the first byte is set.
+        data = '\x80'
+        parser = mux._MuxFramePayloadParser(data)
+        self.assertRaises(mux.InvalidMuxControlBlockException,
+                          parser._read_number)
+
+        # Using 3 bytes encoding for 125.
+        data = '\x7e\x00\x7d'
+        parser = mux._MuxFramePayloadParser(data)
+        self.assertRaises(mux.InvalidMuxControlBlockException,
+                          parser._read_number)
+
+        # Using 9 bytes encoding for 0xffff
+        data = '\x7f\x00\x00\x00\x00\x00\x00\xff\xff'
+        parser = mux._MuxFramePayloadParser(data)
+        self.assertRaises(mux.InvalidMuxControlBlockException,
+                          parser._read_number)
+
     def test_read_invalid_size_and_contents(self):
         # Only contain number field.
         data = '\x01'

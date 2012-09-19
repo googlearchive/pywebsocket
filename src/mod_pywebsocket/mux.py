@@ -299,25 +299,31 @@ class _MuxFramePayloadParser(object):
             raise InvalidMuxControlBlockException(
                 'Cannot read the first byte of number field')
 
-        # TODO(bashi): Maybe throw an exception when the msb is 1
-        # TODO(bashi): Throw an exception when it's not encoded by the
-        # minimal number of bytes.
-        number = ord(self._data[self._read_position]) & 0x7f
+        number = ord(self._data[self._read_position])
+        if number & 0x80 == 0x80:
+            raise InvalidMuxControlBlockException(
+                'The most significant bit of the first byte of number should '
+                'be unset')
         self._read_position += 1
         pos = self._read_position
         if number == 127:
-            if self._read_position + 8 > len(self._data):
+            if pos + 8 > len(self._data):
                 raise InvalidMuxControlBlockException('Invalid number field')
             self._read_position += 8
             number = struct.unpack('!Q', self._data[pos:pos+8])[0]
             if number > 0x7FFFFFFFFFFFFFFF:
                 raise InvalidMuxControlBlockException('Encoded number >= 2^63')
-            return number
+            if number <= 0xFFFF:
+                raise InvalidMuxControlBlockException(
+                    '%d should not be encoded by 9 bytes encoding' % number)
         if number == 126:
-            if self._read_position + 2 > len(self._data):
+            if pos + 2 > len(self._data):
                 raise InvalidMuxControlBlockException('Invalid number field')
             self._read_position += 2
-            return struct.unpack('!H', self._data[pos:pos+2])[0]
+            number = struct.unpack('!H', self._data[pos:pos+2])[0]
+            if number <= 125:
+                raise InvalidMuxControlBlockException(
+                    '%d should not be encoded by 3 bytes encoding' % number)
         return number
 
     def _read_size_and_contents(self):

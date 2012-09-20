@@ -47,7 +47,10 @@ from mod_pywebsocket._stream_base import ConnectionTerminatedException
 from mod_pywebsocket._stream_hybi import Stream
 from mod_pywebsocket._stream_hybi import StreamOptions
 from mod_pywebsocket._stream_hybi import create_binary_frame
+from mod_pywebsocket._stream_hybi import create_close_frame
+from mod_pywebsocket._stream_hybi import create_closing_handshake_body
 from mod_pywebsocket._stream_hybi import parse_frame
+
 
 import mock
 
@@ -71,6 +74,8 @@ class _MockMuxConnection(mock.MockBlockingConn):
 
         self._current_opcode = None
         self._pending_fragments = []
+
+        self.server_close_code = None
 
     def write(self, data):
         """Override MockBlockingConn.write."""
@@ -106,10 +111,20 @@ class _MockMuxConnection(mock.MockBlockingConn):
         self._pending_fragments = []
         self._current_opcode = None
 
+        # TODO(bashi): Support other opcodes if needed.
+        if opcode == common.OPCODE_CLOSE:
+            if len(payload) >= 2:
+                self.server_close_code = struct.unpack('!H', payload[:2])[0]
+            close_body = create_closing_handshake_body(
+                common.STATUS_NORMAL_CLOSURE, '')
+            close_frame = create_close_frame(close_body, mask=True)
+            self.put_bytes(close_frame)
+            return
+
         parser = mux._MuxFramePayloadParser(inner_frame_data)
         channel_id = parser.read_channel_id()
         if channel_id == mux._CONTROL_CHANNEL_ID:
-            self._control_blocks.append(parser.remaining_data())
+            self._control_blocks.extend(list(parser.read_control_blocks()))
             return
 
         if not channel_id in self._channel_data:
@@ -350,7 +365,7 @@ class MuxTest(unittest.TestCase):
         # Reason is too short.
         data = '\x60\x01\x01\x00'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           lambda: list(parser.read_control_blocks()))
 
     def test_read_flow_control(self):
@@ -366,32 +381,32 @@ class MuxTest(unittest.TestCase):
         data = '\x80\x01\x02\x02\x03'
         parser = mux._MuxFramePayloadParser(data)
         # TODO(bashi): Implement
-        self.assertRaises(mux.MuxNotImplementedException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           lambda: list(parser.read_control_blocks()))
 
     def test_read_invalid_number_field_in_control_block(self):
         # No number field.
         data = ''
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_number)
 
         # The last two bytes are missing.
         data = '\x7e'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_number)
 
         # Missing the last one byte.
         data = '\x7f\x00\x00\x00\x00\x00\x01\x00'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_number)
 
         # The length of number field is too large.
         data = '\x7f\xff\xff\xff\xff\xff\xff\xff\xff'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_number)
 
         # The msb of the first byte is set.
@@ -416,7 +431,7 @@ class MuxTest(unittest.TestCase):
         # Only contain number field.
         data = '\x01'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_size_and_contents)
 
     def test_create_add_channel_response(self):
@@ -581,6 +596,36 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertTrue(1 in dispatcher.channel_events)
         self.assertTrue(not 2 in dispatcher.channel_events)
 
+    def test_add_channel_duplicate_channel_id(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_CHANNEL_ALREADY_EXISTS,
+                         drop_channel.drop_code)
+        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+                         request.connection.server_close_code)
+
     def test_receive_drop_channel(self):
         request = _create_mock_request()
         dispatcher = _MuxMockDispatcher()
@@ -671,6 +716,25 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertEqual(common.OPCODE_PING, messages[0]['opcode'])
         self.assertEqual('Ping!', messages[0]['message'])
 
+    def test_send_drop_channel(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        # DropChannel for channel id 1 which doesn't have reason.
+        frame = create_binary_frame('\x00\x60\x01\x00', mask=True)
+        request.connection.put_bytes(frame)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_ACKNOWLEDGED,
+                         drop_channel.drop_code)
+        self.assertEqual(1, drop_channel.channel_id)
+
     def test_two_flow_control(self):
         request = _create_mock_request()
         dispatcher = _MuxMockDispatcher()
@@ -759,15 +823,12 @@ class MuxHandlerTest(unittest.TestCase):
 
         mux_handler.wait_until_done(timeout=2)
         control_blocks = request.connection.get_written_control_blocks()
-        # The first block is FlowControl for channel id 1.
-        # The next two blocks are NewChannelSlot and AddChannelResponse.
-        # The 4th block or the last block should be DropChannels for channel 2.
-        # (The order can be mixed up)
-        # The remaining block should be FlowControl for 'Goodbye'.
         self.assertEqual(5, len(control_blocks))
-        expected_first_byte = (mux._MUX_OPCODE_DROP_CHANNEL << 5)
-        self.assertTrue((expected_first_byte == ord(control_blocks[3][0])) or
-                        (expected_first_byte == ord(control_blocks[4][0])))
+        drop_channel = next(
+            b for b in control_blocks
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_SEND_QUOTA_VIOLATION,
+                         drop_channel.drop_code)
 
     def test_fragmented_control_message(self):
         request = _create_mock_request()
@@ -851,8 +912,117 @@ class MuxHandlerTest(unittest.TestCase):
         mux_handler.wait_until_done(timeout=2)
 
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
-        self.assertFalse(dispatcher.channel_events.has_key(3))
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(3, drop_channel.channel_id)
+        self.assertEqual(mux._DROP_CODE_NEW_CHANNEL_SLOT_VIOLATION,
+                         drop_channel.drop_code)
 
+    def test_invalid_encapsulated_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        first_byte = (mux._MUX_OPCODE_ADD_CHANNEL_REQUEST << 5)
+        block = (chr(first_byte) +
+                 mux._encode_channel_id(1) +
+                 mux._encode_number(0))
+        payload = mux._encode_channel_id(mux._CONTROL_CHANNEL_ID) + block
+        text_frame = create_binary_frame(payload, opcode=common.OPCODE_TEXT,
+                                         mask=True)
+        request.connection.put_bytes(text_frame)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_INVALID_ENCAPSULATING_MESSAGE,
+                         drop_channel.drop_code)
+        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+                         request.connection.server_close_code)
+
+    def test_channel_id_truncated(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        # The last byte of the channel id is missing.
+        frame = create_binary_frame('\x80', mask=True)
+        request.connection.put_bytes(frame)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_CHANNEL_ID_TRUNCATED,
+                         drop_channel.drop_code)
+        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+                         request.connection.server_close_code)
+
+    def test_inner_frame_truncated(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        # Just contain channel id 1.
+        frame = create_binary_frame('\x01', mask=True)
+        request.connection.put_bytes(frame)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_ENCAPSULATED_FRAME_IS_TRUNCATED,
+                         drop_channel.drop_code)
+        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+                         request.connection.server_close_code)
+
+    def test_unknown_mux_opcode(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        # Undefined opcode 5
+        frame = create_binary_frame('\x00\xa0', mask=True)
+        request.connection.put_bytes(frame)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_UNKNOWN_MUX_OPCODE,
+                         drop_channel.drop_code)
+        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+                         request.connection.server_close_code)
+
+    def test_invalid_mux_control_block(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        # DropChannel contains 1 byte reason
+        frame = create_binary_frame('\x00\x60\x00\x01\x00', mask=True)
+        request.connection.put_bytes(frame)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                         drop_channel.drop_code)
+        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+                         request.connection.server_close_code)
 
 if __name__ == '__main__':
     unittest.main()

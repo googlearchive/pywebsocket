@@ -31,7 +31,7 @@
 """This file provides classes and helper functions for multiplexing extension.
 
 Specification:
-http://tools.ietf.org/html/draft-ietf-hybi-websocket-multiplexing-05
+http://tools.ietf.org/html/draft-ietf-hybi-websocket-multiplexing-06
 """
 
 
@@ -84,8 +84,17 @@ _HTTP_BAD_RESPONSE_MESSAGES = {
 # TODO(bashi): Define all reason code defined in -05 draft.
 _DROP_CODE_NORMAL_CLOSURE = 1000
 
+_DROP_CODE_INVALID_ENCAPSULATING_MESSAGE = 2001
+_DROP_CODE_CHANNEL_ID_TRUNCATED = 2002
+_DROP_CODE_ENCAPSULATED_FRAME_IS_TRUNCATED = 2003
+_DROP_CODE_UNKNOWN_MUX_OPCODE = 2004
+_DROP_CODE_INVALID_MUX_CONTROL_BLOCK = 2005
+_DROP_CODE_CHANNEL_ALREADY_EXISTS = 2006
+_DROP_CODE_NEW_CHANNEL_SLOT_VIOLATION = 2007
+
 _DROP_CODE_SEND_QUOTA_VIOLATION = 3005
 _DROP_CODE_ACKNOWLEDGED = 3008
+
 
 class MuxUnexpectedException(Exception):
     """Exception in handling multiplexing extension."""
@@ -98,19 +107,29 @@ class MuxNotImplementedException(Exception):
     pass
 
 
-class InvalidMuxFrameException(Exception):
-    """Raised when an invalid multiplexed frame received."""
-    pass
-
-
-class InvalidMuxControlBlockException(Exception):
-    """Raised when an invalid multiplexing control block received."""
-    pass
-
-
 class LogicalConnectionClosedException(Exception):
     """Raised when logical connection is gracefully closed."""
     pass
+
+
+class PhysicalConnectionError(Exception):
+    """Raised when there is a physical connection error."""
+    def __init__(self, drop_code, message=''):
+        super(PhysicalConnectionError, self).__init__(
+            'code=%d, message=%r' % (drop_code, message))
+        self.drop_code = drop_code
+        self.message = message
+
+
+class LogicalChannelError(Exception):
+    """Raised when there is a logical channel error."""
+    def __init__(self, channel_id, drop_code, message=''):
+        super(LogicalChannelError, self).__init__(
+            'channel_id=%d, code=%d, message=%r' % (
+                channel_id, drop_code, message))
+        self.channel_id = channel_id
+        self.drop_code = drop_code
+        self.message = message
 
 
 def _encode_channel_id(channel_id):
@@ -236,35 +255,32 @@ class _MuxFramePayloadParser(object):
         """Reads channel id.
 
         Raises:
-            InvalidMuxFrameException: when the payload doesn't contain
+            ValueError: when the payload doesn't contain
                 valid channel id.
         """
 
         remaining_length = len(self._data) - self._read_position
         pos = self._read_position
         if remaining_length == 0:
-            raise InvalidMuxFrameException('No channel id found')
+            raise ValueError('Invalid channel id format')
 
         channel_id = ord(self._data[pos])
         channel_id_length = 1
         if channel_id & 0xe0 == 0xe0:
             if remaining_length < 4:
-                raise InvalidMuxFrameException(
-                    'Invalid channel id format')
+                raise ValueError('Invalid channel id format')
             channel_id = struct.unpack('!L',
                                        self._data[pos:pos+4])[0] & 0x1fffffff
             channel_id_length = 4
         elif channel_id & 0xc0 == 0xc0:
             if remaining_length < 3:
-                raise InvalidMuxFrameException(
-                    'Invalid channel id format')
+                raise ValueError('Invalid channel id format')
             channel_id = (((channel_id & 0x1f) << 16) +
                           struct.unpack('!H', self._data[pos+1:pos+3])[0])
             channel_id_length = 3
         elif channel_id & 0x80 == 0x80:
             if remaining_length < 2:
-                raise InvalidMuxFrameException(
-                    'Invalid channel id format')
+                raise ValueError('Invalid channel id format')
             channel_id = struct.unpack('!H',
                                        self._data[pos:pos+2])[0] & 0x3fff
             channel_id_length = 2
@@ -276,11 +292,13 @@ class _MuxFramePayloadParser(object):
         """Reads an inner frame.
 
         Raises:
-            InvalidMuxFrameException: when the inner frame is invalid.
+            PhysicalConnectionError: when the inner frame is invalid.
         """
 
         if len(self._data) == self._read_position:
-            raise InvalidMuxFrameException('No inner frame bits found')
+            raise PhysicalConnectionError(
+                _DROP_CODE_ENCAPSULATED_FRAME_IS_TRUNCATED)
+
         bits = ord(self._data[self._read_position])
         self._read_position += 1
         fin = (bits & 0x80) == 0x80
@@ -296,33 +314,44 @@ class _MuxFramePayloadParser(object):
 
     def _read_number(self):
         if self._read_position + 1 > len(self._data):
-            raise InvalidMuxControlBlockException(
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                 'Cannot read the first byte of number field')
 
         number = ord(self._data[self._read_position])
         if number & 0x80 == 0x80:
-            raise InvalidMuxControlBlockException(
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                 'The most significant bit of the first byte of number should '
                 'be unset')
         self._read_position += 1
         pos = self._read_position
         if number == 127:
             if pos + 8 > len(self._data):
-                raise InvalidMuxControlBlockException('Invalid number field')
+                raise PhysicalConnectionError(
+                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                    'Invalid number field')
             self._read_position += 8
             number = struct.unpack('!Q', self._data[pos:pos+8])[0]
             if number > 0x7FFFFFFFFFFFFFFF:
-                raise InvalidMuxControlBlockException('Encoded number >= 2^63')
+                raise PhysicalConnectionError(
+                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                    'Encoded number >= 2^63')
             if number <= 0xFFFF:
-                raise InvalidMuxControlBlockException(
+                raise PhysicalConnectionError(
+                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                     '%d should not be encoded by 9 bytes encoding' % number)
+            return number
         if number == 126:
             if pos + 2 > len(self._data):
-                raise InvalidMuxControlBlockException('Invalid number field')
+                raise PhysicalConnectionError(
+                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                    'Invalid number field')
             self._read_position += 2
             number = struct.unpack('!H', self._data[pos:pos+2])[0]
             if number <= 125:
-                raise InvalidMuxControlBlockException(
+                raise PhysicalConnectionError(
+                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                     '%d should not be encoded by 3 bytes encoding' % number)
         return number
 
@@ -336,33 +365,73 @@ class _MuxFramePayloadParser(object):
         size = self._read_number()
         pos = self._read_position
         if pos + size > len(self._data):
-            raise InvalidMuxControlBlockException(
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                 'Cannot read %d bytes data' % size)
 
         self._read_position += size
         return self._data[pos:pos+size]
 
-    # TODO(bashi): 8.1 _Fail the Logical Channel_ with 3002 if |encoding|
-    # or |reserved| of control blocks is invalid.
     def _read_add_channel_request(self, first_byte, control_block):
-        reserved = (first_byte >> 2) & 0x3
+        reserved = (first_byte >> 2) & 0x7
+        if reserved != 0:
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                'Reserved bits must be unset')
+
+        # TODO(bashi): Raise an exception when encoding is invalid.
         encoding = first_byte & 0x3
 
-        control_block.channel_id = self.read_channel_id()
+        try:
+            control_block.channel_id = self.read_channel_id()
+        except ValueError, e:
+            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK)
         control_block.encoding = encoding
         encoded_handshake = self._read_size_and_contents()
         control_block.encoded_handshake = encoded_handshake
         return control_block
 
+    def _read_add_channel_response(self, first_byte, control_block):
+        reserved = (first_byte >> 2) & 0x3
+        if reserved != 0:
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                'Reserved bits must be unset')
+        control_block.accepted = (first_byte >> 4) & 1
+        # TODO(bashi): Raise an exception when encoding is invalid.
+        control_block.encoding = first_byte & 0x3
+        try:
+            control_block.channel_id = self.read_channel_id()
+        except ValueError, e:
+            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK)
+        control_block.encoded_handshake = self._read_size_and_contents()
+        return control_block
+
     def _read_flow_control(self, first_byte, control_block):
         reserved = first_byte & 0x1f
-        control_block.channel_id = self.read_channel_id()
+        if reserved != 0:
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                'Reserved bits must be unset')
+
+        try:
+            control_block.channel_id = self.read_channel_id()
+        except ValueError, e:
+            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK)
         control_block.send_quota = self._read_number()
         return control_block
 
     def _read_drop_channel(self, first_byte, control_block):
         reserved = first_byte & 0x1f
-        control_block.channel_id = self.read_channel_id()
+        if reserved != 0:
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                'Reserved bits must be unset')
+
+        try:
+            control_block.channel_id = self.read_channel_id()
+        except ValueError, e:
+            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK)
         reason = self._read_size_and_contents()
         if len(reason) == 0:
             control_block.drop_code = None
@@ -371,19 +440,27 @@ class _MuxFramePayloadParser(object):
             control_block.drop_code = struct.unpack('!H', reason[:2])[0]
             control_block.drop_message = reason[2:]
         else:
-            raise InvalidMuxControlBlockException(
-                'Received DropChannel contains invalid reason')
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                'Received DropChannel that conains only 1-byte reason')
         return control_block
 
     def _read_new_channel_slot(self, first_byte, control_block):
-        # TODO(bashi): Implement
-        raise MuxNotImplementedException('NewChannelSlot is not implemented')
+        reserved = first_byte & 0x1e
+        if reserved != 0:
+            raise PhysicalConnectionError(
+                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                'Reserved bits must be unset')
+        control_block.fallback = first_byte & 1
+        control_block.slots = self._read_number()
+        control_block.send_quota = self._read_number()
+        return control_block
 
     def read_control_blocks(self):
         """Reads control block(s).
 
         Raises:
-           InvalidMuxControlBlock: when the payload contains invalid control
+           PhysicalConnectionError: when the payload contains invalid control
                block(s).
            StopIteration: when no control blocks left.
         """
@@ -393,10 +470,11 @@ class _MuxFramePayloadParser(object):
             self._read_position += 1
             opcode = (first_byte >> 5) & 0x7
             control_block = _ControlBlock(opcode=opcode)
-            # TODO(bashi): 8. _Fail the Physical Connection_ with 2004 if
-            # there is incompatible control blocks.
             if opcode == _MUX_OPCODE_ADD_CHANNEL_REQUEST:
                 yield self._read_add_channel_request(first_byte, control_block)
+            elif opcode == _MUX_OPCODE_ADD_CHANNEL_RESPONSE:
+                yield self._read_add_channel_response(
+                    first_byte, control_block)
             elif opcode == _MUX_OPCODE_FLOW_CONTROL:
                 yield self._read_flow_control(first_byte, control_block)
             elif opcode == _MUX_OPCODE_DROP_CHANNEL:
@@ -404,9 +482,10 @@ class _MuxFramePayloadParser(object):
             elif opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
                 yield self._read_new_channel_slot(first_byte, control_block)
             else:
-                # TODO(bashi): 8. _Fail the Physical Connection_ with 2004
-                raise InvalidMuxControlBlockException(
+                raise PhysicalConnectionError(
+                    _DROP_CODE_UNKNOWN_MUX_OPCODE,
                     'Invalid opcode %d' % opcode)
+
         assert self._read_position == len(self._data)
         raise StopIteration
 
@@ -918,17 +997,27 @@ class _PhysicalConnectionReader(threading.Thread):
                 message = physical_stream.receive_message()
                 if message is None:
                     break
+                # Below happens only when a data message is received.
                 opcode = physical_stream.get_last_received_opcode()
-                # TODO(bashi): 8. _Fail the Physical Connection_ with 2001.
-                if opcode == common.OPCODE_TEXT:
-                    raise MuxUnexpectedException(
+                if opcode != common.OPCODE_BINARY:
+                    self._mux_handler.fail_physical_connection(
+                        _DROP_CODE_INVALID_ENCAPSULATING_MESSAGE,
                         'Received a text message on physical connection')
+                    break
+
             except ConnectionTerminatedException, e:
                 self._logger.debug('%s', e)
                 break
 
             try:
                 self._mux_handler.dispatch_message(message)
+            except PhysicalConnectionError, e:
+                self._mux_handler.fail_physical_connection(
+                    e.drop_code, e.message)
+                break
+            except LogicalChannelError, e:
+                self._mux_handler.fail_logical_channel(
+                    e.channel_id, e.drop_code, e.message)
             except Exception, e:
                 self._logger.debug(traceback.format_exc())
                 break
@@ -1220,8 +1309,8 @@ class _MuxHandler(object):
         try:
             receive_quota = self._channel_slots.popleft()
         except IndexError:
-            # TODO(bashi): Should _Fail the Logical Channel_ with code 2007.
-            raise MuxUnexpectedException('No room in channel pool')
+            raise LogicalChannelError(
+                request.channel_id, _DROP_CODE_NEW_CHANNEL_SLOT_VIOLATION)
 
         handshaker = _MuxHandshaker(request, self.dispatcher,
                                     send_quota, receive_quota)
@@ -1230,9 +1319,11 @@ class _MuxHandler(object):
         except handshake.VersionException, e:
             self._logger.info('%s', e)
             self._send_error_add_channel_response(
-                block.channel_id, status=common.HTTP_STATUS_BAD_REQUEST)
+                request.channel_id, status=common.HTTP_STATUS_BAD_REQUEST)
             return False
         except handshake.HandshakeException, e:
+            # TODO(bashi): Should we _Fail the Logical Channel_ with 3001
+            # instead?
             self._logger.info('%s', e)
             self._send_error_add_channel_response(request.channel_id,
                                                   status=e.status)
@@ -1248,8 +1339,12 @@ class _MuxHandler(object):
         try:
             self._logical_channels_condition.acquire()
             if logical_request.channel_id in self._logical_channels:
-                raise MuxUnexpectedException('Channel id %d already exists' %
-                                             logical_request.channel_id)
+                self._logger.debug('Channel id %d already exists' %
+                                   logical_request.channel_id)
+                raise PhysicalConnectionError(
+                    _DROP_CODE_CHANNEL_ALREADY_EXISTS,
+                    'Channel id %d already exists' %
+                    logical_request.channel_id)
             worker = _Worker(self, logical_request)
             channel_data = _LogicalChannelData(logical_request, worker)
             self._logical_channels[logical_request.channel_id] = channel_data
@@ -1285,7 +1380,7 @@ class _MuxHandler(object):
     def _process_drop_channel(self, block):
         self._logger.debug(
             'DropChannel received for %d: code=%r, reason=%r' %
-            (block.channel_id, block.drop_code, block.drop_reason))
+            (block.channel_id, block.drop_code, block.drop_message))
         try:
             self._logical_channels_condition.acquire()
             if not block.channel_id in self._logical_channels:
@@ -1298,41 +1393,42 @@ class _MuxHandler(object):
         finally:
             self._logical_channels_condition.release()
 
-    def _process_new_channel_slot(self, block):
-        raise MuxUnexpectedException('Client should not send NewChannelSlot')
-
     def _process_control_blocks(self, parser):
         for control_block in parser.read_control_blocks():
             opcode = control_block.opcode
             self._logger.debug('control block received, opcode: %d' % opcode)
             if opcode == _MUX_OPCODE_ADD_CHANNEL_REQUEST:
                 self._process_add_channel_request(control_block)
+            elif opcode == _MUX_OPCODE_ADD_CHANNEL_RESPONSE:
+                raise PhysicalConnectionError(
+                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                    'Received AddChannelResponse')
             elif opcode == _MUX_OPCODE_FLOW_CONTROL:
                 self._process_flow_control(control_block)
             elif opcode == _MUX_OPCODE_DROP_CHANNEL:
                 self._process_drop_channel(control_block)
             elif opcode == _MUX_OPCODE_NEW_CHANNEL_SLOT:
-                self._process_new_channel_slot(control_block)
+                raise PhysicalConnectionError(
+                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                    'Received NewChannelSlot')
             else:
-                raise InvalidMuxControlBlockException(
-                    'Invalid opcode')
+                raise MuxUnexpectedException(
+                    'Unexpected opcode %r' % opcode)
 
     def _process_logical_frame(self, channel_id, parser):
         self._logger.debug('Received a frame. channel id=%d' % channel_id)
         try:
             self._logical_channels_condition.acquire()
             if not channel_id in self._logical_channels:
-                raise MuxUnexpectedException(
-                    'Channel id %d not found' % channel_id)
+                # We must ignore the message for an inactive channel.
+                return
             channel_data = self._logical_channels[channel_id]
             fin, rsv1, rsv2, rsv3, opcode, payload = parser.read_inner_frame()
             if not channel_data.request.ws_stream.consume_receive_quota(
                 len(payload)):
                 # The client violates quota. Close logical channel.
-                channel_data.drop_code = _DROP_CODE_SEND_QUOTA_VIOLATION
-                channel_data.request.connection.set_read_state(
-                    _LogicalConnection.STATE_TERMINATED)
-                return
+                raise LogicalChannelError(
+                    channel_id, _DROP_CODE_SEND_QUOTA_VIOLATION)
             header = create_header(opcode, len(payload), fin, rsv1, rsv2, rsv3,
                                    mask=False)
             frame_data = header + payload
@@ -1346,15 +1442,17 @@ class _MuxHandler(object):
         Args:
             message: a message that contains encapsulated frame.
         Raises:
-            InvalidMuxFrameException: if the message is invalid.
+            PhysicalConnectionError: if the message contains physical
+                connection level errors.
+            LogicalChannelError: if the message contains logical channel
+                level errors.
         """
 
         parser = _MuxFramePayloadParser(message)
-        # TODO(bashi): 7. _Fail the Physical Connection_ with 2002 if parsing
-        # channel_id is failed.
-        channel_id = parser.read_channel_id()
-        # TODO(bashi): 7. _Fail the Physical Connection_ with 2003 if |message|
-        # doesn't contain payload
+        try:
+            channel_id = parser.read_channel_id()
+        except ValueError, e:
+            raise PhysicalConnectionError(_DROP_CODE_CHANNEL_ID_TRUNCATED)
         if channel_id == _CONTROL_CHANNEL_ID:
             self._process_control_blocks(parser)
         else:
@@ -1399,6 +1497,44 @@ class _MuxHandler(object):
             except Exception:
                 pass
         self._logical_channels_condition.release()
+
+    def fail_physical_connection(self, code, message):
+        """Fail the physical connection.
+
+        Args:
+            code: drop reason code.
+            message: drop message.
+        """
+
+        self._logger.debug('Failing the physical connection...')
+        self._send_drop_channel(_CONTROL_CHANNEL_ID, code, message)
+        self.physical_stream.close_connection(
+            common.STATUS_INTERNAL_SERVER_ERROR)
+
+    def fail_logical_channel(self, channel_id, code, message):
+        """Fail a logical channel.
+
+        Args:
+            channel_id: channel id.
+            code: drop reason code.
+            message: drop message.
+        """
+
+        self._logger.debug('Failing logical channel %d...' % channel_id)
+        try:
+            self._logical_channels_condition.acquire()
+            if channel_id in self._logical_channels:
+                channel_data = self._logical_channels[channel_id]
+                # Close the logical channel. notify_worker_done() will be
+                # called later and it will send DropChannel.
+                channel_data.drop_code = code
+                channel_data.drop_message = message
+                channel_data.request.connection.set_read_state(
+                    _LogicalConnection.STATE_TERMINATED)
+            else:
+                self._send_drop_channel(channel_id, code, message)
+        finally:
+            self._logical_channels_condition.release()
 
 
 def use_mux(request):

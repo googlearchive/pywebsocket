@@ -623,7 +623,7 @@ class MuxHandlerTest(unittest.TestCase):
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
         self.assertEqual(mux._DROP_CODE_CHANNEL_ALREADY_EXISTS,
                          drop_channel.drop_code)
-        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+        self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
                          request.connection.server_close_code)
 
     def test_receive_drop_channel(self):
@@ -941,7 +941,7 @@ class MuxHandlerTest(unittest.TestCase):
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
         self.assertEqual(mux._DROP_CODE_INVALID_ENCAPSULATING_MESSAGE,
                          drop_channel.drop_code)
-        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+        self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
                          request.connection.server_close_code)
 
     def test_channel_id_truncated(self):
@@ -961,7 +961,7 @@ class MuxHandlerTest(unittest.TestCase):
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
         self.assertEqual(mux._DROP_CODE_CHANNEL_ID_TRUNCATED,
                          drop_channel.drop_code)
-        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+        self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
                          request.connection.server_close_code)
 
     def test_inner_frame_truncated(self):
@@ -981,7 +981,7 @@ class MuxHandlerTest(unittest.TestCase):
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
         self.assertEqual(mux._DROP_CODE_ENCAPSULATED_FRAME_IS_TRUNCATED,
                          drop_channel.drop_code)
-        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+        self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
                          request.connection.server_close_code)
 
     def test_unknown_mux_opcode(self):
@@ -1001,7 +1001,7 @@ class MuxHandlerTest(unittest.TestCase):
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
         self.assertEqual(mux._DROP_CODE_UNKNOWN_MUX_OPCODE,
                          drop_channel.drop_code)
-        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+        self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
                          request.connection.server_close_code)
 
     def test_invalid_mux_control_block(self):
@@ -1021,7 +1021,7 @@ class MuxHandlerTest(unittest.TestCase):
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
         self.assertEqual(mux._DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                          drop_channel.drop_code)
-        self.assertEqual(common.STATUS_INTERNAL_SERVER_ERROR,
+        self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
                          request.connection.server_close_code)
 
 if __name__ == '__main__':

@@ -1509,7 +1509,7 @@ class _MuxHandler(object):
         self._logger.debug('Failing the physical connection...')
         self._send_drop_channel(_CONTROL_CHANNEL_ID, code, message)
         self.physical_stream.close_connection(
-            common.STATUS_INTERNAL_SERVER_ERROR)
+            common.STATUS_INTERNAL_ENDPOINT_ERROR)
 
     def fail_logical_channel(self, channel_id, code, message):
         """Fail a logical channel.

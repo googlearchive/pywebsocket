@@ -236,9 +236,9 @@ def _encode_number(number):
     if number <= 125:
         return chr(number)
     elif number < (1 << 16):
-        return chr(0xfe) + struct.pack('!H', number)
+        return chr(0x7e) + struct.pack('!H', number)
     elif number < (1 << 63):
-        return chr(0xff) + struct.pack('!Q', number)
+        return chr(0x7f) + struct.pack('!Q', number)
     else:
         raise Exception('Invalid number')
 

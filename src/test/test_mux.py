@@ -171,6 +171,7 @@ class _ChannelEvent(object):
     """A structure that records channel events."""
 
     def __init__(self):
+        self.request = None
         self.messages = []
         self.exception = None
         self.client_initiated_closing = False
@@ -183,7 +184,8 @@ class _MuxMockDispatcher(object):
         self.channel_events = {}
 
     def do_extra_handshake(self, request):
-        pass
+        if request.ws_requested_protocols is not None:
+            request.ws_protocol = request.ws_requested_protocols[0]
 
     def _do_echo(self, request, channel_events):
         while True:
@@ -202,6 +204,7 @@ class _MuxMockDispatcher(object):
 
     def transfer_data(self, request):
         self.channel_events[request.channel_id] = _ChannelEvent()
+        self.channel_events[request.channel_id].request = request
 
         try:
             # Note: more handler will be added.
@@ -240,8 +243,7 @@ def _create_mock_request():
 
 
 def _create_add_channel_request_frame(channel_id, encoding, encoded_handshake):
-    if encoding != 0 and encoding != 1:
-        raise ValueError('Invalid encoding')
+    # Allow invalid encoding for testing.
     first_byte = ((mux._MUX_OPCODE_ADD_CHANNEL_REQUEST << 5) | encoding)
     block = (chr(first_byte) +
              mux._encode_channel_id(channel_id) +
@@ -540,6 +542,241 @@ class MuxHandlerTest(unittest.TestCase):
         #   - 6 FlowControls for channel id 1 (initialize), 'Hello', 'World',
         #     and 3 'Goodbye's
         self.assertEqual(9, len(control_blocks))
+
+    def test_add_channel_delta_encoding(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        delta = 'GET /echo HTTP/1.1\r\n\r\n'
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=1, encoded_handshake=delta)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('Hello', messages[0])
+
+    def test_add_channel_delta_encoding_override(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        # Override Sec-WebSocket-Protocol.
+        delta = ('GET /echo HTTP/1.1\r\n'
+                 'Sec-WebSocket-Protocol: x-foo\r\n'
+                 '\r\n')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=1, encoded_handshake=delta)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('Hello', messages[0])
+        self.assertEqual('x-foo',
+                         dispatcher.channel_events[2].request.ws_protocol)
+
+    def test_add_channel_delta_after_identity(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+        # Sec-WebSocket-Protocol is different from client's opening handshake
+        # of the physical connection.
+        # TODO(bashi): Remove Upgrade, Connection, Sec-WebSocket-Key and
+        # Sec-WebSocket-Version.
+        encoded_handshake = (
+            'GET /echo HTTP/1.1\r\n'
+            'Host: server.example.com\r\n'
+            'Upgrade: websocket\r\n'
+            'Connection: Upgrade\r\n'
+            'Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n'
+            'Sec-WebSocket-Version: 13\r\n'
+            'Sec-WebSocket-Protocol: x-foo\r\n'
+            'Origin: http://example.com\r\n'
+            '\r\n')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        delta = 'GET /echo HTTP/1.1\r\n\r\n'
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=3, encoding=1, encoded_handshake=delta)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=3,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=3, message='World'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=3, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertEqual([], dispatcher.channel_events[1].messages)
+        self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        self.assertEqual(['World'], dispatcher.channel_events[3].messages)
+        # Channel 2
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('Hello', messages[0])
+        # Channel 3
+        messages = request.connection.get_written_messages(3)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('World', messages[0])
+        # Handshake base should be updated.
+        self.assertEqual(
+            'x-foo',
+            mux_handler._handshake_base._headers['Sec-WebSocket-Protocol'])
+
+    def test_add_channel_delta_remove_header(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+        # Override handshake delta base.
+        encoded_handshake = (
+            'GET /echo HTTP/1.1\r\n'
+            'Host: server.example.com\r\n'
+            'Upgrade: websocket\r\n'
+            'Connection: Upgrade\r\n'
+            'Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n'
+            'Sec-WebSocket-Version: 13\r\n'
+            'Sec-WebSocket-Protocol: x-foo\r\n'
+            'Origin: http://example.com\r\n'
+            '\r\n')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        # Remove Sec-WebSocket-Protocol header.
+        delta = ('GET /echo HTTP/1.1\r\n'
+                 'Sec-WebSocket-Protocol:'
+                 '\r\n')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=3, encoding=1, encoded_handshake=delta)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=3,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=3, message='World'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=3, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertEqual([], dispatcher.channel_events[1].messages)
+        self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        self.assertEqual(['World'], dispatcher.channel_events[3].messages)
+        # Channel 2
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('Hello', messages[0])
+        # Channel 3
+        messages = request.connection.get_written_messages(3)
+        self.assertEqual(1, len(messages))
+        self.assertEqual('World', messages[0])
+        self.assertEqual(
+            'x-foo',
+            dispatcher.channel_events[2].request.ws_protocol)
+        self.assertEqual(
+            None,
+            dispatcher.channel_events[3].request.ws_protocol)
+
+    def test_add_channel_invalid_encoding(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=3,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_UNKNOWN_REQUEST_ENCODING,
+                         drop_channel.drop_code)
+        self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
+                         request.connection.server_close_code)
 
     def test_add_channel_incomplete_handshake(self):
         request = _create_mock_request()

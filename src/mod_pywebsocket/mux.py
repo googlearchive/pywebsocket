@@ -75,6 +75,9 @@ _MAX_CHANNEL_ID = 2 ** 29 - 1
 _INITIAL_NUMBER_OF_CHANNEL_SLOTS = 64
 _INITIAL_QUOTA_FOR_CLIENT = 8 * 1024
 
+_HANDSHAKE_ENCODING_IDENTITY = 0
+_HANDSHAKE_ENCODING_DELTA = 1
+
 # We need only these status code for now.
 _HTTP_BAD_RESPONSE_MESSAGES = {
     common.HTTP_STATUS_BAD_REQUEST: 'Bad Request',
@@ -92,6 +95,7 @@ _DROP_CODE_INVALID_MUX_CONTROL_BLOCK = 2005
 _DROP_CODE_CHANNEL_ALREADY_EXISTS = 2006
 _DROP_CODE_NEW_CHANNEL_SLOT_VIOLATION = 2007
 
+_DROP_CODE_UNKNOWN_REQUEST_ENCODING = 3002
 _DROP_CODE_SEND_QUOTA_VIOLATION = 3005
 _DROP_CODE_ACKNOWLEDGED = 3008
 
@@ -379,9 +383,8 @@ class _MuxFramePayloadParser(object):
                 _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                 'Reserved bits must be unset')
 
-        # TODO(bashi): Raise an exception when encoding is invalid.
+        # Invalid encoding will be handled by MuxHandler.
         encoding = first_byte & 0x3
-
         try:
             control_block.channel_id = self.read_channel_id()
         except ValueError, e:
@@ -397,8 +400,8 @@ class _MuxFramePayloadParser(object):
             raise PhysicalConnectionError(
                 _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                 'Reserved bits must be unset')
+
         control_block.accepted = (first_byte >> 4) & 1
-        # TODO(bashi): Raise an exception when encoding is invalid.
         control_block.encoding = first_byte & 0x3
         try:
             control_block.channel_id = self.read_channel_id()
@@ -1105,6 +1108,34 @@ class _LogicalChannelData(object):
         self.drop_message = ''
 
 
+class _HandshakeDeltaBase(object):
+    """A class that holds information for delta-encoded handshake."""
+
+    def __init__(self, headers):
+        self._headers = headers
+
+    def create_headers(self, delta=None):
+        """Creates request headers for an AddChannelRequest that has
+        delta-encoded handshake.
+
+        Args:
+            delta: headers should be overridden.
+        """
+
+        headers = copy.copy(self._headers)
+        if delta:
+            for key, value in delta.items():
+                # The spec requires that a header with an empty value is
+                # removed from the delta base.
+                if len(value) == 0 and headers.has_key(key):
+                    del headers[key]
+                else:
+                    headers[key] = value
+        # TODO(bashi): Support extensions
+        headers['Sec-WebSocket-Extensions'] = ''
+        return headers
+
+
 class _MuxHandler(object):
     """Multiplexing handler. When a handler starts, it launches three
     threads; the reader thread, the writer thread, and a worker thread.
@@ -1140,6 +1171,7 @@ class _MuxHandler(object):
         self._logical_channels_condition = threading.Condition()
         # Holds client's initial quota
         self._channel_slots = collections.deque()
+        self._handshake_base = None
         self._worker_done_notify_received = False
         self._reader = None
         self._writer = None
@@ -1162,14 +1194,14 @@ class _MuxHandler(object):
 
         # Create "Implicitly Opened Connection".
         logical_connection = _LogicalConnection(self, _DEFAULT_CHANNEL_ID)
-        headers_in = copy.copy(self.original_request.headers_in)
-        # TODO(bashi): Support extensions
-        headers_in['Sec-WebSocket-Extensions'] = ''
-        logical_request = _LogicalRequest(_DEFAULT_CHANNEL_ID,
-                                          self.original_request.method,
-                                          self.original_request.uri,
-                                          headers_in,
-                                          logical_connection)
+        self._handshake_base = _HandshakeDeltaBase(
+            self.original_request.headers_in)
+        logical_request = _LogicalRequest(
+            _DEFAULT_CHANNEL_ID,
+            self.original_request.method,
+            self.original_request.uri,
+            self._handshake_base.create_headers(),
+            logical_connection)
         # Client's send quota for the implicitly opened connection is zero,
         # but we will send FlowControl later so set the initial quota to
         # _INITIAL_QUOTA_FOR_CLIENT.
@@ -1290,19 +1322,24 @@ class _MuxHandler(object):
 
     def _create_logical_request(self, block):
         if block.channel_id == _CONTROL_CHANNEL_ID:
+            # TODO(bashi): Raise PhysicalConnectionError with code 2006
+            # instead of MuxUnexpectedException.
             raise MuxUnexpectedException(
                 'Received the control channel id (0) as objective channel '
                 'id for AddChannel')
 
-        if block.encoding != 0:
-            raise MuxNotImplementedException(
-                'delta-encoding not supported yet')
-        connection = _LogicalConnection(self, block.channel_id)
-        command, path, version, headers = _parse_request_text(
-                                              block.encoded_handshake)
-        request = _LogicalRequest(block.channel_id, command, path,
-                                  headers, connection)
+        if block.encoding > _HANDSHAKE_ENCODING_DELTA:
+            raise PhysicalConnectionError(
+                _DROP_CODE_UNKNOWN_REQUEST_ENCODING)
 
+        method, path, version, headers = _parse_request_text(
+            block.encoded_handshake)
+        if block.encoding == _HANDSHAKE_ENCODING_DELTA:
+            headers = self._handshake_base.create_headers(headers)
+
+        connection = _LogicalConnection(self, block.channel_id)
+        request = _LogicalRequest(block.channel_id, method, path,
+                                  headers, connection)
         return request
 
     def _do_handshake_for_logical_request(self, request, send_quota=0):
@@ -1361,6 +1398,12 @@ class _MuxHandler(object):
                 block.channel_id, status=common.HTTP_STATUS_BAD_REQUEST)
             return
         if self._do_handshake_for_logical_request(logical_request):
+            if block.encoding == _HANDSHAKE_ENCODING_IDENTITY:
+                # Update handshake base.
+                # TODO(bashi): Make sure this is the right place to update
+                # handshake base.
+                self._handshake_base = _HandshakeDeltaBase(
+                    logical_request.headers_in)
             self._add_logical_channel(logical_request)
         else:
             self._send_error_add_channel_response(

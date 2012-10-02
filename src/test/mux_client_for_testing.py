@@ -527,20 +527,12 @@ class MuxClient(object):
         # Create AddChannel request
         request_line = 'GET %s HTTP/1.1\r\n' % options.resource
         fields = []
-        fields.append('Upgrade: websocket\r\n')
-        fields.append('Connection: Upgrade\r\n')
         if options.server_port == client_for_testing.DEFAULT_PORT:
             fields.append('Host: %s\r\n' % options.server_host.lower())
         else:
             fields.append('Host: %s:%d\r\n' % (options.server_host.lower(),
                                                options.server_port))
         fields.append('Origin: %s\r\n' % options.origin.lower())
-
-        original_key = os.urandom(16)
-        key = base64.b64encode(original_key)
-        fields.append('Sec-WebSocket-Key: %s\r\n' % key)
-
-        fields.append('Sec-WebSocket-Version: 13\r\n')
 
         if len(options.extensions) > 0:
             fields.append('Sec-WebSocket-Extensions: %s\r\n' %
@@ -579,36 +571,8 @@ class MuxClient(object):
 
         fields = _parse_handshake_response(response.encoded_handshake)
 
-        if not 'upgrade' in fields:
-            raise Exception('No Upgrade header')
-        if fields['upgrade'] != 'websocket':
-            raise Exception('Wrong Upgrade header')
-        if not 'connection' in fields:
-            raise Exception('No Connection header')
-        if fields['connection'] != 'Upgrade':
-            raise Exception('Wrong Connection header')
-        if not 'sec-websocket-accept' in fields:
-            raise Exception('No Sec-WebSocket-Accept header')
-
-        accept = fields['sec-websocket-accept']
-        try:
-            decoded_accept = base64.b64decode(accept)
-        except TypeError, e:
-            raise Exception(
-                'Illegal value for header Sec-WebSocket-Accept: ' + accept)
-
-        if len(decoded_accept) != 20:
-            raise Exception(
-                'Decoded value of Sec-WebSocket-Accept is not 20-byte long')
-
-        original_expected_accept = util.sha1_hash(
-            key + client_for_testing.WEBSOCKET_ACCEPT_UUID).digest()
-        expected_accept = base64.b64encode(original_expected_accept)
-
-        if accept != expected_accept:
-            raise Exception(
-                'Invalid Sec-WebSocket-Accept header: %r (expected) != %r '
-                '(actual)' % (accept, expected_accept))
+        # Should we reject when Upgrade, Connection, or Sec-WebSocket-Accept
+        # headers exist?
 
         self._logical_channels_condition.acquire()
         self._logical_channels[channel_id] = _LogicalChannelData()

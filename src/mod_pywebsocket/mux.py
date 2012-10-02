@@ -1060,6 +1060,8 @@ class _Worker(threading.Thread):
 class _MuxHandshaker(hybi.Handshaker):
     """Opening handshake processor for multiplexing."""
 
+    _DUMMY_WEBSOCKET_KEY = 'dGhlIHNhbXBsZSBub25jZQ=='
+
     def __init__(self, request, dispatcher, send_quota, receive_quota):
         """Constructs an instance.
         Args:
@@ -1073,6 +1075,19 @@ class _MuxHandshaker(hybi.Handshaker):
         self._send_quota = send_quota
         self._receive_quota = receive_quota
 
+        # Append headers which should not be included in handshake field of
+        # AddChannelRequest.
+        # TODO(bashi): Make sure whether we should raise exception when
+        #     these headers are included already.
+        request.headers_in[common.UPGRADE_HEADER] = (
+            common.WEBSOCKET_UPGRADE_TYPE)
+        request.headers_in[common.CONNECTION_HEADER] = (
+            common.UPGRADE_CONNECTION_TYPE)
+        request.headers_in[common.SEC_WEBSOCKET_VERSION_HEADER] = (
+            str(common.VERSION_HYBI_LATEST))
+        request.headers_in[common.SEC_WEBSOCKET_KEY_HEADER] = (
+            self._DUMMY_WEBSOCKET_KEY)
+
     def _create_stream(self, stream_options):
         """Override hybi.Handshaker._create_stream."""
 
@@ -1080,6 +1095,27 @@ class _MuxHandshaker(hybi.Handshaker):
                            self._request.channel_id)
         return _LogicalStream(self._request, self._send_quota,
                               self._receive_quota)
+
+    def _create_handshake_response(self, accept):
+        """Override hybi._create_handshake_response."""
+
+        response = []
+
+        response.append('HTTP/1.1 101 Switching Protocols\r\n')
+
+        # Upgrade, Connection and Sec-WebSocket-Accept should be excluded.
+        if self._request.ws_protocol is not None:
+            response.append('%s: %s\r\n' % (
+                common.SEC_WEBSOCKET_PROTOCOL_HEADER,
+                self._request.ws_protocol))
+        if (self._request.ws_extensions is not None and
+            len(self._request.ws_extensions) != 0):
+            response.append('%s: %s\r\n' % (
+                common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
+                common.format_extensions(self._request.ws_extensions)))
+        response.append('\r\n')
+
+        return ''.join(response)
 
     def _send_handshake(self, accept):
         """Override hybi.Handshaker._send_handshake."""

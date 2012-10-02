@@ -264,10 +264,6 @@ def _create_request_header(path='/echo'):
     return (
         'GET %s HTTP/1.1\r\n'
         'Host: server.example.com\r\n'
-        'Upgrade: websocket\r\n'
-        'Connection: Upgrade\r\n'
-        'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n'
-        'Sec-WebSocket-Version: 13\r\n'
         'Origin: http://example.com\r\n'
         '\r\n') % path
 
@@ -414,19 +410,19 @@ class MuxTest(unittest.TestCase):
         # The msb of the first byte is set.
         data = '\x80'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_number)
 
         # Using 3 bytes encoding for 125.
         data = '\x7e\x00\x7d'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_number)
 
         # Using 9 bytes encoding for 0xffff
         data = '\x7f\x00\x00\x00\x00\x00\x00\xff\xff'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.InvalidMuxControlBlockException,
+        self.assertRaises(mux.PhysicalConnectionError,
                           parser._read_number)
 
     def test_read_invalid_size_and_contents(self):
@@ -471,11 +467,6 @@ class MuxTest(unittest.TestCase):
         self.assertEqual('HTTP/1.1', version)
         self.assertEqual(6, len(headers))
         self.assertEqual('server.example.com', headers['Host'])
-        self.assertEqual('websocket', headers['Upgrade'])
-        self.assertEqual('Upgrade', headers['Connection'])
-        self.assertEqual('dGhlIHNhbXBsZSBub25jZQ==',
-                         headers['Sec-WebSocket-Key'])
-        self.assertEqual('13', headers['Sec-WebSocket-Version'])
         self.assertEqual('http://example.com', headers['Origin'])
 
 
@@ -626,10 +617,6 @@ class MuxHandlerTest(unittest.TestCase):
         encoded_handshake = (
             'GET /echo HTTP/1.1\r\n'
             'Host: server.example.com\r\n'
-            'Upgrade: websocket\r\n'
-            'Connection: Upgrade\r\n'
-            'Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n'
-            'Sec-WebSocket-Version: 13\r\n'
             'Sec-WebSocket-Protocol: x-foo\r\n'
             'Origin: http://example.com\r\n'
             '\r\n')
@@ -693,10 +680,6 @@ class MuxHandlerTest(unittest.TestCase):
         encoded_handshake = (
             'GET /echo HTTP/1.1\r\n'
             'Host: server.example.com\r\n'
-            'Upgrade: websocket\r\n'
-            'Connection: Upgrade\r\n'
-            'Sec-WebSocket-Key: x3JJHMbDL1EzLkh9GBhXDw==\r\n'
-            'Sec-WebSocket-Version: 13\r\n'
             'Sec-WebSocket-Protocol: x-foo\r\n'
             'Origin: http://example.com\r\n'
             '\r\n')
@@ -790,39 +773,6 @@ class MuxHandlerTest(unittest.TestCase):
         add_channel_request = _create_add_channel_request_frame(
             channel_id=2, encoding=0,
             encoded_handshake=incomplete_encoded_handshake)
-        request.connection.put_bytes(add_channel_request)
-
-        request.connection.put_bytes(
-            _create_logical_frame(channel_id=1, message='Goodbye'))
-
-        mux_handler.wait_until_done(timeout=2)
-
-        self.assertTrue(1 in dispatcher.channel_events)
-        self.assertTrue(not 2 in dispatcher.channel_events)
-
-    def test_add_channel_invalid_version_handshake(self):
-        request = _create_mock_request()
-        dispatcher = _MuxMockDispatcher()
-        mux_handler = mux._MuxHandler(request, dispatcher)
-        mux_handler.start()
-        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
-                                      mux._INITIAL_QUOTA_FOR_CLIENT)
-
-        encoded_handshake = (
-            'GET /echo HTTP/1.1\r\n'
-            'Host: example.com\r\n'
-            'Connection: Upgrade\r\n'
-            'Sec-WebSocket-Key2: 12998 5 Y3 1  .P00\r\n'
-            'Sec-WebSocket-Protocol: sample\r\n'
-            'Upgrade: WebSocket\r\n'
-            'Sec-WebSocket-Key1: 4 @1  46546xW%0l 1 5\r\n'
-            'Origin: http://example.com\r\n'
-            '\r\n'
-            '^n:ds[4U')
-
-        add_channel_request = _create_add_channel_request_frame(
-            channel_id=2, encoding=0,
-            encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
         request.connection.put_bytes(

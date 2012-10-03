@@ -41,8 +41,11 @@ from mod_pywebsocket import common
 from mod_pywebsocket import extensions
 
 
-class PerFrameCompressionExtensionTest(unittest.TestCase):
-    """A unittest for the perframe-compression extension."""
+class CompressionMethodParameterParserTest(unittest.TestCase):
+    """A unittest for _parse_compression_method which parses the compression
+    method description used by perframe-compression and permessage-compression
+    extension in their "method" extension parameter.
+    """
 
     def test_parse_method_simple(self):
         method_list = extensions._parse_compression_method('foo')

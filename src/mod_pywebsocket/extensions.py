@@ -49,7 +49,12 @@ class ExtensionProcessorInterface(object):
 
 
 class DeflateStreamExtensionProcessor(ExtensionProcessorInterface):
-    """WebSocket DEFLATE stream extension processor."""
+    """WebSocket DEFLATE stream extension processor.
+
+    Specification:
+    Section 9.2.1 in
+    http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10
+    """
 
     def __init__(self, request):
         self._logger = util.get_class_logger(self)
@@ -105,7 +110,11 @@ def _log_decompression_ratio(logger, received_bytes, total_received_bytes,
 
 
 class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
-    """WebSocket Per-frame DEFLATE extension processor."""
+    """WebSocket Per-frame DEFLATE extension processor.
+
+    Specification:
+    http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate
+    """
 
     _WINDOW_BITS_PARAM = 'max_window_bits'
     _NO_CONTEXT_TAKEOVER_PARAM = 'no_context_takeover'
@@ -363,7 +372,11 @@ class CompressionExtensionProcessorBase(ExtensionProcessorInterface):
 
 
 class PerFrameCompressionExtensionProcessor(CompressionExtensionProcessorBase):
-    """WebSocket Per-frame compression extension processor."""
+    """WebSocket Per-frame compression extension processor.
+
+    Specification:
+    http://tools.ietf.org/html/draft-ietf-hybi-websocket-perframe-compression
+    """
 
     _DEFLATE_METHOD = 'deflate'
 
@@ -376,6 +389,7 @@ class PerFrameCompressionExtensionProcessor(CompressionExtensionProcessorBase):
     def _lookup_compression_processor(self, method_desc):
         if method_desc.name() == self._DEFLATE_METHOD:
             return DeflateFrameExtensionProcessor(method_desc)
+        return None
 
 
 _available_processors[common.PERFRAME_COMPRESSION_EXTENSION] = (
@@ -603,7 +617,11 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
 
 class PerMessageCompressionExtensionProcessor(
     CompressionExtensionProcessorBase):
-    """WebSocket Per-message compression extension processor."""
+    """WebSocket Per-message compression extension processor.
+
+    Specification:
+    http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression
+    """
 
     _DEFLATE_METHOD = 'deflate'
 
@@ -616,10 +634,11 @@ class PerMessageCompressionExtensionProcessor(
     def _lookup_compression_processor(self, method_desc):
         if method_desc.name() == self._DEFLATE_METHOD:
             return DeflateMessageProcessor(method_desc)
+        return None
 
 
 _available_processors[common.PERMESSAGE_COMPRESSION_EXTENSION] = (
-    PerFrameCompressionExtensionProcessor)
+    PerMessageCompressionExtensionProcessor)
 
 
 class MuxExtensionProcessor(ExtensionProcessorInterface):

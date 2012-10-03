@@ -250,8 +250,39 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual(EXPECTED_RESPONSE, request.connection.written_data())
         self.assertEqual(1, len(request.ws_extensions))
         extension = request.ws_extensions[0]
-        self.assertEqual('deflate-stream', extension.name())
+        self.assertEqual(common.DEFLATE_STREAM_EXTENSION, extension.name())
         self.assertEqual(0, len(extension.get_parameter_names()))
+        self.assertEqual(1, len(request.ws_extension_processors))
+        self.assertEqual(common.DEFLATE_STREAM_EXTENSION,
+                         request.ws_extension_processors[0].name())
+
+    def test_do_handshake_with_perframe_compress(self):
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Extensions'] = (
+            'perframe-compress; method=deflate')
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(1, len(request.ws_extensions))
+        self.assertEqual(common.PERFRAME_COMPRESSION_EXTENSION,
+                         request.ws_extensions[0].name())
+        self.assertEqual(1, len(request.ws_extension_processors))
+        self.assertEqual(common.PERFRAME_COMPRESSION_EXTENSION,
+                         request.ws_extension_processors[0].name())
+
+    def test_do_handshake_with_permessage_compress(self):
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Extensions'] = (
+            'permessage-compress; method=deflate')
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(1, len(request.ws_extensions))
+        self.assertEqual(common.PERMESSAGE_COMPRESSION_EXTENSION,
+                         request.ws_extensions[0].name())
+        self.assertEqual(1, len(request.ws_extension_processors))
+        self.assertEqual(common.PERMESSAGE_COMPRESSION_EXTENSION,
+                         request.ws_extension_processors[0].name())
 
     def test_do_handshake_with_quoted_extensions(self):
         request_def = _create_good_request_def()
@@ -295,7 +326,7 @@ class HandshakerTest(unittest.TestCase):
         # not caught by do_handshake.
         self.assertRaises(AbortedByUserException, handshaker.do_handshake)
 
-    def test_do_handshake_with_mux_and_deflateframe(self):
+    def test_do_handshake_with_mux_and_deflate_frame(self):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Extensions'] = ('%s, %s' % (
                 common.MUX_EXTENSION,
@@ -308,10 +339,16 @@ class HandshakerTest(unittest.TestCase):
                          request.ws_extensions[0].name())
         self.assertEqual(common.DEFLATE_FRAME_EXTENSION,
                          request.ws_extensions[1].name())
+        self.assertEqual(2, len(request.ws_extension_processors))
+        self.assertEqual(common.MUX_EXTENSION,
+                         request.ws_extension_processors[0].name())
+        self.assertEqual(common.DEFLATE_FRAME_EXTENSION,
+                         request.ws_extension_processors[1].name())
+        self.assertTrue(hasattr(request, 'mux'))
         self.assertTrue(request.mux)
         self.assertEqual(0, len(request.mux_extensions))
 
-    def test_do_handshake_with_deflateframe_and_mux(self):
+    def test_do_handshake_with_deflate_frame_and_mux(self):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Extensions'] = ('%s, %s' % (
                 common.DEFLATE_FRAME_EXTENSION,
@@ -324,6 +361,12 @@ class HandshakerTest(unittest.TestCase):
         first_extension = request.ws_extensions[0]
         self.assertEqual(common.DEFLATE_FRAME_EXTENSION,
                          first_extension.name())
+        self.assertEqual(2, len(request.ws_extension_processors))
+        self.assertEqual(common.DEFLATE_FRAME_EXTENSION,
+                         request.ws_extension_processors[0].name())
+        self.assertEqual(common.MUX_EXTENSION,
+                         request.ws_extension_processors[1].name())
+        self.assertFalse(hasattr(request, 'mux'))
 
     def test_bad_requests(self):
         bad_cases = [

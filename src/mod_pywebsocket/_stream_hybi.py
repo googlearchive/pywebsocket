@@ -309,7 +309,7 @@ class FragmentedFrameBuilder(object):
         # frames in the message are all the same.
         self._opcode = common.OPCODE_TEXT
 
-    def build(self, message, end, binary):
+    def build(self, payload_data, end, binary):
         if binary:
             frame_type = common.OPCODE_BINARY
         else:
@@ -332,10 +332,10 @@ class FragmentedFrameBuilder(object):
 
         if binary or not self._encode_utf8:
             return create_binary_frame(
-                message, opcode, fin, self._mask, self._frame_filters)
+                payload_data, opcode, fin, self._mask, self._frame_filters)
         else:
             return create_text_frame(
-                message, opcode, fin, self._mask, self._frame_filters)
+                payload_data, opcode, fin, self._mask, self._frame_filters)
 
 
 def _create_control_frame(opcode, body, mask, frame_filters):
@@ -493,7 +493,35 @@ class Stream(StreamBase):
             message = message_filter.filter(message, end, binary)
 
         try:
-            self._write(self._writer.build(message, end, binary))
+            # Set this to any positive integer to limit maximum size of data in
+            # payload data of each frame.
+            MAX_PAYLOAD_DATA_SIZE = -1
+
+            if MAX_PAYLOAD_DATA_SIZE <= 0:
+                self._write(self._writer.build(message, end, binary))
+                return
+
+            bytes_written = 0
+            while True:
+                end_for_this_frame = end
+                bytes_to_write = len(message) - bytes_written
+                if (MAX_PAYLOAD_DATA_SIZE > 0 and
+                    bytes_to_write > MAX_PAYLOAD_DATA_SIZE):
+                    end_for_this_frame = False
+                    bytes_to_write = MAX_PAYLOAD_DATA_SIZE
+
+                frame = self._writer.build(
+                    message[bytes_written:bytes_written + bytes_to_write],
+                    end_for_this_frame,
+                    binary)
+                self._write(frame)
+
+                bytes_written += bytes_to_write
+
+                # This if must be placed here (the end of while block) so that
+                # at least one frame is sent.
+                if len(message) <= bytes_written:
+                    break
         except ValueError, e:
             raise BadOperationException(e)
 

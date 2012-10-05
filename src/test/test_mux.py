@@ -465,7 +465,7 @@ class MuxTest(unittest.TestCase):
         self.assertEqual('GET', command)
         self.assertEqual('/echo', path)
         self.assertEqual('HTTP/1.1', version)
-        self.assertEqual(6, len(headers))
+        self.assertEqual(2, len(headers))
         self.assertEqual('server.example.com', headers['Host'])
         self.assertEqual('http://example.com', headers['Origin'])
 

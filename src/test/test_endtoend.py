@@ -413,50 +413,6 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_server_close_hybi00(self):
         self._run_hybi00_test(_echo_check_procedure_with_goodbye)
 
-    def _run_hixie75_test(self, test_function):
-        server = self._run_server(allow_draft75=True)
-        try:
-            time.sleep(0.2)
-
-            client = client_for_testing.create_client_hixie75(self._options)
-            try:
-                test_function(client)
-            finally:
-                client.close_socket()
-        finally:
-            self._kill_process(server.pid)
-
-    def test_echo_hixie75(self):
-        """Tests that the server can talk draft-hixie-thewebsocketprotocol-75
-        protocol.
-        """
-
-        def test_function(client):
-            client.connect()
-
-            client.send_message('test')
-            client.assert_receive('test')
-
-        self._run_hixie75_test(test_function)
-
-    def test_echo_server_close_hixie75(self):
-        """Tests that the server can talk draft-hixie-thewebsocketprotocol-75
-        protocol. At the end of message exchanging, the client sends a keyword
-        message that requests the server to close the connection, and then
-        checks if the connection is really closed.
-        """
-
-        def test_function(client):
-            client.connect()
-
-            client.send_message('test')
-            client.assert_receive('test')
-
-            client.send_message(_GOODBYE_MESSAGE)
-            client.assert_receive(_GOODBYE_MESSAGE)
-
-        self._run_hixie75_test(test_function)
-
     # TODO(toyoshim): Add tests to verify invalid absolute uri handling like
     # host unmatch, port unmatch and invalid port description (':' without port
     # number).

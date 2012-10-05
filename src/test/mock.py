@@ -173,7 +173,7 @@ class MockRequest(object):
     """
 
     def __init__(self, uri=None, headers_in={}, connection=None, method='GET',
-                 is_https=False):
+                 protocol='HTTP/1.1', is_https=False):
         """Construct an instance.
 
         Arguments:
@@ -188,6 +188,7 @@ class MockRequest(object):
         self.uri = uri
         self.connection = connection
         self.method = method
+        self.protocol = protocol
         self.headers_in = MockTable(headers_in)
         # self.is_https_ needs to be accessible from tests.  To avoid name
         # conflict with self.is_https(), it is named as such.

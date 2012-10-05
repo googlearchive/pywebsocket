@@ -501,7 +501,8 @@ class _MuxFramePayloadParser(object):
 class _LogicalRequest(object):
     """Mimics mod_python request."""
 
-    def __init__(self, channel_id, command, path, headers, connection):
+    def __init__(self, channel_id, command, path, protocol, headers,
+                 connection):
         """Constructs an instance.
 
         Args:
@@ -515,6 +516,7 @@ class _LogicalRequest(object):
         self.channel_id = channel_id
         self.method = command
         self.uri = path
+        self.protocol = protocol
         self.headers_in = headers
         self.connection = connection
         self.server_terminated = False
@@ -1236,6 +1238,7 @@ class _MuxHandler(object):
             _DEFAULT_CHANNEL_ID,
             self.original_request.method,
             self.original_request.uri,
+            self.original_request.protocol,
             self._handshake_base.create_headers(),
             logical_connection)
         # Client's send quota for the implicitly opened connection is zero,
@@ -1374,7 +1377,7 @@ class _MuxHandler(object):
             headers = self._handshake_base.create_headers(headers)
 
         connection = _LogicalConnection(self, block.channel_id)
-        request = _LogicalRequest(block.channel_id, method, path,
+        request = _LogicalRequest(block.channel_id, method, path, version,
                                   headers, connection)
         return request
 

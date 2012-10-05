@@ -242,6 +242,12 @@ class _StandaloneRequest(object):
         return self._request_handler.command
     method = property(get_method)
 
+    def get_protocol(self):
+        """Getter to mimic request.protocol."""
+
+        return self._request_handler.request_version
+    protocol = property(get_protocol)
+
     def is_https(self):
         """Mimic request.is_https()."""
 
@@ -845,9 +851,9 @@ def _build_option_parser():
                       help='Log backup count')
     parser.add_option('--allow-draft75', dest='allow_draft75',
                       action='store_true', default=False,
-                      help='Allow draft 75 handshake')
+                      help='Obsolete option. Ignored.')
     parser.add_option('--strict', dest='strict', action='store_true',
-                      default=False, help='Strictly check handshake request')
+                      default=False, help='Obsolete option. Ignored.')
     parser.add_option('-q', '--queue', dest='request_queue_size', type='int',
                       default=_DEFAULT_REQUEST_QUEUE_SIZE,
                       help='request queue size')

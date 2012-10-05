@@ -159,6 +159,18 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual(None, request.ws_extensions)
         self.assertEqual(common.VERSION_HYBI_LATEST, request.ws_version)
 
+    def test_do_handshake_with_extra_headers(self):
+        request_def = _create_good_request_def()
+        # Add headers not related to WebSocket opening handshake.
+        request_def.headers['FooKey'] = 'BarValue'
+        request_def.headers['EmptyKey'] = ''
+
+        request = _create_request(request_def)
+        handshaker = _create_handshaker(request)
+        handshaker.do_handshake()
+        self.assertEqual(
+            _EXPECTED_RESPONSE, request.connection.written_data())
+
     def test_do_handshake_with_capitalized_value(self):
         request_def = _create_good_request_def()
         request_def.headers['upgrade'] = 'WEBSOCKET'
@@ -455,6 +467,16 @@ class HandshakerTest(unittest.TestCase):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Version'] = '13, 13'
         bad_cases.append(('Wrong Sec-WebSocket-Version (multiple values)',
+                          request_def, 400, True))
+
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Protocol'] = 'illegal\x09protocol'
+        bad_cases.append(('Illegal Sec-WebSocket-Protocol',
+                          request_def, 400, True))
+
+        request_def = _create_good_request_def()
+        request_def.headers['Sec-WebSocket-Protocol'] = ''
+        bad_cases.append(('Empty Sec-WebSocket-Protocol',
                           request_def, 400, True))
 
         for (case_name, request_def, expected_status,

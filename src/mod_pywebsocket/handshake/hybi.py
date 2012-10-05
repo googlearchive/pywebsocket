@@ -294,7 +294,7 @@ class Handshaker(object):
         protocol_header = self._request.headers_in.get(
             common.SEC_WEBSOCKET_PROTOCOL_HEADER)
 
-        if not protocol_header:
+        if protocol_header is None:
             self._request.ws_requested_protocols = None
             return
 

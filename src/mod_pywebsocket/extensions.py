@@ -280,7 +280,7 @@ _available_processors[common.DEFLATE_FRAME_EXTENSION] = (
 
 
 # Adding vendor-prefixed deflate-frame extension.
-# TODO(bashi): Remove this after WebKit stops using vender prefix.
+# TODO(bashi): Remove this after WebKit stops using vendor prefix.
 _available_processors[common.X_WEBKIT_DEFLATE_FRAME_EXTENSION] = (
     DeflateFrameExtensionProcessor)
 
@@ -461,7 +461,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
             response.add_parameter(
                 self._S2C_MAX_WINDOW_BITS_PARAM, str(s2c_max_window_bits))
 
-        if s2c_no_context_takeover is not None:
+        if s2c_no_context_takeover:
             response.add_parameter(
                 self._S2C_NO_CONTEXT_TAKEOVER_PARAM, None)
 
@@ -638,6 +638,12 @@ class PerMessageCompressionExtensionProcessor(
 
 
 _available_processors[common.PERMESSAGE_COMPRESSION_EXTENSION] = (
+    PerMessageCompressionExtensionProcessor)
+
+
+# Adding vendor-prefixed perframe-compress extension.
+# TODO(bashi): Remove this after WebKit stops using vendor prefix.
+_available_processors[common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION] = (
     PerMessageCompressionExtensionProcessor)
 
 

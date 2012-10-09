@@ -106,6 +106,7 @@ DEFLATE_FRAME_EXTENSION = 'deflate-frame'
 PERFRAME_COMPRESSION_EXTENSION = 'perframe-compress'
 PERMESSAGE_COMPRESSION_EXTENSION = 'permessage-compress'
 X_WEBKIT_DEFLATE_FRAME_EXTENSION = 'x-webkit-deflate-frame'
+X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION = 'x-webkit-permessage-compress'
 MUX_EXTENSION = 'mux_DO_NOT_USE'
 
 # Status codes

@@ -310,6 +310,7 @@ class CompressionExtensionProcessorBase(ExtensionProcessorInterface):
         self._request = request
         self._compression_method_name = None
         self._compression_processor = None
+        self._compression_processor_hook = None
 
     def name(self):
         return ''
@@ -341,6 +342,10 @@ class CompressionExtensionProcessorBase(ExtensionProcessorInterface):
                 break
         if compression_processor is None:
             return None
+
+        if self._compression_processor_hook:
+            self._compression_processor_hook(compression_processor)
+
         processor_response = compression_processor.get_extension_response()
         if processor_response is None:
             return None
@@ -366,6 +371,9 @@ class CompressionExtensionProcessorBase(ExtensionProcessorInterface):
         if self._compression_processor is None:
             return
         self._compression_processor.setup_stream_options(stream_options)
+
+    def set_compression_processor_hook(self, hook):
+        self._compression_processor_hook = hook
 
     def get_compression_processor(self):
         return self._compression_processor
@@ -468,7 +476,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         if self._c2s_max_window_bits is not None:
             response.add_parameter(
                 self._C2S_MAX_WINDOW_BITS_PARAM,
-                str(self._c2s_response_window_bits))
+                str(self._c2s_max_window_bits))
         if self._c2s_no_context_takeover:
             response.add_parameter(
                 self._C2S_NO_CONTEXT_TAKEOVER_PARAM, None)
@@ -548,7 +556,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
 
         stream_options.encode_text_message_to_utf8 = False
 
-    def set_c2s_window_bits(self, value):
+    def set_c2s_max_window_bits(self, value):
         self._c2s_max_window_bits = value
 
     def set_c2s_no_context_takeover(self, value):

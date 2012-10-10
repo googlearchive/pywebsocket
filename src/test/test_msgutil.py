@@ -332,6 +332,29 @@ class MessageTest(unittest.TestCase):
         self.assertTrue(
             response.get_parameter_value('no_context_takeover') is None)
 
+    def test_permessage_compress_deflate_response_parameters(self):
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        processor = PerMessageCompressionExtensionProcessor(extension)
+        response = processor.get_extension_response()
+        self.assertEqual('deflate',
+                         response.get_parameter_value('method'))
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        processor = PerMessageCompressionExtensionProcessor(extension)
+        def _compression_processor_hook(compression_processor):
+            compression_processor.set_c2s_max_window_bits(8)
+            compression_processor.set_c2s_no_context_takeover(True)
+        processor.set_compression_processor_hook(
+            _compression_processor_hook)
+        response = processor.get_extension_response()
+        self.assertEqual(
+            'deflate; c2s_max_window_bits=8; c2s_no_context_takeover',
+            response.get_parameter_value('method'))
+
     def test_send_message_perframe_compress_deflate(self):
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)

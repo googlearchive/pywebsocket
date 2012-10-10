@@ -641,7 +641,7 @@ _available_processors[common.PERMESSAGE_COMPRESSION_EXTENSION] = (
     PerMessageCompressionExtensionProcessor)
 
 
-# Adding vendor-prefixed perframe-compress extension.
+# Adding vendor-prefixed permessage-compress extension.
 # TODO(bashi): Remove this after WebKit stops using vendor prefix.
 _available_processors[common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION] = (
     PerMessageCompressionExtensionProcessor)

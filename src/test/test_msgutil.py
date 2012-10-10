@@ -409,6 +409,30 @@ class MessageTest(unittest.TestCase):
 
         self.assertEqual(expected, request.connection.written_data())
 
+    def test_send_message_permessage_compress_deflate_fragmented(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        msgutil.send_message(request, 'Hello', end=False)
+        msgutil.send_message(request, 'World', end=True)
+
+        expected = ''
+
+        # The first frame will be an empty frame and FIN=0 and RSV1=1.
+        expected += '\x41\x00'
+
+        compressed_message = compress.compress('HelloWorld')
+        compressed_message += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_message = compressed_message[:-4]
+        expected += '\x80%c' % len(compressed_message)
+        expected += compressed_message
+
+        self.assertEqual(expected, request.connection.written_data())
+
     def test_receive_message(self):
         request = _create_request(
             ('\x81\x85', 'Hello'), ('\x81\x86', 'World!'))

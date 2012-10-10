@@ -419,7 +419,10 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         self._c2s_max_window_bits = None
         self._c2s_no_context_takeover = False
 
-        self._compress_outgoing = False
+        self._compress_outgoing_enabled = False
+
+        # True if a message is fragmented and compression is ongoing.
+        self._compress_ongoing = False
 
         # Counters for statistics.
 
@@ -461,7 +464,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
 
         self._inflater = util._RFC1979Inflater()
 
-        self._compress_outgoing = True
+        self._compress_outgoing_enabled = True
 
         response = common.ExtensionParameter(self._request.name())
 
@@ -563,10 +566,10 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         self._c2s_no_context_takeover = value
 
     def enable_outgoing_compression(self):
-        self._compress_outgoing = True
+        self._compress_outgoing_enabled = True
 
     def disable_outgoing_compression(self):
-        self._compress_outgoing = False
+        self._compress_outgoing_enabled = False
 
     def _process_incoming_message(self, message, decompress):
         if not decompress:
@@ -591,13 +594,13 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         if not binary:
             message = message.encode('utf-8')
 
-        if not self._compress_outgoing:
+        if not self._compress_outgoing_enabled:
             return message
 
         original_payload_size = len(message)
         self._total_outgoing_payload_bytes += original_payload_size
 
-        message = self._deflater.filter(message)
+        message = self._deflater.filter(message, flush=end)
 
         filtered_payload_size = len(message)
         self._total_filtered_outgoing_payload_bytes += filtered_payload_size
@@ -607,7 +610,9 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
                                filtered_payload_size,
                                self._total_filtered_outgoing_payload_bytes)
 
-        self._outgoing_frame_filter.set_compression_bit()
+        if not self._compress_ongoing:
+            self._outgoing_frame_filter.set_compression_bit()
+        self._compress_ongoing = not end
         return message
 
     def _process_incoming_frame(self, frame):

@@ -42,18 +42,14 @@ from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake._base import VersionException
 from mod_pywebsocket.handshake.hybi import Handshaker
 
+from test_handshake_hybi import _create_request
+from test_handshake_hybi import _create_handshaker
+from test_handshake_hybi import AbortedByUserDispatcher
+from test_handshake_hybi import AbortingDispatcher
+from test_handshake_hybi import HandshakeAbortedException
+from test_handshake_hybi import RequestDefinition
+from test_handshake_hybi import SubprotocolChoosingDispatcher
 import mock
-
-
-class RequestDefinition(object):
-    """A class for holding data for constructing opening handshake strings for
-    testing the opening handshake processor.
-    """
-
-    def __init__(self, method, uri, headers):
-        self.method = method
-        self.uri = uri
-        self.headers = headers
 
 
 def _create_good_request_def():
@@ -65,70 +61,6 @@ def _create_good_request_def():
          'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
          'Sec-WebSocket-Origin': 'http://example.com',
          'Sec-WebSocket-Version': '8'})
-
-
-def _create_request(request_def):
-    conn = mock.MockConn('')
-    return mock.MockRequest(
-        method=request_def.method,
-        uri=request_def.uri,
-        headers_in=request_def.headers,
-        connection=conn)
-
-
-def _create_handshaker(request):
-    handshaker = Handshaker(request, mock.MockDispatcher())
-    return handshaker
-
-
-class SubprotocolChoosingDispatcher(object):
-    """A dispatcher for testing. This dispatcher sets the i-th subprotocol
-    of requested ones to ws_protocol where i is given on construction as index
-    argument. If index is negative, default_value will be set to ws_protocol.
-    """
-
-    def __init__(self, index, default_value=None):
-        self.index = index
-        self.default_value = default_value
-
-    def do_extra_handshake(self, conn_context):
-        if self.index >= 0:
-            conn_context.ws_protocol = conn_context.ws_requested_protocols[
-                self.index]
-        else:
-            conn_context.ws_protocol = self.default_value
-
-    def transfer_data(self, conn_context):
-        pass
-
-
-class HandshakeAbortedException(Exception):
-    pass
-
-
-class AbortingDispatcher(object):
-    """A dispatcher for testing. This dispatcher raises an exception in
-    do_extra_handshake to reject the request.
-    """
-
-    def do_extra_handshake(self, conn_context):
-        raise HandshakeAbortedException('An exception to reject the request')
-
-    def transfer_data(self, conn_context):
-        pass
-
-
-class AbortedByUserDispatcher(object):
-    """A dispatcher for testing. This dispatcher raises an
-    AbortedByUserException in do_extra_handshake to reject the request.
-    """
-
-    def do_extra_handshake(self, conn_context):
-        raise AbortedByUserException('An AbortedByUserException to reject the '
-                                     'request')
-
-    def transfer_data(self, conn_context):
-        pass
 
 
 _EXPECTED_RESPONSE = (

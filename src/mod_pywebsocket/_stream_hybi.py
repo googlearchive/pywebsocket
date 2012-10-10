@@ -468,6 +468,32 @@ class Stream(StreamBase):
         return Frame(fin=fin, rsv1=rsv1, rsv2=rsv2, rsv3=rsv3,
                      opcode=opcode, payload=bytes)
 
+    def receive_filtered_frame(self):
+        """Receives a frame and applies frame filters and message filters.
+        The frame to be received must satisfy following conditions:
+        - The frame is not fragmented.
+        - The opcode of the frame is TEXT or BINARY.
+
+        DO NOT USE this method except for testing purpose.
+        """
+
+        frame = self._receive_frame_as_frame_object()
+        if not frame.fin:
+            raise InvalidFrameException(
+                'Segmented frames must not be received via '
+                'receive_filtered_frame()')
+        if (frame.opcode != common.OPCODE_TEXT and
+            frame.opcode != common.OPCODE_BINARY):
+            raise InvalidFrameException(
+                'Control frames must not be received via '
+                'receive_filtered_frame()')
+
+        for frame_filter in self._options.incoming_frame_filters:
+            frame_filter.filter(frame)
+        for message_filter in self._options.incoming_message_filters:
+            frame.payload = message_filter.filter(frame.payload)
+        return frame
+
     def send_message(self, message, end=True, binary=False):
         """Send message.
 

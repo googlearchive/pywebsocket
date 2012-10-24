@@ -730,6 +730,17 @@ class _LogicalStream(Stream):
             # multiplexing control blocks can be inserted between fragmented
             # inner frames on the physical channel.
             self._write_inner_frame_semaphore.acquire()
+
+            # Consume an octet quota when this is the first fragmented frame.
+            if opcode != common.OPCODE_CONTINUATION:
+                try:
+                    self._send_quota_condition.acquire()
+                    while self._send_quota == 0:
+                        self._send_quota_condition.wait()
+                    self._send_quota -= 1
+                finally:
+                    self._send_quota_condition.release()
+
             while write_position < payload_length:
                 try:
                     self._send_quota_condition.acquire()
@@ -821,6 +832,9 @@ class _LogicalStream(Stream):
 
         opcode, payload, fin, rsv1, rsv2, rsv3 = Stream._receive_frame(self)
         amount = len(payload)
+        # Replenish extra one octet when receiving the first fragmented frame.
+        if opcode != common.OPCODE_CONTINUATION:
+            amount += 1
         self._receive_quota += amount
         frame_data = _create_flow_control(self._request.channel_id,
                                           amount)
@@ -1506,8 +1520,11 @@ class _MuxHandler(object):
                 return
             channel_data = self._logical_channels[channel_id]
             fin, rsv1, rsv2, rsv3, opcode, payload = parser.read_inner_frame()
+            consuming_byte = len(payload)
+            if opcode != common.OPCODE_CONTINUATION:
+                consuming_byte += 1
             if not channel_data.request.ws_stream.consume_receive_quota(
-                len(payload)):
+                consuming_byte):
                 # The client violates quota. Close logical channel.
                 raise LogicalChannelError(
                     channel_id, _DROP_CODE_SEND_QUOTA_VIOLATION)

@@ -254,8 +254,8 @@ def _create_add_channel_request_frame(channel_id, encoding, encoded_handshake):
 
 
 def _create_logical_frame(channel_id, message, opcode=common.OPCODE_BINARY,
-                          mask=True):
-    bits = chr(0x80 | opcode)
+                          fin=True, mask=True):
+    bits = chr((fin << 7) | opcode)
     payload = mux._encode_channel_id(channel_id) + bits + message
     return create_binary_frame(payload, mask=mask)
 
@@ -487,7 +487,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -498,7 +498,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -548,7 +548,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -583,7 +583,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -626,7 +626,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -636,7 +636,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -689,7 +689,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -702,7 +702,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -855,7 +855,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=12,
+                                                replenished_quota=13,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -890,7 +890,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -946,9 +946,9 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='HelloWorld'))
 
-        # Replenish 5 bytes again.
+        # Replenish 5 + 1 (per-message extra cost) bytes.
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -961,6 +961,13 @@ class MuxHandlerTest(unittest.TestCase):
 
         messages = request.connection.get_written_messages(2)
         self.assertEqual(['HelloWorld'], messages)
+        received_flow_controls = [
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_FLOW_CONTROL and b.channel_id == 2]
+        # Replenishment for 'HelloWorld' + 1
+        self.assertEqual(11, received_flow_controls[0].send_quota)
+        # Replenishment for 'Goodbye' + 1
+        self.assertEqual(8, received_flow_controls[1].send_quota)
 
     def test_no_send_quota_on_server(self):
         request = _create_mock_request()
@@ -988,6 +995,44 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertRaises(KeyError,
                           request.connection.get_written_messages,
                           2)
+
+    def test_no_send_quota_on_server_for_permessage_extra_cost(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=6,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+        # Replenish only len('World') bytes.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=5,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+        # Server should not callback for this message.
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='World'))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=1)
+
+        # Only one message should be sent on channel 2.
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(['Hello'], messages)
 
     def test_quota_violation_by_client(self):
         request = _create_mock_request()
@@ -1017,6 +1062,88 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertEqual(mux._DROP_CODE_SEND_QUOTA_VIOLATION,
                          drop_channel.drop_code)
 
+    def test_consume_quota_empty_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        # Client has 1 byte quota.
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS, 1)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=2,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+        # Send an empty message. Pywebsocket always replenishes 1 byte quota
+        # for empty message
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message=''))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        # This message violates quota on channel id 2.
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        self.assertEqual(1, len(dispatcher.channel_events[2].messages))
+        self.assertEqual('', dispatcher.channel_events[2].messages[0])
+
+        received_flow_controls = [
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_FLOW_CONTROL and b.channel_id == 2]
+        self.assertEqual(1, len(received_flow_controls))
+        self.assertEqual(1, received_flow_controls[0].send_quota)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(2, drop_channel.channel_id)
+        self.assertEqual(mux._DROP_CODE_SEND_QUOTA_VIOLATION,
+                         drop_channel.drop_code)
+
+    def test_consume_quota_fragmented_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        # Client has len('Hello') + len('Goodbye') + 2 bytes quota.
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS, 14)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=6,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='He', fin=False,
+                                  opcode=common.OPCODE_TEXT))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='llo', fin=True,
+                                  opcode=common.OPCODE_CONTINUATION))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(['Hello'], messages)
+
     def test_fragmented_control_message(self):
         request = _create_mock_request()
         dispatcher = _MuxMockDispatcher()
@@ -1031,7 +1158,7 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        # Replenish total 5 bytes in 3 FlowControls.
+        # Replenish total 6 bytes in 3 FlowControls.
         flow_control = mux._create_flow_control(channel_id=2,
                                                 replenished_quota=1,
                                                 outer_frame_mask=True)
@@ -1043,7 +1170,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(flow_control)
 
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=2,
+                                                replenished_quota=3,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -1070,7 +1197,7 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
         flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=10,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -1084,7 +1211,7 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
         flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=5,
+                                                replenished_quota=6,
                                                 outer_frame_mask=True)
         request.connection.put_bytes(flow_control)
 
@@ -1098,7 +1225,9 @@ class MuxHandlerTest(unittest.TestCase):
 
         mux_handler.wait_until_done(timeout=2)
 
+        self.assertEqual([], dispatcher.channel_events[1].messages)
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        self.assertFalse(dispatcher.channel_events.has_key(3))
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)

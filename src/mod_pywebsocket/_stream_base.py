@@ -39,6 +39,8 @@
 # writing/reading.
 
 
+import socket
+
 from mod_pywebsocket import util
 
 
@@ -109,12 +111,26 @@ class StreamBase(object):
             ConnectionTerminatedException: when read returns empty string.
         """
 
-        bytes = self._request.connection.read(length)
-        if not bytes:
+        try:
+            bytes = self._request.connection.read(length)
+            if not bytes:
+                raise ConnectionTerminatedException(
+                    'Receiving %d byte failed. Peer (%r) closed connection' %
+                    (length, (self._request.connection.remote_addr,)))
+            return bytes
+        except socket.error, e:
+            # Catch a socket.error. Because it's not a child class of the
+            # IOError prior to Python 2.6, we cannot omit this except clause.
+            # Use %s rather than %r for the exception to use human friendly
+            # format.
             raise ConnectionTerminatedException(
-                'Receiving %d byte failed. Peer (%r) closed connection' %
-                (length, (self._request.connection.remote_addr,)))
-        return bytes
+                'Receiving %d byte failed. socket.error (%s) occurred' %
+                (length, e))
+        except IOError, e:
+            # Also catch an IOError because mod_python throws it.
+            raise ConnectionTerminatedException(
+                'Receiving %d byte failed. IOError (%s) occurred' %
+                (length, e))
 
     def _write(self, bytes):
         """Writes given bytes to connection. In case we catch any exception,

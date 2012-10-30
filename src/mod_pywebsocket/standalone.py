@@ -479,7 +479,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         self._logger.critical('Not supported: fileno')
         return self._sockets[0][0].fileno()
 
-    def handle_error(self, rquest, client_address):
+    def handle_error(self, request, client_address):
         """Override SocketServer.handle_error."""
 
         self._logger.error(
@@ -667,7 +667,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
             request._dispatcher = self._options.dispatcher
             self._options.dispatcher.transfer_data(request)
         except handshake.AbortedByUserException, e:
-            self._logger.info('%s', e)
+            self._logger.info('Aborted: %s', e)
         return False
 
     def log_request(self, code='-', size='-'):

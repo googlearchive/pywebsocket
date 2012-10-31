@@ -340,7 +340,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         warnings = options.dispatcher.source_warnings()
         if warnings:
             for warning in warnings:
-                logging.warning('mod_pywebsocket: %s' % warning)
+                logging.warning('Warning in source loading: %s' % warning)
 
         self._logger = util.get_class_logger(self)
 
@@ -636,7 +636,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 self._logger.info('Fallback to CGIHTTPRequestHandler')
                 return True
         except dispatch.DispatchException, e:
-            self._logger.info('%s', e)
+            self._logger.info('Dispatch failed for error: %s', e)
             self.send_error(e.status)
             return False
 
@@ -652,7 +652,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                     allowDraft75=self._options.allow_draft75,
                     strict=self._options.strict)
             except handshake.VersionException, e:
-                self._logger.info('%s', e)
+                self._logger.info('Handshake failed for version error: %s', e)
                 self.send_response(common.HTTP_STATUS_BAD_REQUEST)
                 self.send_header(common.SEC_WEBSOCKET_VERSION_HEADER,
                                  e.supported_versions)
@@ -660,7 +660,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                 return False
             except handshake.HandshakeException, e:
                 # Handshake for ws(s) failed.
-                self._logger.info('%s', e)
+                self._logger.info('Handshake failed for error: %s', e)
                 self.send_error(e.status)
                 return False
 

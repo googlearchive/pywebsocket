@@ -533,6 +533,7 @@ class MuxClient(object):
             fields.append('Host: %s:%d\r\n' % (options.server_host.lower(),
                                                options.server_port))
         fields.append('Origin: %s\r\n' % options.origin.lower())
+        fields.append('Connection: Upgrade\r\n')
 
         if len(options.extensions) > 0:
             fields.append('Sec-WebSocket-Extensions: %s\r\n' %

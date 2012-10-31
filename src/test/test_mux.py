@@ -264,6 +264,7 @@ def _create_request_header(path='/echo'):
     return (
         'GET %s HTTP/1.1\r\n'
         'Host: server.example.com\r\n'
+        'Connection: Upgrade\r\n'
         'Origin: http://example.com\r\n'
         '\r\n') % path
 
@@ -386,44 +387,37 @@ class MuxTest(unittest.TestCase):
         # No number field.
         data = ''
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.PhysicalConnectionError,
-                          parser._read_number)
+        self.assertRaises(ValueError, parser._read_number)
 
         # The last two bytes are missing.
         data = '\x7e'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.PhysicalConnectionError,
-                          parser._read_number)
+        self.assertRaises(ValueError, parser._read_number)
 
         # Missing the last one byte.
         data = '\x7f\x00\x00\x00\x00\x00\x01\x00'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.PhysicalConnectionError,
-                          parser._read_number)
+        self.assertRaises(ValueError, parser._read_number)
 
         # The length of number field is too large.
         data = '\x7f\xff\xff\xff\xff\xff\xff\xff\xff'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.PhysicalConnectionError,
-                          parser._read_number)
+        self.assertRaises(ValueError, parser._read_number)
 
         # The msb of the first byte is set.
         data = '\x80'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.PhysicalConnectionError,
-                          parser._read_number)
+        self.assertRaises(ValueError, parser._read_number)
 
         # Using 3 bytes encoding for 125.
         data = '\x7e\x00\x7d'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.PhysicalConnectionError,
-                          parser._read_number)
+        self.assertRaises(ValueError, parser._read_number)
 
         # Using 9 bytes encoding for 0xffff
         data = '\x7f\x00\x00\x00\x00\x00\x00\xff\xff'
         parser = mux._MuxFramePayloadParser(data)
-        self.assertRaises(mux.PhysicalConnectionError,
-                          parser._read_number)
+        self.assertRaises(ValueError, parser._read_number)
 
     def test_read_invalid_size_and_contents(self):
         # Only contain number field.
@@ -465,7 +459,7 @@ class MuxTest(unittest.TestCase):
         self.assertEqual('GET', command)
         self.assertEqual('/echo', path)
         self.assertEqual('HTTP/1.1', version)
-        self.assertEqual(2, len(headers))
+        self.assertEqual(3, len(headers))
         self.assertEqual('server.example.com', headers['Host'])
         self.assertEqual('http://example.com', headers['Origin'])
 
@@ -618,6 +612,7 @@ class MuxHandlerTest(unittest.TestCase):
             'GET /echo HTTP/1.1\r\n'
             'Host: server.example.com\r\n'
             'Sec-WebSocket-Protocol: x-foo\r\n'
+            'Connection: Upgrade\r\n'
             'Origin: http://example.com\r\n'
             '\r\n')
         add_channel_request = _create_add_channel_request_frame(
@@ -681,6 +676,7 @@ class MuxHandlerTest(unittest.TestCase):
             'GET /echo HTTP/1.1\r\n'
             'Host: server.example.com\r\n'
             'Sec-WebSocket-Protocol: x-foo\r\n'
+            'Connection: Upgrade\r\n'
             'Origin: http://example.com\r\n'
             '\r\n')
         add_channel_request = _create_add_channel_request_frame(
@@ -1233,6 +1229,39 @@ class MuxHandlerTest(unittest.TestCase):
             if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
         self.assertEqual(3, drop_channel.channel_id)
         self.assertEqual(mux._DROP_CODE_NEW_CHANNEL_SLOT_VIOLATION,
+                         drop_channel.drop_code)
+
+    def test_quota_overflow_by_client(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(slots=1,
+                                      send_quota=mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+        # Replenish 0x7FFFFFFFFFFFFFFF bytes twice.
+        flow_control = mux._create_flow_control(
+            channel_id=2,
+            replenished_quota=0x7FFFFFFFFFFFFFFF,
+            outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        mux_handler.wait_until_done(timeout=2)
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(2, drop_channel.channel_id)
+        self.assertEqual(mux._DROP_CODE_SEND_QUOTA_OVERFLOW,
                          drop_channel.drop_code)
 
     def test_invalid_encapsulated_message(self):

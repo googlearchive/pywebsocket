@@ -94,9 +94,10 @@ _DROP_CODE_UNKNOWN_MUX_OPCODE = 2004
 _DROP_CODE_INVALID_MUX_CONTROL_BLOCK = 2005
 _DROP_CODE_CHANNEL_ALREADY_EXISTS = 2006
 _DROP_CODE_NEW_CHANNEL_SLOT_VIOLATION = 2007
+_DROP_CODE_UNKNOWN_REQUEST_ENCODING = 2010
 
-_DROP_CODE_UNKNOWN_REQUEST_ENCODING = 3002
 _DROP_CODE_SEND_QUOTA_VIOLATION = 3005
+_DROP_CODE_SEND_QUOTA_OVERFLOW = 3006
 _DROP_CODE_ACKNOWLEDGED = 3008
 
 
@@ -318,44 +319,34 @@ class _MuxFramePayloadParser(object):
 
     def _read_number(self):
         if self._read_position + 1 > len(self._data):
-            raise PhysicalConnectionError(
-                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+            raise ValueError(
                 'Cannot read the first byte of number field')
 
         number = ord(self._data[self._read_position])
         if number & 0x80 == 0x80:
-            raise PhysicalConnectionError(
-                _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+            raise ValueError(
                 'The most significant bit of the first byte of number should '
                 'be unset')
         self._read_position += 1
         pos = self._read_position
         if number == 127:
             if pos + 8 > len(self._data):
-                raise PhysicalConnectionError(
-                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
-                    'Invalid number field')
+                raise ValueError('Invalid number field')
             self._read_position += 8
             number = struct.unpack('!Q', self._data[pos:pos+8])[0]
             if number > 0x7FFFFFFFFFFFFFFF:
-                raise PhysicalConnectionError(
-                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
-                    'Encoded number >= 2^63')
+                raise ValueError('Encoded number(%d) >= 2^63' % number)
             if number <= 0xFFFF:
-                raise PhysicalConnectionError(
-                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                raise ValueError(
                     '%d should not be encoded by 9 bytes encoding' % number)
             return number
         if number == 126:
             if pos + 2 > len(self._data):
-                raise PhysicalConnectionError(
-                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
-                    'Invalid number field')
+                raise ValueError('Invalid number field')
             self._read_position += 2
             number = struct.unpack('!H', self._data[pos:pos+2])[0]
             if number <= 125:
-                raise PhysicalConnectionError(
-                    _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                raise ValueError(
                     '%d should not be encoded by 3 bytes encoding' % number)
         return number
 
@@ -366,7 +357,11 @@ class _MuxFramePayloadParser(object):
             - the contents.
         """
 
-        size = self._read_number()
+        try:
+            size = self._read_number()
+        except ValueError, e:
+            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                                          str(e))
         pos = self._read_position
         if pos + size > len(self._data):
             raise PhysicalConnectionError(
@@ -419,9 +414,11 @@ class _MuxFramePayloadParser(object):
 
         try:
             control_block.channel_id = self.read_channel_id()
+            control_block.send_quota = self._read_number()
         except ValueError, e:
-            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK)
-        control_block.send_quota = self._read_number()
+            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                                          str(e))
+
         return control_block
 
     def _read_drop_channel(self, first_byte, control_block):
@@ -455,8 +452,12 @@ class _MuxFramePayloadParser(object):
                 _DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
                 'Reserved bits must be unset')
         control_block.fallback = first_byte & 1
-        control_block.slots = self._read_number()
-        control_block.send_quota = self._read_number()
+        try:
+            control_block.slots = self._read_number()
+            control_block.send_quota = self._read_number()
+        except ValueError, e:
+            raise PhysicalConnectionError(_DROP_CODE_INVALID_MUX_CONTROL_BLOCK,
+                                          str(e))
         return control_block
 
     def read_control_blocks(self):
@@ -784,12 +785,18 @@ class _LogicalStream(Stream):
     def replenish_send_quota(self, send_quota):
         """Replenish send quota."""
 
-        self._send_quota_condition.acquire()
-        self._send_quota += send_quota
-        self._logger.debug('Replenished send quota for channel id %d: %d' %
-                           (self._request.channel_id, self._send_quota))
-        self._send_quota_condition.notify()
-        self._send_quota_condition.release()
+        try:
+            self._send_quota_condition.acquire()
+            if self._send_quota + send_quota > 0x7FFFFFFFFFFFFFFF:
+                self._send_quota = 0
+                raise LogicalChannelError(
+                    self._request.channel_id, _DROP_CODE_SEND_QUOTA_OVERFLOW)
+            self._send_quota += send_quota
+            self._logger.debug('Replenished send quota for channel id %d: %d' %
+                               (self._request.channel_id, self._send_quota))
+        finally:
+            self._send_quota_condition.notify()
+            self._send_quota_condition.release()
 
     def consume_receive_quota(self, amount):
         """Consumes receive quota. Returns False on failure."""
@@ -1097,8 +1104,6 @@ class _MuxHandshaker(hybi.Handshaker):
         #     these headers are included already.
         request.headers_in[common.UPGRADE_HEADER] = (
             common.WEBSOCKET_UPGRADE_TYPE)
-        request.headers_in[common.CONNECTION_HEADER] = (
-            common.UPGRADE_CONNECTION_TYPE)
         request.headers_in[common.SEC_WEBSOCKET_VERSION_HEADER] = (
             str(common.VERSION_HYBI_LATEST))
         request.headers_in[common.SEC_WEBSOCKET_KEY_HEADER] = (
@@ -1119,7 +1124,9 @@ class _MuxHandshaker(hybi.Handshaker):
 
         response.append('HTTP/1.1 101 Switching Protocols\r\n')
 
-        # Upgrade, Connection and Sec-WebSocket-Accept should be excluded.
+        # Upgrade and Sec-WebSocket-Accept should be excluded.
+        response.append('%s: %s\r\n' % (
+            common.CONNECTION_HEADER, common.UPGRADE_CONNECTION_TYPE))
         if self._request.ws_protocol is not None:
             response.append('%s: %s\r\n' % (
                 common.SEC_WEBSOCKET_PROTOCOL_HEADER,

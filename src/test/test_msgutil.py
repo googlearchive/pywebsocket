@@ -413,6 +413,56 @@ class MessageTest(unittest.TestCase):
 
         self.assertEqual(expected, request.connection.written_data())
 
+    def test_send_message_permessage_compress_deflate_empty(self):
+        """Test that an empty message is compressed correctly."""
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        msgutil.send_message(request, '')
+
+        # Payload in binary: 0b00000010 0b00000000
+        # From LSB,
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (01 that means fixed Huffman)
+        # - 7 bits of the first code (0000000 that is the code for the
+        #   end-of-block)
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (no compression)
+        # - 3 bits of padding
+        self.assertEqual('\xc1\x02\x02\x00',
+                         request.connection.written_data())
+
+    def test_send_message_permessage_compress_deflate_null_character(self):
+        """Test that a simple payload (one null) is framed correctly."""
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        msgutil.send_message(request, '\x00')
+
+        # Payload in binary: 0b01100010 0b00000000 0b00000000
+        # From LSB,
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (01 that means fixed Huffman)
+        # - 8 bits of the first code (00110000 that is the code for the literal
+        #   alphabet 0x00)
+        # - 7 bits of the second code (0000000 that is the code for the
+        #   end-of-block)
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (no compression)
+        # - 2 bits of padding
+        self.assertEqual('\xc1\x03\x62\x00\x00',
+                         request.connection.written_data())
+
     def test_send_message_permessage_compress_deflate(self):
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)

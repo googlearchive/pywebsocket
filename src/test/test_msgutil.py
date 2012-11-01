@@ -35,6 +35,7 @@
 
 import array
 import Queue
+import random
 import struct
 import unittest
 import zlib
@@ -808,6 +809,143 @@ class MessageTest(unittest.TestCase):
             data, permessage_compression_request=extension)
         self.assertEqual('HelloWebSocket', msgutil.receive_message(request))
         self.assertEqual('World', msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+    def test_receive_message_permessage_deflate_compression_random(self):
+        """Test that a compressed message fragmented into lots of chunks is
+        correctly received.
+        """
+
+        random.seed(a=0)
+        payload = ''.join(
+            [chr(random.randint(0, 255)) for i in xrange(1000)])
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_payload = compress.compress(payload)
+        compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_payload = compressed_payload[:-4]
+
+        # Fragment the compressed payload into lots of frames.
+        bytes_chunked = 0
+        data = ''
+        frame_count = 0
+
+        chunk_sizes = []
+
+        while bytes_chunked < len(compressed_payload):
+            # Make sure that
+            # - the length of chunks are equal or less than 125 so that we can
+            #   use 1 octet length header format for all frames.
+            # - at least 10 chunks are created.
+            chunk_size = random.randint(
+                1, min(125,
+                       len(compressed_payload) / 10,
+                       len(compressed_payload) - bytes_chunked))
+            chunk_sizes.append(chunk_size)
+            chunk = compressed_payload[
+                bytes_chunked:bytes_chunked + chunk_size]
+            bytes_chunked += chunk_size
+
+            first_octet = 0x00
+            if len(data) == 0:
+                first_octet = first_octet | 0x42
+            if bytes_chunked == len(compressed_payload):
+                first_octet = first_octet | 0x80
+
+            data += '%c%c' % (first_octet, chunk_size | 0x80)
+            data += _mask_hybi(chunk)
+
+            frame_count += 1
+
+        print "Chunk sizes: %r" % chunk_sizes
+        self.assertTrue(len(chunk_sizes) > 10)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+            data, permessage_compression_request=extension)
+        self.assertEqual(payload, msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+    def test_receive_message_permessage_deflate_compression_mixed(self):
+        """Test that a message compressed using lots of DEFLATE blocks with
+        various flush mode is correctly received.
+        """
+
+        random.seed(a=0)
+        payload = ''.join(
+            [chr(random.randint(0, 255)) for i in xrange(1000)])
+
+        compress = None
+
+        # Fragment the compressed payload into lots of frames.
+        bytes_chunked = 0
+        compressed_payload = ''
+
+        chunk_sizes = []
+        methods = []
+        sync_used = False
+        finish_used = False
+
+        while bytes_chunked < len(payload):
+            # Make sure at least 10 chunks are created.
+            chunk_size = random.randint(
+                1, min(100, len(payload) - bytes_chunked))
+            chunk_sizes.append(chunk_size)
+            chunk = payload[bytes_chunked:bytes_chunked + chunk_size]
+
+            bytes_chunked += chunk_size
+
+            if compress is None:
+                compress = zlib.compressobj(
+                    zlib.Z_DEFAULT_COMPRESSION,
+                    zlib.DEFLATED,
+                    -zlib.MAX_WBITS)
+
+            if bytes_chunked == len(payload):
+                compressed_payload += compress.compress(chunk)
+                compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
+                compressed_payload = compressed_payload[:-4]
+            else:
+                method = random.randint(0, 1)
+                methods.append(method)
+                if method == 0:
+                    compressed_payload += compress.compress(chunk)
+                    compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
+                    sync_used = True
+                else:
+                    compressed_payload += compress.compress(chunk)
+                    compressed_payload += compress.flush(zlib.Z_FINISH)
+                    compress = None
+                    finish_used = True
+
+        print "Chunk sizes: %r" % chunk_sizes
+        self.assertTrue(len(chunk_sizes) > 10)
+        print "Methods: %r" % methods
+        self.assertTrue(sync_used)
+        self.assertTrue(finish_used)
+
+        self.assertTrue(125 < len(compressed_payload))
+        self.assertTrue(len(compressed_payload) < 65536)
+        data = '\xc2\xfe' + struct.pack('!H', len(compressed_payload))
+        data += _mask_hybi(compressed_payload)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+            data, permessage_compression_request=extension)
+        self.assertEqual(payload, msgutil.receive_message(request))
 
         self.assertEqual(None, msgutil.receive_message(request))
 

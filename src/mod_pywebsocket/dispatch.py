@@ -301,7 +301,8 @@ class Dispatcher(object):
             raise
         except msgutil.BadOperationException, e:
             self._logger.debug('%s', e)
-            request.ws_stream.close_connection(common.STATUS_ABNORMAL_CLOSURE)
+            request.ws_stream.close_connection(
+                common.STATUS_INTERNAL_ENDPOINT_ERROR)
         except msgutil.InvalidFrameException, e:
             # InvalidFrameException must be caught before
             # ConnectionTerminatedException that catches InvalidFrameException.

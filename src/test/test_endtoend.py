@@ -394,6 +394,20 @@ class EndToEndTest(unittest.TestCase):
 
         self._run_hybi_test(test_function)
 
+    def test_close_on_internal_endpoint_error(self):
+        """Tests that the server sends a close frame with internal endpoint
+        error status code when the handler does bad operation.
+        """
+
+        self._options.resource = '/internal_error'
+
+        def test_function(client):
+            client.connect()
+            client.assert_receive_close(
+                client_for_testing.STATUS_INTERNAL_ENDPOINT_ERROR)
+
+        self._run_hybi_test(test_function)
+
     def _run_hybi00_test(self, test_function):
         server = self._run_server()
         try:

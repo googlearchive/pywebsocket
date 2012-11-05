@@ -142,8 +142,8 @@ def _create_blocking_request_hixie75():
     return req
 
 
-class MessageTest(unittest.TestCase):
-    # Tests for Stream
+class BasicMessageTest(unittest.TestCase):
+    """Basic tests for Stream."""
 
     def test_send_message(self):
         request = _create_request()
@@ -198,354 +198,6 @@ class MessageTest(unittest.TestCase):
         msgutil.send_message(request, '', True)
         self.assertEqual('\x01\x0cHello World!\x80\x00',
                          request.connection.written_data())
-
-    def test_send_message_deflate_stream(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        request = _create_request_from_rawdata('', deflate_stream=True)
-        msgutil.send_message(request, 'Hello')
-        expected = compress.compress('\x81\x05Hello')
-        expected += compress.flush(zlib.Z_SYNC_FLUSH)
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_send_message_deflate_frame(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        request = _create_request_from_rawdata(
-            '', deflate_frame_request=extension)
-        msgutil.send_message(request, 'Hello')
-        msgutil.send_message(request, 'World')
-
-        expected = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        expected += '\xc1%c' % len(compressed_hello)
-        expected += compressed_hello
-
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        expected += '\xc1%c' % len(compressed_world)
-        expected += compressed_world
-
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_send_message_deflate_frame_bfinal(self):
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        request = _create_request_from_rawdata(
-            '', deflate_frame_request=extension)
-        self.assertEquals(1, len(request.ws_extension_processors))
-        deflate_frame_processor = request.ws_extension_processors[0]
-        deflate_frame_processor.set_bfinal(True)
-        msgutil.send_message(request, 'Hello')
-        msgutil.send_message(request, 'World')
-
-        expected = ''
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_FINISH)
-        compressed_hello = compressed_hello + chr(0)
-        expected += '\xc1%c' % len(compressed_hello)
-        expected += compressed_hello
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_FINISH)
-        compressed_world = compressed_world + chr(0)
-        expected += '\xc1%c' % len(compressed_world)
-        expected += compressed_world
-
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_send_message_deflate_frame_comp_bit(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        request = _create_request_from_rawdata(
-            '', deflate_frame_request=extension)
-        self.assertEquals(1, len(request.ws_extension_processors))
-        deflate_frame_processor = request.ws_extension_processors[0]
-        msgutil.send_message(request, 'Hello')
-        deflate_frame_processor.disable_outgoing_compression()
-        msgutil.send_message(request, 'Hello')
-        deflate_frame_processor.enable_outgoing_compression()
-        msgutil.send_message(request, 'Hello')
-
-        expected = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        expected += '\xc1%c' % len(compressed_hello)
-        expected += compressed_hello
-
-        expected += '\x81\x05Hello'
-
-        compressed_2nd_hello = compress.compress('Hello')
-        compressed_2nd_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_2nd_hello = compressed_2nd_hello[:-4]
-        expected += '\xc1%c' % len(compressed_2nd_hello)
-        expected += compressed_2nd_hello
-
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_send_message_deflate_frame_no_context_takeover_parameter(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        extension.add_parameter('no_context_takeover', None)
-        request = _create_request_from_rawdata(
-            '', deflate_frame_request=extension)
-        for i in xrange(3):
-            msgutil.send_message(request, 'Hello')
-
-        compressed_message = compress.compress('Hello')
-        compressed_message += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_message = compressed_message[:-4]
-        expected = '\xc1%c' % len(compressed_message)
-        expected += compressed_message
-
-        self.assertEqual(
-            expected + expected + expected, request.connection.written_data())
-
-    def test_deflate_frame_bad_request_parameters(self):
-        """Tests that if there's anything wrong with deflate-frame extension
-        request, deflate-frame is rejected.
-        """
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        # max_window_bits less than 8 is illegal.
-        extension.add_parameter('max_window_bits', '7')
-        processor = DeflateFrameExtensionProcessor(extension)
-        self.assertEqual(None, processor.get_extension_response())
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        # max_window_bits greater than 15 is illegal.
-        extension.add_parameter('max_window_bits', '16')
-        processor = DeflateFrameExtensionProcessor(extension)
-        self.assertEqual(None, processor.get_extension_response())
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        # Non integer max_window_bits is illegal.
-        extension.add_parameter('max_window_bits', 'foobar')
-        processor = DeflateFrameExtensionProcessor(extension)
-        self.assertEqual(None, processor.get_extension_response())
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        # no_context_takeover must not have any value.
-        extension.add_parameter('no_context_takeover', 'foobar')
-        processor = DeflateFrameExtensionProcessor(extension)
-        self.assertEqual(None, processor.get_extension_response())
-
-    def test_deflate_frame_response_parameters(self):
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        processor = DeflateFrameExtensionProcessor(extension)
-        processor.set_response_window_bits(8)
-        response = processor.get_extension_response()
-        self.assertTrue(response.has_parameter('max_window_bits'))
-        self.assertEqual('8', response.get_parameter_value('max_window_bits'))
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        processor = DeflateFrameExtensionProcessor(extension)
-        processor.set_response_no_context_takeover(True)
-        response = processor.get_extension_response()
-        self.assertTrue(response.has_parameter('no_context_takeover'))
-        self.assertTrue(
-            response.get_parameter_value('no_context_takeover') is None)
-
-    def test_permessage_compress_deflate_response_parameters(self):
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        processor = PerMessageCompressionExtensionProcessor(extension)
-        response = processor.get_extension_response()
-        self.assertEqual('deflate',
-                         response.get_parameter_value('method'))
-
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        processor = PerMessageCompressionExtensionProcessor(extension)
-        def _compression_processor_hook(compression_processor):
-            compression_processor.set_c2s_max_window_bits(8)
-            compression_processor.set_c2s_no_context_takeover(True)
-        processor.set_compression_processor_hook(
-            _compression_processor_hook)
-        response = processor.get_extension_response()
-        self.assertEqual(
-            'deflate; c2s_max_window_bits=8; c2s_no_context_takeover',
-            response.get_parameter_value('method'))
-
-    def test_send_message_perframe_compress_deflate(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        extension = common.ExtensionParameter(
-            common.PERFRAME_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-                      '', perframe_compression_request=extension)
-        msgutil.send_message(request, 'Hello')
-        msgutil.send_message(request, 'World')
-
-        expected = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        expected += '\xc1%c' % len(compressed_hello)
-        expected += compressed_hello
-
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        expected += '\xc1%c' % len(compressed_world)
-        expected += compressed_world
-
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_send_message_permessage_compress_deflate_empty(self):
-        """Test that an empty message is compressed correctly."""
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-                      '', permessage_compression_request=extension)
-        msgutil.send_message(request, '')
-
-        # Payload in binary: 0b00000010 0b00000000
-        # From LSB,
-        # - 1 bit of BFINAL (0)
-        # - 2 bits of BTYPE (01 that means fixed Huffman)
-        # - 7 bits of the first code (0000000 that is the code for the
-        #   end-of-block)
-        # - 1 bit of BFINAL (0)
-        # - 2 bits of BTYPE (no compression)
-        # - 3 bits of padding
-        self.assertEqual('\xc1\x02\x02\x00',
-                         request.connection.written_data())
-
-    def test_send_message_permessage_compress_deflate_null_character(self):
-        """Test that a simple payload (one null) is framed correctly."""
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-                      '', permessage_compression_request=extension)
-        msgutil.send_message(request, '\x00')
-
-        # Payload in binary: 0b01100010 0b00000000 0b00000000
-        # From LSB,
-        # - 1 bit of BFINAL (0)
-        # - 2 bits of BTYPE (01 that means fixed Huffman)
-        # - 8 bits of the first code (00110000 that is the code for the literal
-        #   alphabet 0x00)
-        # - 7 bits of the second code (0000000 that is the code for the
-        #   end-of-block)
-        # - 1 bit of BFINAL (0)
-        # - 2 bits of BTYPE (no compression)
-        # - 2 bits of padding
-        self.assertEqual('\xc1\x03\x62\x00\x00',
-                         request.connection.written_data())
-
-    def test_send_message_permessage_compress_deflate(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-                      '', permessage_compression_request=extension)
-        msgutil.send_message(request, 'Hello')
-        msgutil.send_message(request, 'World')
-
-        expected = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        expected += '\xc1%c' % len(compressed_hello)
-        expected += compressed_hello
-
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        expected += '\xc1%c' % len(compressed_world)
-        expected += compressed_world
-
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_send_message_permessage_compress_deflate_fragmented(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-                      '', permessage_compression_request=extension)
-        msgutil.send_message(request, 'Hello', end=False)
-        msgutil.send_message(request, 'World', end=True)
-
-        expected = ''
-
-        # The first frame will be an empty frame and FIN=0 and RSV1=1.
-        expected += '\x41\x00'
-
-        compressed_message = compress.compress('HelloWorld')
-        compressed_message += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_message = compressed_message[:-4]
-        expected += '\x80%c' % len(compressed_message)
-        expected += compressed_message
-
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_send_message_permessage_compress_deflate_fragmented_bfinal(self):
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-                      '', permessage_compression_request=extension)
-        self.assertEquals(1, len(request.ws_extension_processors))
-        compression_processor = (
-            request.ws_extension_processors[0].get_compression_processor())
-        compression_processor.set_bfinal(True)
-        msgutil.send_message(request, 'Hello', end=False)
-        msgutil.send_message(request, 'World', end=True)
-
-        expected = ''
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_FINISH)
-        compressed_hello = compressed_hello + chr(0)
-        expected += '\x41%c' % len(compressed_hello)
-        expected += compressed_hello
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_FINISH)
-        compressed_world = compressed_world + chr(0)
-        expected += '\x80%c' % len(compressed_world)
-        expected += compressed_world
-
-        self.assertEqual(expected, request.connection.written_data())
 
     def test_receive_message(self):
         request = _create_request(
@@ -652,352 +304,6 @@ class MessageTest(unittest.TestCase):
         self.assertEqual(None, msgutil.receive_message(request))
         self.assertEqual(1000, request.ws_close_code)
         self.assertEqual('Good bye', request.ws_close_reason)
-
-    def test_receive_message_deflate_stream(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data = compress.compress('\x81\x85' + _mask_hybi('Hello'))
-        data += compress.flush(zlib.Z_SYNC_FLUSH)
-        data += compress.compress('\x81\x89' + _mask_hybi('WebSocket'))
-        data += compress.flush(zlib.Z_FINISH)
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data += compress.compress('\x81\x85' + _mask_hybi('World'))
-        data += compress.flush(zlib.Z_SYNC_FLUSH)
-        # Close frame
-        data += compress.compress(
-            '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye'))
-        data += compress.flush(zlib.Z_SYNC_FLUSH)
-
-        request = _create_request_from_rawdata(data, deflate_stream=True)
-        self.assertEqual('Hello', msgutil.receive_message(request))
-        self.assertEqual('WebSocket', msgutil.receive_message(request))
-        self.assertEqual('World', msgutil.receive_message(request))
-
-        self.assertFalse(request.drain_received_data_called)
-
-        self.assertEqual(None, msgutil.receive_message(request))
-
-        self.assertTrue(request.drain_received_data_called)
-
-    def test_receive_message_deflate_frame(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        data += '\xc1%c' % (len(compressed_hello) | 0x80)
-        data += _mask_hybi(compressed_hello)
-
-        compressed_websocket = compress.compress('WebSocket')
-        compressed_websocket += compress.flush(zlib.Z_FINISH)
-        compressed_websocket += '\x00'
-        data += '\xc1%c' % (len(compressed_websocket) | 0x80)
-        data += _mask_hybi(compressed_websocket)
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        data += '\xc1%c' % (len(compressed_world) | 0x80)
-        data += _mask_hybi(compressed_world)
-
-        # Close frame
-        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        request = _create_request_from_rawdata(
-            data, deflate_frame_request=extension)
-        self.assertEqual('Hello', msgutil.receive_message(request))
-        self.assertEqual('WebSocket', msgutil.receive_message(request))
-        self.assertEqual('World', msgutil.receive_message(request))
-
-        self.assertEqual(None, msgutil.receive_message(request))
-
-    def test_receive_message_deflate_frame_client_using_smaller_window(self):
-        """Test that frames coming from a client which is using smaller window
-        size that the server are correctly received.
-        """
-
-        # Using the smallest window bits of 8 for generating input frames.
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -8)
-
-        data = ''
-
-        # Use a frame whose content is bigger than the clients' DEFLATE window
-        # size before compression. The content mainly consists of 'a' but
-        # repetition of 'b' is put at the head and tail so that if the window
-        # size is big, the head is back-referenced but if small, not.
-        payload = 'b' * 64 + 'a' * 1024 + 'b' * 64
-        compressed_hello = compress.compress(payload)
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        data += '\xc1%c' % (len(compressed_hello) | 0x80)
-        data += _mask_hybi(compressed_hello)
-
-        # Close frame
-        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        request = _create_request_from_rawdata(
-            data, deflate_frame_request=extension)
-        self.assertEqual(payload, msgutil.receive_message(request))
-
-        self.assertEqual(None, msgutil.receive_message(request))
-
-    def test_receive_message_deflate_frame_comp_bit(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        data += '\xc1%c' % (len(compressed_hello) | 0x80)
-        data += _mask_hybi(compressed_hello)
-
-        data += '\x81\x85' + _mask_hybi('Hello')
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        compressed_2nd_hello = compress.compress('Hello')
-        compressed_2nd_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_2nd_hello = compressed_2nd_hello[:-4]
-        data += '\xc1%c' % (len(compressed_2nd_hello) | 0x80)
-        data += _mask_hybi(compressed_2nd_hello)
-
-        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
-        request = _create_request_from_rawdata(
-            data, deflate_frame_request=extension)
-        for i in xrange(3):
-            self.assertEqual('Hello', msgutil.receive_message(request))
-
-    def test_receive_message_perframe_compression_frame(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        data += '\xc1%c' % (len(compressed_hello) | 0x80)
-        data += _mask_hybi(compressed_hello)
-
-        compressed_websocket = compress.compress('WebSocket')
-        compressed_websocket += compress.flush(zlib.Z_FINISH)
-        compressed_websocket += '\x00'
-        data += '\xc1%c' % (len(compressed_websocket) | 0x80)
-        data += _mask_hybi(compressed_websocket)
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        data += '\xc1%c' % (len(compressed_world) | 0x80)
-        data += _mask_hybi(compressed_world)
-
-        # Close frame
-        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
-
-        extension = common.ExtensionParameter(
-            common.PERFRAME_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-            data, perframe_compression_request=extension)
-        self.assertEqual('Hello', msgutil.receive_message(request))
-        self.assertEqual('WebSocket', msgutil.receive_message(request))
-        self.assertEqual('World', msgutil.receive_message(request))
-
-        self.assertEqual(None, msgutil.receive_message(request))
-
-    def test_receive_message_permessage_deflate_compression(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data = ''
-
-        compressed_hello = compress.compress('HelloWebSocket')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        split_position = len(compressed_hello) / 2
-        data += '\x41%c' % (split_position | 0x80)
-        data += _mask_hybi(compressed_hello[:split_position])
-
-        data += '\x80%c' % ((len(compressed_hello) - split_position) | 0x80)
-        data += _mask_hybi(compressed_hello[split_position:])
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        data += '\xc1%c' % (len(compressed_world) | 0x80)
-        data += _mask_hybi(compressed_world)
-
-        # Close frame
-        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
-
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-            data, permessage_compression_request=extension)
-        self.assertEqual('HelloWebSocket', msgutil.receive_message(request))
-        self.assertEqual('World', msgutil.receive_message(request))
-
-        self.assertEqual(None, msgutil.receive_message(request))
-
-    def test_receive_message_permessage_deflate_compression_random(self):
-        """Test that a compressed message fragmented into lots of chunks is
-        correctly received.
-        """
-
-        random.seed(a=0)
-        payload = ''.join(
-            [chr(random.randint(0, 255)) for i in xrange(1000)])
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        compressed_payload = compress.compress(payload)
-        compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_payload = compressed_payload[:-4]
-
-        # Fragment the compressed payload into lots of frames.
-        bytes_chunked = 0
-        data = ''
-        frame_count = 0
-
-        chunk_sizes = []
-
-        while bytes_chunked < len(compressed_payload):
-            # Make sure that
-            # - the length of chunks are equal or less than 125 so that we can
-            #   use 1 octet length header format for all frames.
-            # - at least 10 chunks are created.
-            chunk_size = random.randint(
-                1, min(125,
-                       len(compressed_payload) / 10,
-                       len(compressed_payload) - bytes_chunked))
-            chunk_sizes.append(chunk_size)
-            chunk = compressed_payload[
-                bytes_chunked:bytes_chunked + chunk_size]
-            bytes_chunked += chunk_size
-
-            first_octet = 0x00
-            if len(data) == 0:
-                first_octet = first_octet | 0x42
-            if bytes_chunked == len(compressed_payload):
-                first_octet = first_octet | 0x80
-
-            data += '%c%c' % (first_octet, chunk_size | 0x80)
-            data += _mask_hybi(chunk)
-
-            frame_count += 1
-
-        print "Chunk sizes: %r" % chunk_sizes
-        self.assertTrue(len(chunk_sizes) > 10)
-
-        # Close frame
-        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
-
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-            data, permessage_compression_request=extension)
-        self.assertEqual(payload, msgutil.receive_message(request))
-
-        self.assertEqual(None, msgutil.receive_message(request))
-
-    def test_receive_message_permessage_deflate_compression_mixed(self):
-        """Test that a message compressed using lots of DEFLATE blocks with
-        various flush mode is correctly received.
-        """
-
-        random.seed(a=0)
-        payload = ''.join(
-            [chr(random.randint(0, 255)) for i in xrange(1000)])
-
-        compress = None
-
-        # Fragment the compressed payload into lots of frames.
-        bytes_chunked = 0
-        compressed_payload = ''
-
-        chunk_sizes = []
-        methods = []
-        sync_used = False
-        finish_used = False
-
-        while bytes_chunked < len(payload):
-            # Make sure at least 10 chunks are created.
-            chunk_size = random.randint(
-                1, min(100, len(payload) - bytes_chunked))
-            chunk_sizes.append(chunk_size)
-            chunk = payload[bytes_chunked:bytes_chunked + chunk_size]
-
-            bytes_chunked += chunk_size
-
-            if compress is None:
-                compress = zlib.compressobj(
-                    zlib.Z_DEFAULT_COMPRESSION,
-                    zlib.DEFLATED,
-                    -zlib.MAX_WBITS)
-
-            if bytes_chunked == len(payload):
-                compressed_payload += compress.compress(chunk)
-                compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
-                compressed_payload = compressed_payload[:-4]
-            else:
-                method = random.randint(0, 1)
-                methods.append(method)
-                if method == 0:
-                    compressed_payload += compress.compress(chunk)
-                    compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
-                    sync_used = True
-                else:
-                    compressed_payload += compress.compress(chunk)
-                    compressed_payload += compress.flush(zlib.Z_FINISH)
-                    compress = None
-                    finish_used = True
-
-        print "Chunk sizes: %r" % chunk_sizes
-        self.assertTrue(len(chunk_sizes) > 10)
-        print "Methods: %r" % methods
-        self.assertTrue(sync_used)
-        self.assertTrue(finish_used)
-
-        self.assertTrue(125 < len(compressed_payload))
-        self.assertTrue(len(compressed_payload) < 65536)
-        data = '\xc2\xfe' + struct.pack('!H', len(compressed_payload))
-        data += _mask_hybi(compressed_payload)
-
-        # Close frame
-        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
-
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-            data, permessage_compression_request=extension)
-        self.assertEqual(payload, msgutil.receive_message(request))
-
-        self.assertEqual(None, msgutil.receive_message(request))
 
     def test_send_longest_close(self):
         reason = 'a' * 123
@@ -1121,6 +427,716 @@ class MessageTest(unittest.TestCase):
         self.assertRaises(msgutil.InvalidFrameException,
                           msgutil.receive_message,
                           request)
+
+
+class DeflateStreamTest(unittest.TestCase):
+    """Tests for checking deflate-stream extension."""
+
+    def test_send_message(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        request = _create_request_from_rawdata('', deflate_stream=True)
+        msgutil.send_message(request, 'Hello')
+        expected = compress.compress('\x81\x05Hello')
+        expected += compress.flush(zlib.Z_SYNC_FLUSH)
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_receive_message(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data = compress.compress('\x81\x85' + _mask_hybi('Hello'))
+        data += compress.flush(zlib.Z_SYNC_FLUSH)
+        data += compress.compress('\x81\x89' + _mask_hybi('WebSocket'))
+        data += compress.flush(zlib.Z_FINISH)
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data += compress.compress('\x81\x85' + _mask_hybi('World'))
+        data += compress.flush(zlib.Z_SYNC_FLUSH)
+        # Close frame
+        data += compress.compress(
+            '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye'))
+        data += compress.flush(zlib.Z_SYNC_FLUSH)
+
+        request = _create_request_from_rawdata(data, deflate_stream=True)
+        self.assertEqual('Hello', msgutil.receive_message(request))
+        self.assertEqual('WebSocket', msgutil.receive_message(request))
+        self.assertEqual('World', msgutil.receive_message(request))
+
+        self.assertFalse(request.drain_received_data_called)
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+        self.assertTrue(request.drain_received_data_called)
+
+
+class DeflateFrameTest(unittest.TestCase):
+    """Tests for checking deflate-frame extension."""
+
+    def test_send_message(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        request = _create_request_from_rawdata(
+            '', deflate_frame_request=extension)
+        msgutil.send_message(request, 'Hello')
+        msgutil.send_message(request, 'World')
+
+        expected = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        expected += '\xc1%c' % len(compressed_hello)
+        expected += compressed_hello
+
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_world = compressed_world[:-4]
+        expected += '\xc1%c' % len(compressed_world)
+        expected += compressed_world
+
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_send_message_bfinal(self):
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        request = _create_request_from_rawdata(
+            '', deflate_frame_request=extension)
+        self.assertEquals(1, len(request.ws_extension_processors))
+        deflate_frame_processor = request.ws_extension_processors[0]
+        deflate_frame_processor.set_bfinal(True)
+        msgutil.send_message(request, 'Hello')
+        msgutil.send_message(request, 'World')
+
+        expected = ''
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_FINISH)
+        compressed_hello = compressed_hello + chr(0)
+        expected += '\xc1%c' % len(compressed_hello)
+        expected += compressed_hello
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_FINISH)
+        compressed_world = compressed_world + chr(0)
+        expected += '\xc1%c' % len(compressed_world)
+        expected += compressed_world
+
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_send_message_comp_bit(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        request = _create_request_from_rawdata(
+            '', deflate_frame_request=extension)
+        self.assertEquals(1, len(request.ws_extension_processors))
+        deflate_frame_processor = request.ws_extension_processors[0]
+        msgutil.send_message(request, 'Hello')
+        deflate_frame_processor.disable_outgoing_compression()
+        msgutil.send_message(request, 'Hello')
+        deflate_frame_processor.enable_outgoing_compression()
+        msgutil.send_message(request, 'Hello')
+
+        expected = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        expected += '\xc1%c' % len(compressed_hello)
+        expected += compressed_hello
+
+        expected += '\x81\x05Hello'
+
+        compressed_2nd_hello = compress.compress('Hello')
+        compressed_2nd_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_2nd_hello = compressed_2nd_hello[:-4]
+        expected += '\xc1%c' % len(compressed_2nd_hello)
+        expected += compressed_2nd_hello
+
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_send_message_no_context_takeover_parameter(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        extension.add_parameter('no_context_takeover', None)
+        request = _create_request_from_rawdata(
+            '', deflate_frame_request=extension)
+        for i in xrange(3):
+            msgutil.send_message(request, 'Hello')
+
+        compressed_message = compress.compress('Hello')
+        compressed_message += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_message = compressed_message[:-4]
+        expected = '\xc1%c' % len(compressed_message)
+        expected += compressed_message
+
+        self.assertEqual(
+            expected + expected + expected, request.connection.written_data())
+
+    def test_bad_request_parameters(self):
+        """Tests that if there's anything wrong with deflate-frame extension
+        request, deflate-frame is rejected.
+        """
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        # max_window_bits less than 8 is illegal.
+        extension.add_parameter('max_window_bits', '7')
+        processor = DeflateFrameExtensionProcessor(extension)
+        self.assertEqual(None, processor.get_extension_response())
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        # max_window_bits greater than 15 is illegal.
+        extension.add_parameter('max_window_bits', '16')
+        processor = DeflateFrameExtensionProcessor(extension)
+        self.assertEqual(None, processor.get_extension_response())
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        # Non integer max_window_bits is illegal.
+        extension.add_parameter('max_window_bits', 'foobar')
+        processor = DeflateFrameExtensionProcessor(extension)
+        self.assertEqual(None, processor.get_extension_response())
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        # no_context_takeover must not have any value.
+        extension.add_parameter('no_context_takeover', 'foobar')
+        processor = DeflateFrameExtensionProcessor(extension)
+        self.assertEqual(None, processor.get_extension_response())
+
+    def test_response_parameters(self):
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        processor = DeflateFrameExtensionProcessor(extension)
+        processor.set_response_window_bits(8)
+        response = processor.get_extension_response()
+        self.assertTrue(response.has_parameter('max_window_bits'))
+        self.assertEqual('8', response.get_parameter_value('max_window_bits'))
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        processor = DeflateFrameExtensionProcessor(extension)
+        processor.set_response_no_context_takeover(True)
+        response = processor.get_extension_response()
+        self.assertTrue(response.has_parameter('no_context_takeover'))
+        self.assertTrue(
+            response.get_parameter_value('no_context_takeover') is None)
+
+    def test_receive_message(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        data += '\xc1%c' % (len(compressed_hello) | 0x80)
+        data += _mask_hybi(compressed_hello)
+
+        compressed_websocket = compress.compress('WebSocket')
+        compressed_websocket += compress.flush(zlib.Z_FINISH)
+        compressed_websocket += '\x00'
+        data += '\xc1%c' % (len(compressed_websocket) | 0x80)
+        data += _mask_hybi(compressed_websocket)
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_world = compressed_world[:-4]
+        data += '\xc1%c' % (len(compressed_world) | 0x80)
+        data += _mask_hybi(compressed_world)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        request = _create_request_from_rawdata(
+            data, deflate_frame_request=extension)
+        self.assertEqual('Hello', msgutil.receive_message(request))
+        self.assertEqual('WebSocket', msgutil.receive_message(request))
+        self.assertEqual('World', msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+    def test_receive_message_client_using_smaller_window(self):
+        """Test that frames coming from a client which is using smaller window
+        size that the server are correctly received.
+        """
+
+        # Using the smallest window bits of 8 for generating input frames.
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -8)
+
+        data = ''
+
+        # Use a frame whose content is bigger than the clients' DEFLATE window
+        # size before compression. The content mainly consists of 'a' but
+        # repetition of 'b' is put at the head and tail so that if the window
+        # size is big, the head is back-referenced but if small, not.
+        payload = 'b' * 64 + 'a' * 1024 + 'b' * 64
+        compressed_hello = compress.compress(payload)
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        data += '\xc1%c' % (len(compressed_hello) | 0x80)
+        data += _mask_hybi(compressed_hello)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        request = _create_request_from_rawdata(
+            data, deflate_frame_request=extension)
+        self.assertEqual(payload, msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+    def test_receive_message_comp_bit(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        data += '\xc1%c' % (len(compressed_hello) | 0x80)
+        data += _mask_hybi(compressed_hello)
+
+        data += '\x81\x85' + _mask_hybi('Hello')
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        compressed_2nd_hello = compress.compress('Hello')
+        compressed_2nd_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_2nd_hello = compressed_2nd_hello[:-4]
+        data += '\xc1%c' % (len(compressed_2nd_hello) | 0x80)
+        data += _mask_hybi(compressed_2nd_hello)
+
+        extension = common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION)
+        request = _create_request_from_rawdata(
+            data, deflate_frame_request=extension)
+        for i in xrange(3):
+            self.assertEqual('Hello', msgutil.receive_message(request))
+
+
+class PermessageCompressTest(unittest.TestCase):
+    """Tests for checking permessage-compression extension."""
+
+    def test_deflate_response_parameters(self):
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        processor = PerMessageCompressionExtensionProcessor(extension)
+        response = processor.get_extension_response()
+        self.assertEqual('deflate',
+                         response.get_parameter_value('method'))
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        processor = PerMessageCompressionExtensionProcessor(extension)
+        def _compression_processor_hook(compression_processor):
+            compression_processor.set_c2s_max_window_bits(8)
+            compression_processor.set_c2s_no_context_takeover(True)
+        processor.set_compression_processor_hook(
+            _compression_processor_hook)
+        response = processor.get_extension_response()
+        self.assertEqual(
+            'deflate; c2s_max_window_bits=8; c2s_no_context_takeover',
+            response.get_parameter_value('method'))
+
+    def test_send_message_deflate_empty(self):
+        """Test that an empty message is compressed correctly."""
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        msgutil.send_message(request, '')
+
+        # Payload in binary: 0b00000010 0b00000000
+        # From LSB,
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (01 that means fixed Huffman)
+        # - 7 bits of the first code (0000000 that is the code for the
+        #   end-of-block)
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (no compression)
+        # - 3 bits of padding
+        self.assertEqual('\xc1\x02\x02\x00',
+                         request.connection.written_data())
+
+    def test_send_message_deflate_null_character(self):
+        """Test that a simple payload (one null) is framed correctly."""
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        msgutil.send_message(request, '\x00')
+
+        # Payload in binary: 0b01100010 0b00000000 0b00000000
+        # From LSB,
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (01 that means fixed Huffman)
+        # - 8 bits of the first code (00110000 that is the code for the literal
+        #   alphabet 0x00)
+        # - 7 bits of the second code (0000000 that is the code for the
+        #   end-of-block)
+        # - 1 bit of BFINAL (0)
+        # - 2 bits of BTYPE (no compression)
+        # - 2 bits of padding
+        self.assertEqual('\xc1\x03\x62\x00\x00',
+                         request.connection.written_data())
+
+    def test_send_message_deflate(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        msgutil.send_message(request, 'Hello')
+        msgutil.send_message(request, 'World')
+
+        expected = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        expected += '\xc1%c' % len(compressed_hello)
+        expected += compressed_hello
+
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_world = compressed_world[:-4]
+        expected += '\xc1%c' % len(compressed_world)
+        expected += compressed_world
+
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_send_message_deflate_fragmented(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        msgutil.send_message(request, 'Hello', end=False)
+        msgutil.send_message(request, 'World', end=True)
+
+        expected = ''
+
+        # The first frame will be an empty frame and FIN=0 and RSV1=1.
+        expected += '\x41\x00'
+
+        compressed_message = compress.compress('HelloWorld')
+        compressed_message += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_message = compressed_message[:-4]
+        expected += '\x80%c' % len(compressed_message)
+        expected += compressed_message
+
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_send_message_deflate_fragmented_bfinal(self):
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', permessage_compression_request=extension)
+        self.assertEquals(1, len(request.ws_extension_processors))
+        compression_processor = (
+            request.ws_extension_processors[0].get_compression_processor())
+        compression_processor.set_bfinal(True)
+        msgutil.send_message(request, 'Hello', end=False)
+        msgutil.send_message(request, 'World', end=True)
+
+        expected = ''
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_FINISH)
+        compressed_hello = compressed_hello + chr(0)
+        expected += '\x41%c' % len(compressed_hello)
+        expected += compressed_hello
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_FINISH)
+        compressed_world = compressed_world + chr(0)
+        expected += '\x80%c' % len(compressed_world)
+        expected += compressed_world
+
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_receive_message_deflate(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data = ''
+
+        compressed_hello = compress.compress('HelloWebSocket')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        split_position = len(compressed_hello) / 2
+        data += '\x41%c' % (split_position | 0x80)
+        data += _mask_hybi(compressed_hello[:split_position])
+
+        data += '\x80%c' % ((len(compressed_hello) - split_position) | 0x80)
+        data += _mask_hybi(compressed_hello[split_position:])
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_world = compressed_world[:-4]
+        data += '\xc1%c' % (len(compressed_world) | 0x80)
+        data += _mask_hybi(compressed_world)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+            data, permessage_compression_request=extension)
+        self.assertEqual('HelloWebSocket', msgutil.receive_message(request))
+        self.assertEqual('World', msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+    def test_receive_message_deflate_random_section(self):
+        """Test that a compressed message fragmented into lots of chunks is
+        correctly received.
+        """
+
+        random.seed(a=0)
+        payload = ''.join(
+            [chr(random.randint(0, 255)) for i in xrange(1000)])
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_payload = compress.compress(payload)
+        compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_payload = compressed_payload[:-4]
+
+        # Fragment the compressed payload into lots of frames.
+        bytes_chunked = 0
+        data = ''
+        frame_count = 0
+
+        chunk_sizes = []
+
+        while bytes_chunked < len(compressed_payload):
+            # Make sure that
+            # - the length of chunks are equal or less than 125 so that we can
+            #   use 1 octet length header format for all frames.
+            # - at least 10 chunks are created.
+            chunk_size = random.randint(
+                1, min(125,
+                       len(compressed_payload) / 10,
+                       len(compressed_payload) - bytes_chunked))
+            chunk_sizes.append(chunk_size)
+            chunk = compressed_payload[
+                bytes_chunked:bytes_chunked + chunk_size]
+            bytes_chunked += chunk_size
+
+            first_octet = 0x00
+            if len(data) == 0:
+                first_octet = first_octet | 0x42
+            if bytes_chunked == len(compressed_payload):
+                first_octet = first_octet | 0x80
+
+            data += '%c%c' % (first_octet, chunk_size | 0x80)
+            data += _mask_hybi(chunk)
+
+            frame_count += 1
+
+        print "Chunk sizes: %r" % chunk_sizes
+        self.assertTrue(len(chunk_sizes) > 10)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+            data, permessage_compression_request=extension)
+        self.assertEqual(payload, msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+    def test_receive_message_deflate_mixed_btype(self):
+        """Test that a message compressed using lots of DEFLATE blocks with
+        various flush mode is correctly received.
+        """
+
+        random.seed(a=0)
+        payload = ''.join(
+            [chr(random.randint(0, 255)) for i in xrange(1000)])
+
+        compress = None
+
+        # Fragment the compressed payload into lots of frames.
+        bytes_chunked = 0
+        compressed_payload = ''
+
+        chunk_sizes = []
+        methods = []
+        sync_used = False
+        finish_used = False
+
+        while bytes_chunked < len(payload):
+            # Make sure at least 10 chunks are created.
+            chunk_size = random.randint(
+                1, min(100, len(payload) - bytes_chunked))
+            chunk_sizes.append(chunk_size)
+            chunk = payload[bytes_chunked:bytes_chunked + chunk_size]
+
+            bytes_chunked += chunk_size
+
+            if compress is None:
+                compress = zlib.compressobj(
+                    zlib.Z_DEFAULT_COMPRESSION,
+                    zlib.DEFLATED,
+                    -zlib.MAX_WBITS)
+
+            if bytes_chunked == len(payload):
+                compressed_payload += compress.compress(chunk)
+                compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
+                compressed_payload = compressed_payload[:-4]
+            else:
+                method = random.randint(0, 1)
+                methods.append(method)
+                if method == 0:
+                    compressed_payload += compress.compress(chunk)
+                    compressed_payload += compress.flush(zlib.Z_SYNC_FLUSH)
+                    sync_used = True
+                else:
+                    compressed_payload += compress.compress(chunk)
+                    compressed_payload += compress.flush(zlib.Z_FINISH)
+                    compress = None
+                    finish_used = True
+
+        print "Chunk sizes: %r" % chunk_sizes
+        self.assertTrue(len(chunk_sizes) > 10)
+        print "Methods: %r" % methods
+        self.assertTrue(sync_used)
+        self.assertTrue(finish_used)
+
+        self.assertTrue(125 < len(compressed_payload))
+        self.assertTrue(len(compressed_payload) < 65536)
+        data = '\xc2\xfe' + struct.pack('!H', len(compressed_payload))
+        data += _mask_hybi(compressed_payload)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+            data, permessage_compression_request=extension)
+        self.assertEqual(payload, msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+
+class PerframeCompressTest(unittest.TestCase):
+    """Tests for checking perframe-compression extension."""
+
+    def test_send_message_deflate(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        extension = common.ExtensionParameter(
+            common.PERFRAME_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+                      '', perframe_compression_request=extension)
+        msgutil.send_message(request, 'Hello')
+        msgutil.send_message(request, 'World')
+
+        expected = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        expected += '\xc1%c' % len(compressed_hello)
+        expected += compressed_hello
+
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_world = compressed_world[:-4]
+        expected += '\xc1%c' % len(compressed_world)
+        expected += compressed_world
+
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_receive_message_various_btype(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        data = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        data += '\xc1%c' % (len(compressed_hello) | 0x80)
+        data += _mask_hybi(compressed_hello)
+
+        compressed_websocket = compress.compress('WebSocket')
+        compressed_websocket += compress.flush(zlib.Z_FINISH)
+        compressed_websocket += '\x00'
+        data += '\xc1%c' % (len(compressed_websocket) | 0x80)
+        data += _mask_hybi(compressed_websocket)
+
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_world = compressed_world[:-4]
+        data += '\xc1%c' % (len(compressed_world) | 0x80)
+        data += _mask_hybi(compressed_world)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(
+            common.PERFRAME_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        request = _create_request_from_rawdata(
+            data, perframe_compression_request=extension)
+        self.assertEqual('Hello', msgutil.receive_message(request))
+        self.assertEqual('WebSocket', msgutil.receive_message(request))
+        self.assertEqual('World', msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
 
 
 class MessageTestHixie75(unittest.TestCase):

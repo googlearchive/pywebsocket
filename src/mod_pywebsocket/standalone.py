@@ -933,6 +933,12 @@ def _main(args=None):
 
     _configure_logging(options)
 
+    if options.allow_draft75:
+        logging.warning('--allow_draft75 option is obsolete.')
+
+    if options.strict:
+        logging.warning('--strict option is obsolete.')
+
     # TODO(tyoshino): Clean up initialization of CGI related values. Move some
     # of code here to WebSocketRequestHandler class if it's better.
     options.cgi_directories = []

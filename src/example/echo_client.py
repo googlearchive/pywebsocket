@@ -50,14 +50,6 @@ or
 
 # run echo client to test IETF HyBi 00 protocol
  run with --protocol-version=hybi00
-
-or
-
-# server setup to test Hixie 75 protocol
- run with --allow-draft75
-
-# run echo client to test Hixie 75 protocol
- run with --protocol-version=hixie75
 """
 
 
@@ -697,66 +689,6 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
         return ''.join([chr(random.randint(0, 255)) for _ in xrange(8)])
 
 
-class ClientHandshakeProcessorHixie75(object):
-    """WebSocket opening handshake processor for
-    draft-hixie-thewebsocketprotocol-75.
-    """
-
-    _EXPECTED_RESPONSE = (
-        'HTTP/1.1 101 Web Socket Protocol Handshake\r\n' +
-        _UPGRADE_HEADER_HIXIE75 +
-        _CONNECTION_HEADER)
-
-    def __init__(self, socket, options):
-        self._socket = socket
-        self._options = options
-
-        self._logger = util.get_class_logger(self)
-
-    def _skip_headers(self):
-        terminator = '\r\n\r\n'
-        pos = 0
-        while pos < len(terminator):
-            received = _receive_bytes(self._socket, 1)
-            if received == terminator[pos]:
-                pos += 1
-            elif received == terminator[0]:
-                pos = 1
-            else:
-                pos = 0
-
-    def handshake(self):
-        """Performs opening handshake on the specified socket.
-
-        Raises:
-            ClientHandshakeError: handshake failed.
-        """
-
-        self._socket.sendall(_build_method_line(self._options.resource))
-        self._socket.sendall(_UPGRADE_HEADER_HIXIE75)
-        self._socket.sendall(_CONNECTION_HEADER)
-        self._socket.sendall(_format_host_header(
-            self._options.server_host,
-            self._options.server_port,
-            self._options.use_tls))
-        if not self._options.origin:
-            raise ClientHandshakeError(
-                'Specify the origin of the connection by --origin flag')
-        self._socket.sendall(_origin_header(common.ORIGIN_HEADER,
-                                            self._options.origin))
-        self._socket.sendall('\r\n')
-
-        self._logger.info('Sent handshake')
-
-        for expected_char in (
-            ClientHandshakeProcessorHixie75._EXPECTED_RESPONSE):
-            received = _receive_bytes(self._socket, 1)
-            if expected_char != received:
-                raise ClientHandshakeError('Handshake failure')
-        # We cut corners and skip other headers.
-        self._skip_headers()
-
-
 class ClientConnection(object):
     """A wrapper for socket object to provide the mp_conn interface.
     mod_pywebsocket library is designed to be working on Apache mod_python's
@@ -830,9 +762,6 @@ class EchoClient(object):
             elif version == _PROTOCOL_VERSION_HYBI00:
                 self._handshake = ClientHandshakeProcessorHybi00(
                     self._socket, self._options)
-            elif version == _PROTOCOL_VERSION_HIXIE75:
-                self._handshake = ClientHandshakeProcessorHixie75(
-                    self._socket, self._options)
             else:
                 raise ValueError(
                     'Invalid --protocol-version flag: %r' % version)
@@ -846,8 +775,7 @@ class EchoClient(object):
             version_map = {
                 _PROTOCOL_VERSION_HYBI08: common.VERSION_HYBI08,
                 _PROTOCOL_VERSION_HYBI13: common.VERSION_HYBI13,
-                _PROTOCOL_VERSION_HYBI00: common.VERSION_HYBI00,
-                _PROTOCOL_VERSION_HIXIE75: common.VERSION_HIXIE75}
+                _PROTOCOL_VERSION_HYBI00: common.VERSION_HYBI00}
             request.ws_version = version_map[version]
 
             if (version == _PROTOCOL_VERSION_HYBI08 or
@@ -866,8 +794,6 @@ class EchoClient(object):
                 self._stream = Stream(request, stream_option)
             elif version == _PROTOCOL_VERSION_HYBI00:
                 self._stream = StreamHixie75(request, True)
-            elif version == _PROTOCOL_VERSION_HIXIE75:
-                self._stream = StreamHixie75(request)
 
             for line in self._options.message.split(','):
                 self._stream.send_message(line)
@@ -883,8 +809,7 @@ class EchoClient(object):
                         print 'Error: %s' % e
                     raise
 
-            if version != _PROTOCOL_VERSION_HIXIE75:
-                self._do_closing_handshake()
+            self._do_closing_handshake()
         finally:
             self._socket.close()
 
@@ -938,16 +863,14 @@ def main():
                       help='Timeout(sec) for sockets')
     parser.add_option('--draft75', dest='draft75',
                        action='store_true', default=False,
-                      help='use the Hixie 75 protocol. This overrides '
-                      'protocol-version flag')
+                      help='Obsolete option. Don\'t use this.')
     parser.add_option('--protocol-version', '--protocol_version',
                       dest='protocol_version',
                       type='string', default=_PROTOCOL_VERSION_HYBI13,
                       help='WebSocket protocol version to use. One of \'' +
                       _PROTOCOL_VERSION_HYBI13 + '\', \'' +
                       _PROTOCOL_VERSION_HYBI08 + '\', \'' +
-                      _PROTOCOL_VERSION_HYBI00 + '\', \'' +
-                      _PROTOCOL_VERSION_HIXIE75 + '\'')
+                      _PROTOCOL_VERSION_HYBI00 + '\'')
     parser.add_option('--version-header', '--version_header',
                       dest='version_header',
                       type='int', default=-1,
@@ -974,7 +897,14 @@ def main():
     logging.basicConfig(level=logging.getLevelName(options.log_level.upper()))
 
     if options.draft75:
-        options.protocol_version = _PROTOCOL_VERSION_HIXIE75
+        logging.critical('--draft75 option is obsolete.')
+        sys.exit(1)
+
+    if options.protocol_version == _PROTOCOL_VERSION_HIXIE75:
+        logging.critical(
+            'Value %s is obsolete for --protocol_version options' %
+            _PROTOCOL_VERSION_HIXIE75)
+        sys.exit(1)
 
     # Default port number depends on whether TLS is used.
     if options.server_port == _UNDEFINED_PORT:

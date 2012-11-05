@@ -51,6 +51,7 @@ from mod_pywebsocket._stream_hybi import create_binary_frame
 from mod_pywebsocket._stream_hybi import create_close_frame
 from mod_pywebsocket._stream_hybi import create_closing_handshake_body
 from mod_pywebsocket._stream_hybi import parse_frame
+from mod_pywebsocket.extensions import MuxExtensionProcessor
 
 
 import mock
@@ -237,9 +238,9 @@ def _create_mock_request():
                                headers_in=headers,
                                connection=_MockMuxConnection())
     request.ws_stream = Stream(request, options=StreamOptions())
-    request.mux = True
-    request.mux_extensions = []
-    request.mux_quota = 8 * 1024
+    request.mux_processor = MuxExtensionProcessor(
+        common.ExtensionParameter(common.MUX_EXTENSION))
+    request.mux_processor.set_quota(8 * 1024)
     return request
 
 

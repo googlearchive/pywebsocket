@@ -1319,8 +1319,9 @@ class _MuxHandler(object):
         # but we will send FlowControl later so set the initial quota to
         # _INITIAL_QUOTA_FOR_CLIENT.
         self._channel_slots.append(_INITIAL_QUOTA_FOR_CLIENT)
+        send_quota = self.original_request.mux_processor.quota()
         if not self._do_handshake_for_logical_request(
-            logical_request, send_quota=self.original_request.mux_quota):
+            logical_request, send_quota=send_quota):
             raise MuxUnexpectedException(
                 'Failed handshake on the default channel id')
         self._add_logical_channel(logical_request)
@@ -1717,7 +1718,8 @@ class _MuxHandler(object):
 
 
 def use_mux(request):
-    return hasattr(request, 'mux') and request.mux
+    return hasattr(request, 'mux_processor') and (
+        request.mux_processor.is_active())
 
 
 def start(request, dispatcher):

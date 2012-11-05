@@ -185,39 +185,47 @@ class Handshaker(object):
             processors = filter(lambda processor: processor is not None,
                                 self._request.ws_extension_processors)
 
+            # Ask each processor if there are extensions on the request which
+            # cannot co-exist. When processor decided other processors cannot
+            # co-exist with it, the processor marks them (or itself) as
+            # "inactive". The first extension processor has the right to
+            # make the final call.
+            for processor in reversed(processors):
+                if processor.is_active():
+                    processor.check_consistency_with_other_processors(
+                        processors)
+            processors = filter(lambda processor: processor.is_active(),
+                                processors)
+
             accepted_extensions = []
 
-            # We need to take care of mux extension here. Extensions that
-            # are placed before mux should be applied to logical channels.
+            # We need to take into account of mux extension here.
+            # If mux extension exists:
+            # - Remove processors of extensions for logical channel,
+            #   which are processors located before the mux processor
+            # - Pass extension requests for logical channel to mux processor
+            # - Attach the mux processor to the request. It will be referred
+            #   by dispatcher to see whether the dispatcher should use mux
+            #   handler or not.
             mux_index = -1
             for i, processor in enumerate(processors):
                 if processor.name() == common.MUX_EXTENSION:
                     mux_index = i
                     break
             if mux_index >= 0:
-                mux_processor = processors[mux_index]
-                logical_channel_processors = processors[:mux_index]
-                processors = processors[mux_index+1:]
-
-                for processor in logical_channel_processors:
-                    extension_response = processor.get_extension_response()
-                    if extension_response is None:
-                        # Rejected.
-                        continue
-                    accepted_extensions.append(extension_response)
-                # Pass a shallow copy of accepted_extensions as extensions for
-                # logical channels.
-                mux_response = mux_processor.get_extension_response(
-                    self._request, accepted_extensions[:])
-                if mux_response is not None:
-                    accepted_extensions.append(mux_response)
+                logical_channel_extensions = []
+                for processor in processors[:mux_index]:
+                    logical_channel_extensions.append(processor.request())
+                    processor.set_active(False)
+                self._request.mux_processor = processors[mux_index]
+                self._request.mux_processor.set_extensions(
+                    logical_channel_extensions)
+                processors = filter(lambda processor: processor.is_active(),
+                                    processors)
 
             stream_options = StreamOptions()
 
-            # When there is mux extension, here, |processors| contain only
-            # prosessors for extensions placed after mux.
             for processor in processors:
-
                 extension_response = processor.get_extension_response()
                 if extension_response is None:
                     # Rejected.

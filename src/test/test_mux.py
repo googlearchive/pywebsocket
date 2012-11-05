@@ -38,6 +38,7 @@ import optparse
 import unittest
 import struct
 import sys
+import time
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
@@ -507,7 +508,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=3, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertEqual([], dispatcher.channel_events[1].messages)
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
@@ -527,6 +528,44 @@ class MuxHandlerTest(unittest.TestCase):
         #   - 6 FlowControls for channel id 1 (initialize), 'Hello', 'World',
         #     and 3 'Goodbye's
         self.assertEqual(9, len(control_blocks))
+
+    def test_send_blocked(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # On receiving this 'Hello', the server tries to echo back 'Hello',
+        # but it will be blocked since there's no send quota available for the
+        # channel 2.
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Hello'))
+
+        # Wait until the worker is blocked due to send quota shortage.
+        time.sleep(1)
+
+        # Close the channel 2. The worker should be notified of the end of
+        # writer thread and stop waiting for send quota to be replenished.
+        drop_channel = mux._create_drop_channel(channel_id=2,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(drop_channel)
+
+        # Make sure the channel 1 is also closed.
+        drop_channel = mux._create_drop_channel(channel_id=1,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(drop_channel)
+
+        # All threads should be done.
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
     def test_add_channel_delta_encoding(self):
         request = _create_mock_request()
@@ -553,7 +592,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
         messages = request.connection.get_written_messages(2)
@@ -588,7 +627,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
         messages = request.connection.get_written_messages(2)
@@ -646,7 +685,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=3, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertEqual([], dispatcher.channel_events[1].messages)
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
@@ -713,7 +752,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=3, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertEqual([], dispatcher.channel_events[1].messages)
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
@@ -747,7 +786,7 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -774,7 +813,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertTrue(1 in dispatcher.channel_events)
         self.assertTrue(not 2 in dispatcher.channel_events)
@@ -799,7 +838,7 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -831,7 +870,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         exception = dispatcher.channel_events[2].exception
         self.assertTrue(exception.__class__ == ConnectionTerminatedException)
@@ -865,7 +904,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         messages = request.connection.get_written_control_messages(2)
         self.assertEqual(common.OPCODE_PONG, messages[0]['opcode'])
@@ -893,7 +932,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         messages = request.connection.get_written_control_messages(2)
         self.assertEqual(common.OPCODE_PING, messages[0]['opcode'])
@@ -909,7 +948,7 @@ class MuxHandlerTest(unittest.TestCase):
         frame = create_binary_frame('\x00\x60\x01\x00', mask=True)
         request.connection.put_bytes(frame)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -953,7 +992,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         messages = request.connection.get_written_messages(2)
         self.assertEqual(['HelloWorld'], messages)
@@ -985,7 +1024,9 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=1)
+        # Just wait for 1 sec so that the server attempts to echo back
+        # 'HelloWorld'.
+        self.assertFalse(mux_handler.wait_until_done(timeout=1))
 
         # No message should be sent on channel 2.
         self.assertRaises(KeyError,
@@ -1024,7 +1065,9 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=1)
+        # Just wait for 1 sec so that the server attempts to echo back
+        # 'World'.
+        self.assertFalse(mux_handler.wait_until_done(timeout=1))
 
         # Only one message should be sent on channel 2.
         messages = request.connection.get_written_messages(2)
@@ -1049,7 +1092,8 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
         control_blocks = request.connection.get_written_control_blocks()
         self.assertEqual(5, len(control_blocks))
         drop_channel = next(
@@ -1087,7 +1131,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertEqual(1, len(dispatcher.channel_events[2].messages))
         self.assertEqual('', dispatcher.channel_events[2].messages[0])
@@ -1135,7 +1179,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         messages = request.connection.get_written_messages(2)
         self.assertEqual(['Hello'], messages)
@@ -1173,7 +1217,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         messages = request.connection.get_written_control_messages(2)
         self.assertEqual(common.OPCODE_PING, messages[0]['opcode'])
@@ -1219,7 +1263,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         self.assertEqual([], dispatcher.channel_events[1].messages)
         self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
@@ -1255,7 +1299,7 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(
             _create_logical_frame(channel_id=1, message='Goodbye'))
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -1279,7 +1323,7 @@ class MuxHandlerTest(unittest.TestCase):
                                          mask=True)
         request.connection.put_bytes(text_frame)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -1299,7 +1343,7 @@ class MuxHandlerTest(unittest.TestCase):
         frame = create_binary_frame('\x80', mask=True)
         request.connection.put_bytes(frame)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -1319,7 +1363,7 @@ class MuxHandlerTest(unittest.TestCase):
         frame = create_binary_frame('\x01', mask=True)
         request.connection.put_bytes(frame)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -1339,7 +1383,7 @@ class MuxHandlerTest(unittest.TestCase):
         frame = create_binary_frame('\x00\xa0', mask=True)
         request.connection.put_bytes(frame)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()
@@ -1359,7 +1403,7 @@ class MuxHandlerTest(unittest.TestCase):
         frame = create_binary_frame('\x00\x60\x00\x01\x00', mask=True)
         request.connection.put_bytes(frame)
 
-        mux_handler.wait_until_done(timeout=2)
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
         drop_channel = next(
             b for b in request.connection.get_written_control_blocks()

@@ -550,8 +550,12 @@ class _LogicalConnection(object):
         self._mux_handler = mux_handler
         self._channel_id = channel_id
         self._incoming_data = ''
+
+        # - Protects _waiting_write_completion
+        # - Signals the thread waiting for completion of write by mux handler
         self._write_condition = threading.Condition()
         self._waiting_write_completion = False
+
         self._read_condition = threading.Condition()
         self._read_state = self.STATE_ACTIVE
 
@@ -595,6 +599,7 @@ class _LogicalConnection(object):
             self._waiting_write_completion = True
             self._mux_handler.send_data(self._channel_id, data)
             self._write_condition.wait()
+            # TODO(tyoshino): Raise an exception if woke up by on_writer_done.
         finally:
             self._write_condition.release()
 
@@ -608,19 +613,30 @@ class _LogicalConnection(object):
 
         self._mux_handler.send_control_data(data)
 
-    def notify_write_done(self):
+    def on_write_data_done(self):
         """Called when sending data is completed."""
 
         try:
             self._write_condition.acquire()
             if not self._waiting_write_completion:
                 raise MuxUnexpectedException(
-                    'Invalid call of notify_write_done for logical connection'
-                    ' %d' % self._channel_id)
+                    'Invalid call of on_write_data_done for logical '
+                    'connection %d' % self._channel_id)
             self._waiting_write_completion = False
             self._write_condition.notify()
         finally:
             self._write_condition.release()
+
+    def on_writer_done(self):
+        """Called by the mux handler when the writer thread has finished."""
+
+        try:
+            self._write_condition.acquire()
+            self._waiting_write_completion = False
+            self._write_condition.notify()
+        finally:
+            self._write_condition.release()
+
 
     def append_frame_data(self, frame_data):
         """Appends incoming frame data. Called when mux_handler dispatches
@@ -708,8 +724,13 @@ class _LogicalStream(Stream):
         # Control frames can be fragmented on logical channel.
         stream_options.allow_fragmented_control_frame = True
         Stream.__init__(self, request, stream_options)
+
+        self._send_closed = False
         self._send_quota = send_quota
-        self._send_quota_condition = threading.Condition()
+        # - Protects _send_closed and _send_quota
+        # - Signals the thread waiting for send quota replenished
+        self._send_condition = threading.Condition()
+
         self._receive_quota = receive_quota
         self._write_inner_frame_semaphore = threading.Semaphore()
 
@@ -735,21 +756,32 @@ class _LogicalStream(Stream):
             # Consume an octet quota when this is the first fragmented frame.
             if opcode != common.OPCODE_CONTINUATION:
                 try:
-                    self._send_quota_condition.acquire()
-                    while self._send_quota == 0:
-                        self._send_quota_condition.wait()
+                    self._send_condition.acquire()
+                    while (not self._send_closed) and self._send_quota == 0:
+                        self._send_condition.wait()
+
+                    if self._send_closed:
+                        raise BadOperationException(
+                            'Logical connection %d is closed' %
+                            self._request.channel_id)
+
                     self._send_quota -= 1
                 finally:
-                    self._send_quota_condition.release()
+                    self._send_condition.release()
 
             while write_position < payload_length:
                 try:
-                    self._send_quota_condition.acquire()
-                    while self._send_quota == 0:
+                    self._send_condition.acquire()
+                    while (not self._send_closed) and self._send_quota == 0:
                         self._logger.debug(
                             'No quota. Waiting FlowControl message for %d.' %
                             self._request.channel_id)
-                        self._send_quota_condition.wait()
+                        self._send_condition.wait()
+
+                    if self._send_closed:
+                        raise BadOperationException(
+                            'Logical connection %d is closed' %
+                            self.request._channel_id)
 
                     remaining = payload_length - write_position
                     write_length = min(self._send_quota, remaining)
@@ -767,10 +799,10 @@ class _LogicalStream(Stream):
                     self._logger.debug('Consumed quota=%d, remaining=%d' %
                                        (write_length, self._send_quota))
                 finally:
-                    self._send_quota_condition.release()
+                    self._send_condition.release()
 
                 # Writing data will block the worker so we need to release
-                # _send_quota_condition before writing.
+                # _send_condition before writing.
                 self._logger.debug('Sending inner frame: %r' % frame_data)
                 self._request.connection.write(frame_data)
                 write_position += write_length
@@ -786,7 +818,7 @@ class _LogicalStream(Stream):
         """Replenish send quota."""
 
         try:
-            self._send_quota_condition.acquire()
+            self._send_condition.acquire()
             if self._send_quota + send_quota > 0x7FFFFFFFFFFFFFFF:
                 self._send_quota = 0
                 raise LogicalChannelError(
@@ -795,8 +827,8 @@ class _LogicalStream(Stream):
             self._logger.debug('Replenished send quota for channel id %d: %d' %
                                (self._request.channel_id, self._send_quota))
         finally:
-            self._send_quota_condition.notify()
-            self._send_quota_condition.release()
+            self._send_condition.notify()
+            self._send_condition.release()
 
     def consume_receive_quota(self, amount):
         """Consumes receive quota. Returns False on failure."""
@@ -903,6 +935,14 @@ class _LogicalStream(Stream):
 
         pass
 
+    def stop_sending(self):
+        """Stops accepting new send operation (_write_inner_frame)."""
+
+        self._send_condition.acquire()
+        self._send_closed = True
+        self._send_condition.notify()
+        self._send_condition.release()
+
 
 class _OutgoingData(object):
     """A structure that holds data to be sent via physical connection and
@@ -932,8 +972,15 @@ class _PhysicalConnectionWriter(threading.Thread):
         self._logger = util.get_class_logger(self)
         self._mux_handler = mux_handler
         self.setDaemon(True)
+
+        # When set, make this thread stop accepting new data, flush pending
+        # data and exit.
         self._stop_requested = False
+        # Deque for passing write data. It's protected by _deque_condition
+        # until _stop_requested is set.
         self._deque = collections.deque()
+        # - Protects _deque and _stop_requested
+        # - Signals threads waiting for them to be available
         self._deque_condition = threading.Condition()
 
     def put_outgoing_data(self, data):
@@ -969,27 +1016,33 @@ class _PhysicalConnectionWriter(threading.Thread):
         # TODO(bashi): It would be better to block the thread that sends
         # control data as well.
         if outgoing_data.channel_id != _CONTROL_CHANNEL_ID:
-            self._mux_handler.notify_write_done(outgoing_data.channel_id)
+            self._mux_handler.notify_write_data_done(outgoing_data.channel_id)
 
     def run(self):
-        self._deque_condition.acquire()
-        while not self._stop_requested:
-            if len(self._deque) == 0:
-                self._deque_condition.wait()
-                continue
-
-            outgoing_data = self._deque.popleft()
-            self._deque_condition.release()
-            self._write_data(outgoing_data)
-            self._deque_condition.acquire()
-
-        # Flush deque
         try:
-            while len(self._deque) > 0:
+            self._deque_condition.acquire()
+            while not self._stop_requested:
+                if len(self._deque) == 0:
+                    self._deque_condition.wait()
+                    continue
+
                 outgoing_data = self._deque.popleft()
+
+                self._deque_condition.release()
                 self._write_data(outgoing_data)
+                self._deque_condition.acquire()
+
+            # Flush deque
+            #
+            # At this point, self._deque_condition is always acquired.
+            try:
+                while len(self._deque) > 0:
+                    outgoing_data = self._deque.popleft()
+                    self._write_data(outgoing_data)
+            finally:
+                self._deque_condition.release()
         finally:
-            self._deque_condition.release()
+            self._mux_handler.notify_writer_done()
 
     def stop(self):
         """Stops the writer thread."""
@@ -1308,7 +1361,6 @@ class _MuxHandler(object):
                 if not self._worker_done_notify_received:
                     self._logger.debug('Waiting worker(s) timed out')
                     return False
-
         finally:
             self._logical_channels_condition.release()
 
@@ -1318,7 +1370,7 @@ class _MuxHandler(object):
 
         return True
 
-    def notify_write_done(self, channel_id):
+    def notify_write_data_done(self, channel_id):
         """Called by the writer thread when a write operation has done.
 
         Args:
@@ -1329,7 +1381,7 @@ class _MuxHandler(object):
             self._logical_channels_condition.acquire()
             if channel_id in self._logical_channels:
                 channel_data = self._logical_channels[channel_id]
-                channel_data.request.connection.notify_write_done()
+                channel_data.request.connection.on_write_data_done()
             else:
                 self._logger.debug('Seems that logical channel for %d has gone'
                                    % channel_id)
@@ -1490,9 +1542,11 @@ class _MuxHandler(object):
                 return
             channel_data = self._logical_channels[block.channel_id]
             channel_data.drop_code = _DROP_CODE_ACKNOWLEDGED
+
             # Close the logical channel
             channel_data.request.connection.set_read_state(
                 _LogicalConnection.STATE_TERMINATED)
+            channel_data.request.ws_stream.stop_sending()
         finally:
             self._logical_channels_condition.release()
 
@@ -1593,13 +1647,30 @@ class _MuxHandler(object):
         finished.
         """
 
-        # Terminate all logical connections
-        self._logger.debug('termiating all logical connections...')
+        self._logger.debug(
+            'Termiating all logical connections waiting for incoming data '
+            '...')
         self._logical_channels_condition.acquire()
         for channel_data in self._logical_channels.values():
             try:
                 channel_data.request.connection.set_read_state(
                     _LogicalConnection.STATE_TERMINATED)
+            except Exception:
+                pass
+        self._logical_channels_condition.release()
+
+    def notify_writer_done(self):
+        """This method is called by the writer thread when the writer has
+        finished.
+        """
+
+        self._logger.debug(
+            'Termiating all logical connections waiting for write '
+            'completion ...')
+        self._logical_channels_condition.acquire()
+        for channel_data in self._logical_channels:
+            try:
+                channel_data.request.connection.on_writer_done()
             except Exception:
                 pass
         self._logical_channels_condition.release()
@@ -1635,8 +1706,10 @@ class _MuxHandler(object):
                 # called later and it will send DropChannel.
                 channel_data.drop_code = code
                 channel_data.drop_message = message
+
                 channel_data.request.connection.set_read_state(
                     _LogicalConnection.STATE_TERMINATED)
+                channel_data.request.ws_stream.stop_sending()
             else:
                 self._send_drop_channel(channel_id, code, message)
         finally:

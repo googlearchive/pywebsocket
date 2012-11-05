@@ -1669,7 +1669,7 @@ class _MuxHandler(object):
             'Termiating all logical connections waiting for write '
             'completion ...')
         self._logical_channels_condition.acquire()
-        for channel_data in self._logical_channels:
+        for channel_data in self._logical_channels.values():
             try:
                 channel_data.request.connection.on_writer_done()
             except Exception:

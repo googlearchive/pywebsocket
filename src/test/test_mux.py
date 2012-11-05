@@ -57,6 +57,14 @@ from mod_pywebsocket.extensions import MuxExtensionProcessor
 import mock
 
 
+_TEST_HEADERS = {'Host': 'server.example.com',
+                 'Upgrade': 'websocket',
+                 'Connection': 'Upgrade',
+                 'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
+                 'Sec-WebSocket-Version': '13',
+                 'Origin': 'http://example.com'}
+
+
 class _OutgoingChannelData(object):
     def __init__(self):
         self.messages = []
@@ -153,11 +161,16 @@ class _MockMuxConnection(mock.MockBlockingConn):
         if (channel_data.current_opcode == common.OPCODE_TEXT or
             channel_data.current_opcode == common.OPCODE_BINARY):
             channel_data.messages.append(message)
+
+            self.on_data_message(message)
         else:
             channel_data.control_messages.append(
                 {'opcode': channel_data.current_opcode,
                  'message': message})
         channel_data.current_opcode = None
+
+    def on_data_message(self, message):
+        pass
 
     def get_written_control_blocks(self):
         return self._control_blocks
@@ -167,6 +180,17 @@ class _MockMuxConnection(mock.MockBlockingConn):
 
     def get_written_control_messages(self, channel_id):
         return self._channel_data[channel_id].control_messages
+
+
+class _FailOnWriteConnection(_MockMuxConnection):
+    """Specicialized version of _MockMuxConnection. Its write() method raises
+    an exception for testing when a data message is written.
+    """
+
+    def on_data_message(self, message):
+        """Override to raise an exception."""
+
+        raise Exception('Intentional failure')
 
 
 class _ChannelEvent(object):
@@ -227,16 +251,13 @@ class _MuxMockDispatcher(object):
             raise
 
 
-def _create_mock_request():
-    headers = {'Host': 'server.example.com',
-               'Upgrade': 'websocket',
-               'Connection': 'Upgrade',
-               'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ==',
-               'Sec-WebSocket-Version': '13',
-               'Origin': 'http://example.com'}
+def _create_mock_request(connection=None):
+    if connection is None:
+        connection = _MockMuxConnection()
+
     request = mock.MockRequest(uri='/echo',
-                               headers_in=headers,
-                               connection=_MockMuxConnection())
+                               headers_in=_TEST_HEADERS,
+                               connection=connection)
     request.ws_stream = Stream(request, options=StreamOptions())
     request.mux_processor = MuxExtensionProcessor(
         common.ExtensionParameter(common.MUX_EXTENSION))
@@ -529,6 +550,28 @@ class MuxHandlerTest(unittest.TestCase):
         #   - 6 FlowControls for channel id 1 (initialize), 'Hello', 'World',
         #     and 3 'Goodbye's
         self.assertEqual(9, len(control_blocks))
+
+    def test_physical_connection_write_failure(self):
+        # Use _FailOnWriteConnection.
+        request = _create_mock_request(connection=_FailOnWriteConnection())
+
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+
+        # Let the worker echo back 'Hello'. It causes _FailOnWriteConnection
+        # raising an exception.
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Hello'))
+
+        # Let the worker exit. This will be unnecessary when
+        # _LogicalConnection.write() is changed to throw an exception if
+        # woke up by on_writer_done.
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        # All threads should be done.
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
 
     def test_send_blocked(self):
         request = _create_mock_request()

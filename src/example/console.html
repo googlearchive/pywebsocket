@@ -117,7 +117,14 @@ function connect() {
     addToLog('Opened');
   };
   socket.onmessage = function (event) {
-    addToLog('< ' + event.data);
+    if (('ArrayBuffer' in window) && (event.data instanceof ArrayBuffer)) {
+      addToLog('< Received an ArrayBuffer of ' + event.data.byteLength +
+               ' bytes')
+    } else if (('Blob' in window) && (event.data instanceof Blob)) {
+      addToLog('< Received a Blob of ' + event.data.size + ' bytes')
+    } else {
+      addToLog('< ' + event.data);
+    }
   };
   socket.onerror = function () {
     addToLog('Error');

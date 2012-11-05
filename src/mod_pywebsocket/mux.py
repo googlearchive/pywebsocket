@@ -1657,7 +1657,7 @@ class _MuxHandler(object):
                 channel_data.request.connection.set_read_state(
                     _LogicalConnection.STATE_TERMINATED)
             except Exception:
-                pass
+                self._logger.debug(traceback.format_exc())
         self._logical_channels_condition.release()
 
     def notify_writer_done(self):
@@ -1673,7 +1673,7 @@ class _MuxHandler(object):
             try:
                 channel_data.request.connection.on_writer_done()
             except Exception:
-                pass
+                self._logger.debug(traceback.format_exc())
         self._logical_channels_condition.release()
 
     def fail_physical_connection(self, code, message):

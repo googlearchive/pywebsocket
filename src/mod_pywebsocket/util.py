@@ -252,6 +252,7 @@ class _Deflater(object):
         self._logger.debug('Compress result %r', compressed_bytes)
         return compressed_bytes
 
+
 class _Inflater(object):
 
     def __init__(self):
@@ -345,6 +346,7 @@ class _RFC1979Deflater(object):
             # non-compressed block added for Z_SYNC_FLUSH.
             return self._deflater.compress_and_flush(bytes)[:-4]
         return self._deflater.compress(bytes)
+
 
 class _RFC1979Inflater(object):
     """A decompressor class for byte sequence compressed and flushed following

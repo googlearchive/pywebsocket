@@ -50,6 +50,7 @@ from mod_pywebsocket import handshake
 from mod_pywebsocket import util
 from mod_pywebsocket._stream_base import BadOperationException
 from mod_pywebsocket._stream_base import ConnectionTerminatedException
+from mod_pywebsocket._stream_base import InvalidFrameException
 from mod_pywebsocket._stream_hybi import Frame
 from mod_pywebsocket._stream_hybi import Stream
 from mod_pywebsocket._stream_hybi import StreamOptions
@@ -703,6 +704,110 @@ class _LogicalConnection(object):
         self._read_condition.release()
 
 
+class _InnerMessage(object):
+    """Holds the result of _InnerMessageBuilder.build().
+    """
+
+    def __init__(self, opcode, payload):
+        self.opcode = opcode
+        self.payload = payload
+
+
+class _InnerMessageBuilder(object):
+    """A class that holds the context of inner message fragmentation and
+    builds a message from fragmented inner frame(s).
+    """
+
+    def __init__(self):
+        self._control_opcode = None
+        self._pending_control_fragments = []
+        self._message_opcode = None
+        self._pending_message_fragments = []
+        self._frame_handler = self._handle_first
+
+    def _handle_first(self, frame):
+        if frame.opcode == common.OPCODE_CONTINUATION:
+            raise Exception('Sending invalid continuation opcode')
+
+        if common.is_control_opcode(frame.opcode):
+            return self._process_first_fragmented_control(frame)
+        else:
+            return self._process_first_fragmented_message(frame)
+
+    def _process_first_fragmented_control(self, frame):
+        self._control_opcode = frame.opcode
+        self._pending_control_fragments.append(frame.payload)
+        if not frame.fin:
+            self._frame_handler = self._handle_fragmented_control
+            return None
+        return self._reassemble_fragmented_control()
+
+    def _process_first_fragmented_message(self, frame):
+        self._message_opcode = frame.opcode
+        self._pending_message_fragments.append(frame.payload)
+        if not frame.fin:
+            self._frame_handler = self._handle_fragmented_message
+            return None
+        return self._reassemble_fragmented_message()
+
+    def _handle_fragmented_control(self, frame):
+        if frame.opcode != common.OPCODE_CONTINUATION:
+            raise InvalidFrameException(
+                'Sending invalid opcode %d while sending fragmented control '
+                'message' % frame.opcode)
+        self._pending_control_fragments.append(frame.payload)
+        if not frame.fin:
+            return None
+        return self._reassemble_fragmented_control()
+
+    def _reassemble_fragmented_control(self):
+        opcode = self._control_opcode
+        payload = ''.join(self._pending_control_fragments)
+        self._control_opcode = None
+        self._pending_control_fragments = []
+        if self._message_opcode is not None:
+            self._frame_handler = self._handle_fragmented_message
+        else:
+            self._frame_handler = self._handle_first
+        return _InnerMessage(opcode, payload)
+
+    def _handle_fragmented_message(self, frame):
+        # Sender can interleave a control message while sending fragmented
+        # messages.
+        if common.is_control_opcode(frame.opcode):
+            if self._control_opcode is not None:
+                raise MuxUnexpectedException(
+                    'Should not reach here(Bug in builder)')
+            return self._process_first_fragmented_control(frame)
+
+        if frame.opcode != common.OPCODE_CONTINUATION:
+            raise InvalidFrameException(
+                'Sending invalid opcode %d while sending fragmented message' %
+                frame.opcode)
+        self._pending_message_fragments.append(frame.payload)
+        if not frame.fin:
+            return None
+        return self._reassemble_fragmented_message()
+
+    def _reassemble_fragmented_message(self):
+        opcode = self._message_opcode
+        payload = ''.join(self._pending_message_fragments)
+        self._message_opcode = None
+        self._pending_message_fragments = []
+        self._frame_handler = self._handle_first
+        return _InnerMessage(opcode, payload)
+
+    def build(self, frame):
+        """Build an inner message. Returns an _InnerMessage instance when
+        the given frame is the last fragmented frame. Returns None otherwise.
+
+        Args:
+            frame: an inner frame.
+        """
+
+        return self._frame_handler(frame)
+
+
 class _LogicalStream(Stream):
     """Mimics the Stream class. This class interprets multiplexed WebSocket
     frames.
@@ -721,8 +826,6 @@ class _LogicalStream(Stream):
         stream_options = StreamOptions()
         # Physical stream is responsible for masking.
         stream_options.unmask_receive = False
-        # Control frames can be fragmented on logical channel.
-        stream_options.allow_fragmented_control_frame = True
         Stream.__init__(self, request, stream_options)
 
         self._send_closed = False
@@ -731,8 +834,15 @@ class _LogicalStream(Stream):
         # - Signals the thread waiting for send quota replenished
         self._send_condition = threading.Condition()
 
+        # The opcode of the first frame in messages.
+        self._message_opcode = common.OPCODE_TEXT
+        # True when the last message was fragmented.
+        self._last_message_was_fragmented = False
+
         self._receive_quota = receive_quota
         self._write_inner_frame_semaphore = threading.Semaphore()
+
+        self._inner_message_builder = _InnerMessageBuilder()
 
     def _create_inner_frame(self, opcode, payload, end=True):
         # TODO(bashi): Support extensions that use reserved bits.
@@ -858,7 +968,16 @@ class _LogicalStream(Stream):
             opcode = common.OPCODE_TEXT
             message = message.encode('utf-8')
 
+        if self._last_message_was_fragmented:
+            if opcode != self._message_opcode:
+                raise BadOperationException('Message types are different in '
+                                            'frames for the same message')
+            opcode = common.OPCODE_CONTINUATION
+        else:
+            self._message_opcode = opcode
+
         self._write_inner_frame(opcode, message, end)
+        self._last_message_was_fragmented = not end
 
     def _receive_frame(self):
         """Overrides Stream._receive_frame.
@@ -881,6 +1000,16 @@ class _LogicalStream(Stream):
                            (self._request.channel_id, amount))
         self._request.connection.write_control_data(frame_data)
         return opcode, payload, fin, rsv1, rsv2, rsv3
+
+    def _get_message_from_frame(self, frame):
+        """Overrides Stream._get_message_from_frame.
+        """
+
+        inner_message = self._inner_message_builder.build(frame)
+        if inner_message is None:
+            return None
+        self._original_opcode = inner_message.opcode
+        return inner_message.payload
 
     def receive_message(self):
         """Overrides Stream.receive_message."""

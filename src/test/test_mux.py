@@ -45,6 +45,7 @@ import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 from mod_pywebsocket import common
 from mod_pywebsocket import mux
 from mod_pywebsocket._stream_base import ConnectionTerminatedException
+from mod_pywebsocket._stream_hybi import Frame
 from mod_pywebsocket._stream_hybi import Stream
 from mod_pywebsocket._stream_hybi import StreamOptions
 from mod_pywebsocket._stream_hybi import create_binary_frame
@@ -70,9 +71,7 @@ class _OutgoingChannelData(object):
         self.messages = []
         self.control_messages = []
 
-        self.current_opcode = None
-        self.pending_fragments = []
-
+        self.builder = mux._InnerMessageBuilder()
 
 class _MockMuxConnection(mock.MockBlockingConn):
     """Mock class of mod_python connection for mux."""
@@ -102,6 +101,8 @@ class _MockMuxConnection(mock.MockBlockingConn):
             self._position += length
             return data
 
+        # Parse physical frames and assemble a message if the message is
+        # fragmented.
         opcode, payload, fin, rsv1, rsv2, rsv3 = (
             parse_frame(_receive_bytes, unmask_receive=False))
 
@@ -121,6 +122,7 @@ class _MockMuxConnection(mock.MockBlockingConn):
         self._pending_fragments = []
         self._current_opcode = None
 
+        # Handle a control message on the physical channel.
         # TODO(bashi): Support other opcodes if needed.
         if opcode == common.OPCODE_CLOSE:
             if len(payload) >= 2:
@@ -131,6 +133,7 @@ class _MockMuxConnection(mock.MockBlockingConn):
             self.put_bytes(close_frame)
             return
 
+        # Parse the payload of the message on physical channel.
         parser = mux._MuxFramePayloadParser(inner_frame_data)
         channel_id = parser.read_channel_id()
         if channel_id == mux._CONTROL_CHANNEL_ID:
@@ -141,33 +144,24 @@ class _MockMuxConnection(mock.MockBlockingConn):
             self._channel_data[channel_id] = _OutgoingChannelData()
         channel_data = self._channel_data[channel_id]
 
+        # Parse logical frames and assemble an inner (logical) message.
         (inner_fin, inner_rsv1, inner_rsv2, inner_rsv3, inner_opcode,
          inner_payload) = parser.read_inner_frame()
-        channel_data.pending_fragments.append(inner_payload)
-
-        if channel_data.current_opcode is None:
-            if inner_opcode == common.OPCODE_CONTINUATION:
-                raise Exception('Sending invalid continuation opcode')
-            channel_data.current_opcode = inner_opcode
-        else:
-            if inner_opcode != common.OPCODE_CONTINUATION:
-                raise Exception('Sending invalid opcode %d' % inner_opcode)
-        if not inner_fin:
+        inner_frame = Frame(inner_fin, inner_rsv1, inner_rsv2, inner_rsv3,
+                            inner_opcode, inner_payload)
+        message = channel_data.builder.build(inner_frame)
+        if message is None:
             return
 
-        message = ''.join(channel_data.pending_fragments)
-        channel_data.pending_fragments = []
+        if (message.opcode == common.OPCODE_TEXT or
+            message.opcode == common.OPCODE_BINARY):
+            channel_data.messages.append(message.payload)
 
-        if (channel_data.current_opcode == common.OPCODE_TEXT or
-            channel_data.current_opcode == common.OPCODE_BINARY):
-            channel_data.messages.append(message)
-
-            self.on_data_message(message)
+            self.on_data_message(message.payload)
         else:
             channel_data.control_messages.append(
-                {'opcode': channel_data.current_opcode,
-                 'message': message})
-        channel_data.current_opcode = None
+                {'opcode': message.opcode,
+                 'message': message.payload})
 
     def on_data_message(self, message):
         pass
@@ -228,6 +222,17 @@ class _MuxMockDispatcher(object):
     def _do_ping(self, request, channel_events):
         request.ws_stream.send_ping('Ping!')
 
+    def _do_ping_while_hello_world(self, request, channel_events):
+        request.ws_stream.send_message('Hello ', end=False)
+        request.ws_stream.send_ping('Ping!')
+        request.ws_stream.send_message('World!', end=True)
+
+    def _do_two_ping_while_hello_world(self, request, channel_events):
+        request.ws_stream.send_message('Hello ', end=False)
+        request.ws_stream.send_ping('Ping!')
+        request.ws_stream.send_ping('Pong!')
+        request.ws_stream.send_message('World!', end=True)
+
     def transfer_data(self, request):
         self.channel_events[request.channel_id] = _ChannelEvent()
         self.channel_events[request.channel_id].request = request
@@ -240,6 +245,12 @@ class _MuxMockDispatcher(object):
             elif request.uri.endswith('ping'):
                 self._do_ping(request,
                               self.channel_events[request.channel_id])
+            elif request.uri.endswith('two_ping_while_hello_world'):
+                self._do_two_ping_while_hello_world(
+                    request, self.channel_events[request.channel_id])
+            elif request.uri.endswith('ping_while_hello_world'):
+                self._do_ping_while_hello_world(
+                    request, self.channel_events[request.channel_id])
             else:
                 raise ValueError('Cannot handle path %r' % request.path)
             if not request.server_terminated:
@@ -954,6 +965,228 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertEqual(common.OPCODE_PONG, messages[0]['opcode'])
         self.assertEqual('Hello World!', messages[0]['message'])
 
+    def test_receive_fragmented_ping(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=13,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        # Send a ping with message 'Hello world!' in two fragmented frames.
+        ping_frame1 = _create_logical_frame(channel_id=2,
+                                            message='Hello ',
+                                            fin=False,
+                                            opcode=common.OPCODE_PING)
+        request.connection.put_bytes(ping_frame1)
+        ping_frame2 = _create_logical_frame(channel_id=2,
+                                            message='World!',
+                                            fin=True,
+                                            opcode=common.OPCODE_CONTINUATION)
+        request.connection.put_bytes(ping_frame2)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        messages = request.connection.get_written_control_messages(2)
+        self.assertEqual(common.OPCODE_PONG, messages[0]['opcode'])
+        self.assertEqual('Hello World!', messages[0]['message'])
+
+    def test_receive_fragmented_ping_while_receiving_fragmented_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=19,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        # Send a fragmented frame of message 'Hello '.
+        hello = _create_logical_frame(channel_id=2,
+                                      message='Hello ',
+                                      fin=False)
+        request.connection.put_bytes(hello)
+
+        # Before sending the last fragmented frame of the message, send a
+        # fragmented ping.
+        ping1 = _create_logical_frame(channel_id=2,
+                                      message='Pi',
+                                      fin=False,
+                                      opcode=common.OPCODE_PING)
+        request.connection.put_bytes(ping1)
+        ping2 = _create_logical_frame(channel_id=2,
+                                      message='ng!',
+                                      fin=True,
+                                      opcode=common.OPCODE_CONTINUATION)
+        request.connection.put_bytes(ping2)
+
+        # Send the last fragmented frame of the message.
+        world = _create_logical_frame(channel_id=2,
+                                      message='World!',
+                                      fin=True,
+                                      opcode=common.OPCODE_CONTINUATION)
+        request.connection.put_bytes(world)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(['Hello World!'], messages)
+        control_messages = request.connection.get_written_control_messages(2)
+        self.assertEqual(common.OPCODE_PONG, control_messages[0]['opcode'])
+        self.assertEqual('Ping!', control_messages[0]['message'])
+
+    def test_receive_two_ping_while_receiving_fragmented_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=25,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        # Send a fragmented frame of message 'Hello '.
+        hello = _create_logical_frame(channel_id=2,
+                                      message='Hello ',
+                                      fin=False)
+        request.connection.put_bytes(hello)
+
+        # Before sending the last fragmented frame of the message, send a
+        # fragmented ping and a non-fragmented ping.
+        ping1 = _create_logical_frame(channel_id=2,
+                                      message='Pi',
+                                      fin=False,
+                                      opcode=common.OPCODE_PING)
+        request.connection.put_bytes(ping1)
+        ping2 = _create_logical_frame(channel_id=2,
+                                      message='ng!',
+                                      fin=True,
+                                      opcode=common.OPCODE_CONTINUATION)
+        request.connection.put_bytes(ping2)
+        ping3 = _create_logical_frame(channel_id=2,
+                                      message='Pong!',
+                                      fin=True,
+                                      opcode=common.OPCODE_PING)
+        request.connection.put_bytes(ping3)
+
+        # Send the last fragmented frame of the message.
+        world = _create_logical_frame(channel_id=2,
+                                      message='World!',
+                                      fin=True,
+                                      opcode=common.OPCODE_CONTINUATION)
+        request.connection.put_bytes(world)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(['Hello World!'], messages)
+        control_messages = request.connection.get_written_control_messages(2)
+        self.assertEqual(common.OPCODE_PONG, control_messages[0]['opcode'])
+        self.assertEqual('Ping!', control_messages[0]['message'])
+        self.assertEqual(common.OPCODE_PONG, control_messages[1]['opcode'])
+        self.assertEqual('Pong!', control_messages[1]['message'])
+
+    def test_receive_message_while_receiving_fragmented_ping(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=19,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        # Send a fragmented ping.
+        ping1 = _create_logical_frame(channel_id=2,
+                                      message='Pi',
+                                      fin=False,
+                                      opcode=common.OPCODE_PING)
+        request.connection.put_bytes(ping1)
+
+        # Before sending the last fragmented ping, send a message.
+        # The logical channel (2) should be dropped.
+        message = _create_logical_frame(channel_id=2,
+                                        message='Hello world!',
+                                        fin=True)
+        request.connection.put_bytes(message)
+
+        # Send the last fragmented frame of the message.
+        ping2 = _create_logical_frame(channel_id=2,
+                                      message='ng!',
+                                      fin=True,
+                                      opcode=common.OPCODE_CONTINUATION)
+        request.connection.put_bytes(ping2)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(2, drop_channel.channel_id)
+        # No message should be sent on channel 2.
+        self.assertRaises(KeyError,
+                          request.connection.get_written_messages,
+                          2)
+        self.assertRaises(KeyError,
+                          request.connection.get_written_control_messages,
+                          2)
+
     def test_send_ping(self):
         request = _create_mock_request()
         dispatcher = _MuxMockDispatcher()
@@ -981,6 +1214,140 @@ class MuxHandlerTest(unittest.TestCase):
         messages = request.connection.get_written_control_messages(2)
         self.assertEqual(common.OPCODE_PING, messages[0]['opcode'])
         self.assertEqual('Ping!', messages[0]['message'])
+
+    def test_send_fragmented_ping(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/ping')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Replenish 3 bytes. This isn't enough to send the whole ping frame
+        # because the frame will have 5 bytes message('Ping!'). The frame
+        # should be fragmented.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=3,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        # Wait until the worker is blocked due to send quota shortage.
+        time.sleep(1)
+
+        # Replenish remaining 2 + 1 bytes (including extra cost).
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=3,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        messages = request.connection.get_written_control_messages(2)
+        self.assertEqual(common.OPCODE_PING, messages[0]['opcode'])
+        self.assertEqual('Ping!', messages[0]['message'])
+
+    def test_send_fragmented_ping_while_sending_fragmented_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(
+            path='/ping_while_hello_world')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Application will send:
+        # - text message 'Hello ' with fin=0
+        # - ping with 'Ping!' message
+        # - text message 'World!' with fin=1
+        # Replenish (6 + 1) + (2 + 1) bytes so that the ping will be
+        # fragmented on the logical channel.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=10,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        time.sleep(1)
+
+        # Replenish remaining 3 + 6 bytes.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=9,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(['Hello World!'], messages)
+        control_messages = request.connection.get_written_control_messages(2)
+        self.assertEqual(common.OPCODE_PING, control_messages[0]['opcode'])
+        self.assertEqual('Ping!', control_messages[0]['message'])
+
+    def test_send_fragmented_two_ping_while_sending_fragmented_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(
+            path='/two_ping_while_hello_world')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Application will send:
+        # - text message 'Hello ' with fin=0
+        # - ping with 'Ping!' message
+        # - ping with 'Pong!' message
+        # - text message 'World!' with fin=1
+        # Replenish (6 + 1) + (2 + 1) bytes so that the first ping will be
+        # fragmented on the logical channel.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=10,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        time.sleep(1)
+
+        # Replenish remaining 3 + (5 + 1) + 6 bytes. The second ping won't
+        # be fragmented on the logical channel.
+        flow_control = mux._create_flow_control(channel_id=2,
+                                                replenished_quota=15,
+                                                outer_frame_mask=True)
+        request.connection.put_bytes(flow_control)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(['Hello World!'], messages)
+        control_messages = request.connection.get_written_control_messages(2)
+        self.assertEqual(common.OPCODE_PING, control_messages[0]['opcode'])
+        self.assertEqual('Ping!', control_messages[0]['message'])
+        self.assertEqual(common.OPCODE_PING, control_messages[1]['opcode'])
+        self.assertEqual('Pong!', control_messages[1]['message'])
 
     def test_send_drop_channel(self):
         request = _create_mock_request()

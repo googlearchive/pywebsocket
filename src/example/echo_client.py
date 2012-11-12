@@ -64,6 +64,18 @@ import socket
 import struct
 import sys
 
+_HAS_SSL = False
+_HAS_OPEN_SSL = False
+try:
+    import ssl
+    _HAS_SSL = True
+except ImportError:
+    try:
+        import OpenSSL.SSL
+        _HAS_OPEN_SSL = True
+    except ImportError:
+        pass
+
 from mod_pywebsocket import common
 from mod_pywebsocket.extensions import DeflateFrameExtensionProcessor
 from mod_pywebsocket.stream import Stream
@@ -86,6 +98,11 @@ _PROTOCOL_VERSION_HYBI13 = 'hybi13'
 _PROTOCOL_VERSION_HYBI08 = 'hybi08'
 _PROTOCOL_VERSION_HYBI00 = 'hybi00'
 _PROTOCOL_VERSION_HIXIE75 = 'hixie75'
+
+# Values used by the --tls-version flag.
+_TLS_VERSION_SSL23 = 'ssl23'
+_TLS_VERSION_SSL3 = 'ssl3'
+_TLS_VERSION_TLS1 = 'tls1'
 
 
 class ClientHandshakeError(Exception):
@@ -175,18 +192,53 @@ def _validate_mandatory_header(fields, name,
 class _TLSSocket(object):
     """Wrapper for a TLS connection."""
 
-    def __init__(self, raw_socket):
-        self._ssl = socket.ssl(raw_socket)
+    def __init__(self, raw_socket, tls_version):
+        if _HAS_SSL:
+            if tls_version == _TLS_VERSION_SSL23:
+                version = ssl.PROTOCOL_SSLv23
+            elif tls_version == _TLS_VERSION_SSL3:
+                version = ssl.PROTOCOL_SSLv3
+            elif tls_version == _TLS_VERSION_TLS1:
+                version = ssl.PROTOCOL_TLSv1
+            else:
+                raise ValueError(
+                    'Invalid --tls-version flag: %r' % tls_version)
 
-    def send(self, bytes):
-        return self._ssl.write(bytes)
+            self._tls_socket = ssl.wrap_socket(raw_socket, ssl_version=version)
+        elif _HAS_OPEN_SSL:
+            if tls_version == _TLS_VERSION_SSL23:
+                version = OpenSSL.SSL.SSLv23_METHOD
+            elif tls_version == _TLS_VERSION_SSL3:
+                version = OpenSSL.SSL.SSLv3_METHOD
+            elif tls_version == _TLS_VERSION_TLS1:
+                version = OpenSSL.SSL.TLSv1_METHOD
+            else:
+                raise ValueError(
+                    'Invalid --tls-version flag: %r' % tls_version)
+
+            context = OpenSSL.SSL.Context(version)
+            self._tls_socket = OpenSSL.SSL.Connection(context, raw_socket)
+            # Client mode.
+            self._tls_socket.set_connect_state()
+            self._tls_socket.setblocking(True)
+        else:
+            raise ValueError('No TLS support module is available')
+
+        # Do handshake now (not necessary). Method name is the same for both
+        # libraries.
+        self._tls_socket.do_handshake()
+
+    def send(self, data):
+        return self._tls_socket.write(data)
+
+    def sendall(self, data):
+        return self._tls_socket.sendall(data)
 
     def recv(self, size=-1):
-        return self._ssl.read(size)
+        return self._tls_socket.read(size)
 
     def close(self):
-        # Nothing to do.
-        pass
+        return self._tls_socket.close()
 
 
 class ClientHandshakeBase(object):
@@ -751,7 +803,8 @@ class EchoClient(object):
             self._socket.connect((self._options.server_host,
                                   self._options.server_port))
             if self._options.use_tls:
-                self._socket = _TLSSocket(self._socket)
+                self._socket = _TLSSocket(self._socket,
+                                          self._options.tls_version)
 
             version = self._options.protocol_version
 
@@ -858,6 +911,13 @@ def main():
                       default=True, help='suppress messages')
     parser.add_option('-t', '--tls', dest='use_tls', action='store_true',
                       default=False, help='use TLS (wss://)')
+    parser.add_option('--tls-version', '--tls_version',
+                      dest='tls_version',
+                      type='string', default=_TLS_VERSION_SSL23,
+                      help='TLS/SSL version to use. One of \'' +
+                      _TLS_VERSION_SSL23 + '\' (SSL version 2 or 3), \'' +
+                      _TLS_VERSION_SSL3 + '\' (SSL version 3), \'' +
+                      _TLS_VERSION_TLS1 + '\' (TLS version 1)')
     parser.add_option('-k', '--socket-timeout', '--socket_timeout',
                       dest='socket_timeout', type='int', default=_TIMEOUT_SEC,
                       help='Timeout(sec) for sockets')
@@ -905,6 +965,16 @@ def main():
             'Value %s is obsolete for --protocol_version options' %
             _PROTOCOL_VERSION_HIXIE75)
         sys.exit(1)
+
+    if options.use_tls:
+        if not (_HAS_SSL or _HAS_OPEN_SSL):
+            logging.critical('TLS support requires ssl or pyOpenSSL module.')
+            sys.exit(1)
+
+        if _HAS_SSL:
+            logging.debug('Using ssl module')
+        if _HAS_OPEN_SSL:
+            logging.debug('Using pyOpenSSL module')
 
     # Default port number depends on whether TLS is used.
     if options.server_port == _UNDEFINED_PORT:

@@ -76,6 +76,9 @@ SUPPORTING TLS
 
 To support TLS, run standalone.py with -t, -k, and -c options.
 
+Note that when ssl module is used and the key/cert location is incorrect,
+TLS connection silently fails while pyOpenSSL fails on startup.
+
 
 SUPPORTING CLIENT AUTHENTICATION
 
@@ -968,6 +971,11 @@ def _main(args=None):
             logging.critical(
                     'To use TLS, specify private_key and certificate.')
             sys.exit(1)
+
+        if _HAS_SSL:
+            logging.debug('Using ssl module')
+        if _HAS_OPEN_SSL:
+            logging.debug('Using pyOpenSSL module')
 
     if options.tls_client_auth:
         if not options.use_tls:

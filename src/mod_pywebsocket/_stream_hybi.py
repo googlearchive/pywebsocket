@@ -811,13 +811,15 @@ class Stream(StreamBase):
 
         self._write(frame)
 
-    def close_connection(self, code=common.STATUS_NORMAL_CLOSURE, reason=''):
+    def close_connection(self, code=common.STATUS_NORMAL_CLOSURE, reason='',
+                         wait_response=True):
         """Closes a WebSocket connection.
 
         Args:
             code: Status code for close frame. If code is None, a close
                 frame with empty body will be sent.
             reason: string representing close reason.
+            wait_response: True when caller want to wait the response.
         Raises:
             BadOperationException: when reason is specified with code None
             or reason is not an instance of both str and unicode.
@@ -844,7 +846,7 @@ class Stream(StreamBase):
             code, reason)
 
         if (code == common.STATUS_GOING_AWAY or
-            code == common.STATUS_PROTOCOL_ERROR):
+            code == common.STATUS_PROTOCOL_ERROR) or not wait_response:
             # It doesn't make sense to wait for a close frame if the reason is
             # protocol error or that the server is going away. For some of
             # other reasons, it might not make sense to wait for a close frame,

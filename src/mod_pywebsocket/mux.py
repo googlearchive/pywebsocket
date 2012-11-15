@@ -160,8 +160,7 @@ def _encode_number(number):
 
 
 def _create_add_channel_response(channel_id, encoded_handshake,
-                                 encoding=0, rejected=False,
-                                 outer_frame_mask=False):
+                                 encoding=0, rejected=False):
     if encoding != 0 and encoding != 1:
         raise ValueError('Invalid encoding %d' % encoding)
 
@@ -171,12 +170,10 @@ def _create_add_channel_response(channel_id, encoded_handshake,
              _encode_channel_id(channel_id) +
              _encode_number(len(encoded_handshake)) +
              encoded_handshake)
-    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=outer_frame_mask)
+    return block
 
 
-def _create_drop_channel(channel_id, code=None, message='',
-                         outer_frame_mask=False):
+def _create_drop_channel(channel_id, code=None, message=''):
     if len(message) > 0 and code is None:
         raise ValueError('Code must be specified if message is specified')
 
@@ -189,36 +186,31 @@ def _create_drop_channel(channel_id, code=None, message='',
         reason_size = _encode_number(len(reason))
         block += reason_size + reason
 
-    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=outer_frame_mask)
+    return block
 
 
-def _create_flow_control(channel_id, replenished_quota,
-                         outer_frame_mask=False):
+def _create_flow_control(channel_id, replenished_quota):
     first_byte = _MUX_OPCODE_FLOW_CONTROL << 5
     block = (chr(first_byte) +
              _encode_channel_id(channel_id) +
              _encode_number(replenished_quota))
-    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=outer_frame_mask)
+    return block
 
 
-def _create_new_channel_slot(slots, send_quota, outer_frame_mask=False):
+def _create_new_channel_slot(slots, send_quota):
     if slots < 0 or send_quota < 0:
         raise ValueError('slots and send_quota must be non-negative.')
     first_byte = _MUX_OPCODE_NEW_CHANNEL_SLOT << 5
     block = (chr(first_byte) +
              _encode_number(slots) +
              _encode_number(send_quota))
-    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=outer_frame_mask)
+    return block
 
 
-def _create_fallback_new_channel_slot(outer_frame_mask=False):
+def _create_fallback_new_channel_slot():
     first_byte = (_MUX_OPCODE_NEW_CHANNEL_SLOT << 5) | 1 # Set the F flag
     block = (chr(first_byte) + _encode_number(0) + _encode_number(0))
-    payload = _encode_channel_id(_CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=outer_frame_mask)
+    return block
 
 
 def _parse_request_text(request_text):
@@ -845,10 +837,18 @@ class _LogicalStream(Stream):
         self._inner_message_builder = _InnerMessageBuilder()
 
     def _create_inner_frame(self, opcode, payload, end=True):
-        # TODO(bashi): Support extensions that use reserved bits.
-        first_byte = (end << 7) | opcode
-        return (_encode_channel_id(self._request.channel_id) +
-                chr(first_byte) + payload)
+        frame = Frame(fin=end, opcode=opcode, payload=payload)
+        for frame_filter in self._options.outgoing_frame_filters:
+            frame_filter.filter(frame)
+
+        if len(payload) != len(frame.payload):
+            raise MuxUnexpectedException(
+                'Mux extension must not be used after extensions which change '
+                ' frame boundary')
+
+        first_byte = ((frame.fin << 7) | (frame.rsv1 << 6) |
+                      (frame.rsv2 << 5) | (frame.rsv3 << 4) | frame.opcode)
+        return chr(first_byte) + frame.payload
 
     def _write_inner_frame(self, opcode, payload, end=True):
         payload_length = len(payload)
@@ -903,8 +903,6 @@ class _LogicalStream(Stream):
                         opcode,
                         payload[write_position:write_position+write_length],
                         inner_frame_end)
-                    frame_data = self._writer.build(
-                        inner_frame, end=True, binary=True)
                     self._send_quota -= write_length
                     self._logger.debug('Consumed quota=%d, remaining=%d' %
                                        (write_length, self._send_quota))
@@ -913,8 +911,8 @@ class _LogicalStream(Stream):
 
                 # Writing data will block the worker so we need to release
                 # _send_condition before writing.
-                self._logger.debug('Sending inner frame: %r' % frame_data)
-                self._request.connection.write(frame_data)
+                self._logger.debug('Sending inner frame: %r' % inner_frame)
+                self._request.connection.write(inner_frame)
                 write_position += write_length
 
                 opcode = common.OPCODE_CONTINUATION
@@ -967,6 +965,9 @@ class _LogicalStream(Stream):
         else:
             opcode = common.OPCODE_TEXT
             message = message.encode('utf-8')
+
+        for message_filter in self._options.outgoing_message_filters:
+            message = message_filter.filter(message, end, binary)
 
         if self._last_message_was_fragmented:
             if opcode != self._message_opcode:
@@ -1105,10 +1106,12 @@ class _PhysicalConnectionWriter(threading.Thread):
         # When set, make this thread stop accepting new data, flush pending
         # data and exit.
         self._stop_requested = False
+        # The close code of the physical connection.
+        self._close_code = common.STATUS_NORMAL_CLOSURE
         # Deque for passing write data. It's protected by _deque_condition
         # until _stop_requested is set.
         self._deque = collections.deque()
-        # - Protects _deque and _stop_requested
+        # - Protects _deque, _stop_requested and _close_code
         # - Signals threads waiting for them to be available
         self._deque_condition = threading.Condition()
 
@@ -1134,8 +1137,11 @@ class _PhysicalConnectionWriter(threading.Thread):
             self._deque_condition.release()
 
     def _write_data(self, outgoing_data):
+        message = (_encode_channel_id(outgoing_data.channel_id) +
+                   outgoing_data.data)
         try:
-            self._mux_handler.physical_connection.write(outgoing_data.data)
+            self._mux_handler.physical_stream.send_message(
+                message=message, end=True, binary=True)
         except Exception, e:
             util.prepend_message_to_exception(
                 'Failed to send message to %r: ' %
@@ -1161,7 +1167,7 @@ class _PhysicalConnectionWriter(threading.Thread):
                 self._write_data(outgoing_data)
                 self._deque_condition.acquire()
 
-            # Flush deque
+            # Flush deque.
             #
             # At this point, self._deque_condition is always acquired.
             try:
@@ -1170,14 +1176,26 @@ class _PhysicalConnectionWriter(threading.Thread):
                     self._write_data(outgoing_data)
             finally:
                 self._deque_condition.release()
+
+            # Close physical connection.
+            try:
+                # Don't wait the response here. The response will be read
+                # by the reader thread.
+                self._mux_handler.physical_stream.close_connection(
+                    self._close_code, wait_response=False)
+            except Exception, e:
+                util.prepend_message_to_exception(
+                    'Failed to close the physical connection: %r' % e)
+                raise
         finally:
             self._mux_handler.notify_writer_done()
 
-    def stop(self):
+    def stop(self, close_code=common.STATUS_NORMAL_CLOSURE):
         """Stops the writer thread."""
 
         self._deque_condition.acquire()
         self._stop_requested = True
+        self._close_code = close_code
         self._deque_condition.notify()
         self._deque_condition.release()
 
@@ -1815,8 +1833,7 @@ class _MuxHandler(object):
 
         self._logger.debug('Failing the physical connection...')
         self._send_drop_channel(_CONTROL_CHANNEL_ID, code, message)
-        self.physical_stream.close_connection(
-            common.STATUS_INTERNAL_ENDPOINT_ERROR)
+        self._writer.stop(common.STATUS_INTERNAL_ENDPOINT_ERROR)
 
     def fail_logical_channel(self, channel_id, code, message):
         """Fail a logical channel.

@@ -279,19 +279,31 @@ def _create_mock_request(connection=None):
 def _create_add_channel_request_frame(channel_id, encoding, encoded_handshake):
     # Allow invalid encoding for testing.
     first_byte = ((mux._MUX_OPCODE_ADD_CHANNEL_REQUEST << 5) | encoding)
-    block = (chr(first_byte) +
-             mux._encode_channel_id(channel_id) +
-             mux._encode_number(len(encoded_handshake)) +
-             encoded_handshake)
-    payload = mux._encode_channel_id(mux._CONTROL_CHANNEL_ID) + block
-    return create_binary_frame(payload, mask=True)
+    payload = (chr(first_byte) +
+               mux._encode_channel_id(channel_id) +
+               mux._encode_number(len(encoded_handshake)) +
+               encoded_handshake)
+    return create_binary_frame(
+        (mux._encode_channel_id(mux._CONTROL_CHANNEL_ID) + payload), mask=True)
+
+
+def _create_drop_channel_frame(channel_id, code=None, message=''):
+    payload = mux._create_drop_channel(channel_id, code, message)
+    return create_binary_frame(
+        (mux._encode_channel_id(mux._CONTROL_CHANNEL_ID) + payload), mask=True)
+
+
+def _create_flow_control_frame(channel_id, replenished_quota):
+    payload = mux._create_flow_control(channel_id, replenished_quota)
+    return create_binary_frame(
+        (mux._encode_channel_id(mux._CONTROL_CHANNEL_ID) + payload), mask=True)
 
 
 def _create_logical_frame(channel_id, message, opcode=common.OPCODE_BINARY,
                           fin=True, mask=True):
     bits = chr((fin << 7) | opcode)
     payload = mux._encode_channel_id(channel_id) + bits + message
-    return create_binary_frame(payload, mask=mask)
+    return create_binary_frame(payload, mask=True)
 
 
 def _create_request_header(path='/echo'):
@@ -465,22 +477,22 @@ class MuxTest(unittest.TestCase):
                                                 encoded_handshake='FooBar',
                                                 encoding=0,
                                                 rejected=False)
-        self.assertEqual('\x82\x0a\x00\x20\x01\x06FooBar', data)
+        self.assertEqual('\x20\x01\x06FooBar', data)
 
         data = mux._create_add_channel_response(channel_id=2,
                                                 encoded_handshake='Hello',
                                                 encoding=1,
                                                 rejected=True)
-        self.assertEqual('\x82\x09\x00\x31\x02\x05Hello', data)
+        self.assertEqual('\x31\x02\x05Hello', data)
 
     def test_create_drop_channel(self):
         data = mux._create_drop_channel(channel_id=1)
-        self.assertEqual('\x82\x04\x00\x60\x01\x00', data)
+        self.assertEqual('\x60\x01\x00', data)
 
         data = mux._create_drop_channel(channel_id=1,
                                         code=2000,
                                         message='error')
-        self.assertEqual('\x82\x0b\x00\x60\x01\x07\x07\xd0error', data)
+        self.assertEqual('\x60\x01\x07\x07\xd0error', data)
 
         # reason must be empty if code is None
         self.assertRaises(ValueError,
@@ -514,9 +526,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         encoded_handshake = _create_request_header(path='/echo')
@@ -525,9 +536,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=3,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -610,13 +620,12 @@ class MuxHandlerTest(unittest.TestCase):
 
         # Close the channel 2. The worker should be notified of the end of
         # writer thread and stop waiting for send quota to be replenished.
-        drop_channel = mux._create_drop_channel(channel_id=2,
-                                                outer_frame_mask=True)
+        drop_channel = _create_drop_channel_frame(channel_id=2)
+
         request.connection.put_bytes(drop_channel)
 
         # Make sure the channel 1 is also closed.
-        drop_channel = mux._create_drop_channel(channel_id=1,
-                                                outer_frame_mask=True)
+        drop_channel = _create_drop_channel_frame(channel_id=1)
         request.connection.put_bytes(drop_channel)
 
         # All threads should be done.
@@ -635,9 +644,8 @@ class MuxHandlerTest(unittest.TestCase):
             channel_id=2, encoding=1, encoded_handshake=delta)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -670,9 +678,8 @@ class MuxHandlerTest(unittest.TestCase):
             channel_id=2, encoding=1, encoded_handshake=delta)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -714,9 +721,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         delta = 'GET /echo HTTP/1.1\r\n\r\n'
@@ -724,9 +730,8 @@ class MuxHandlerTest(unittest.TestCase):
             channel_id=3, encoding=1, encoded_handshake=delta)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=3,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -778,9 +783,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         # Remove Sec-WebSocket-Protocol header.
@@ -791,9 +795,8 @@ class MuxHandlerTest(unittest.TestCase):
             channel_id=3, encoding=1, encoded_handshake=delta)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=3,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -917,8 +920,7 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        drop_channel = mux._create_drop_channel(channel_id=2,
-                                                outer_frame_mask=True)
+        drop_channel = _create_drop_channel_frame(channel_id=2)
         request.connection.put_bytes(drop_channel)
 
         # Terminate implicitly opened channel.
@@ -944,9 +946,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=13,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=13)
         request.connection.put_bytes(flow_control)
 
         ping_frame = _create_logical_frame(channel_id=2,
@@ -979,9 +980,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=13,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=13)
         request.connection.put_bytes(flow_control)
 
         # Send a ping with message 'Hello world!' in two fragmented frames.
@@ -1021,9 +1021,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=19,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=19)
         request.connection.put_bytes(flow_control)
 
         # Send a fragmented frame of message 'Hello '.
@@ -1079,9 +1078,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=25,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=25)
         request.connection.put_bytes(flow_control)
 
         # Send a fragmented frame of message 'Hello '.
@@ -1144,9 +1142,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=19,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                replenished_quota=19)
         request.connection.put_bytes(flow_control)
 
         # Send a fragmented ping.
@@ -1201,9 +1198,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1232,18 +1228,16 @@ class MuxHandlerTest(unittest.TestCase):
         # Replenish 3 bytes. This isn't enough to send the whole ping frame
         # because the frame will have 5 bytes message('Ping!'). The frame
         # should be fragmented.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=3,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=3)
         request.connection.put_bytes(flow_control)
 
         # Wait until the worker is blocked due to send quota shortage.
         time.sleep(1)
 
         # Replenish remaining 2 + 1 bytes (including extra cost).
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=3,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=3)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1276,17 +1270,15 @@ class MuxHandlerTest(unittest.TestCase):
         # - text message 'World!' with fin=1
         # Replenish (6 + 1) + (2 + 1) bytes so that the ping will be
         # fragmented on the logical channel.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=10,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=10)
         request.connection.put_bytes(flow_control)
 
         time.sleep(1)
 
         # Replenish remaining 3 + 6 bytes.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=9,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=9)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1322,18 +1314,16 @@ class MuxHandlerTest(unittest.TestCase):
         # - text message 'World!' with fin=1
         # Replenish (6 + 1) + (2 + 1) bytes so that the first ping will be
         # fragmented on the logical channel.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=10,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=10)
         request.connection.put_bytes(flow_control)
 
         time.sleep(1)
 
         # Replenish remaining 3 + (5 + 1) + 6 bytes. The second ping won't
         # be fragmented on the logical channel.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=15,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=15)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1383,9 +1373,8 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         # Replenish 5 bytes.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=5)
         request.connection.put_bytes(flow_control)
 
         # Send 10 bytes. The server will try echo back 10 bytes.
@@ -1393,9 +1382,8 @@ class MuxHandlerTest(unittest.TestCase):
             _create_logical_frame(channel_id=2, message='HelloWorld'))
 
         # Replenish 5 + 1 (per-message extra cost) bytes.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1458,16 +1446,14 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='Hello'))
         # Replenish only len('World') bytes.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=5,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=5)
         request.connection.put_bytes(flow_control)
         # Server should not callback for this message.
         request.connection.put_bytes(
@@ -1527,9 +1513,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=2,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=2)
         request.connection.put_bytes(flow_control)
         # Send an empty message. Pywebsocket always replenishes 1 byte quota
         # for empty message
@@ -1574,9 +1559,8 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
         request.connection.put_bytes(
             _create_logical_frame(channel_id=2, message='He', fin=False,
@@ -1610,19 +1594,16 @@ class MuxHandlerTest(unittest.TestCase):
         request.connection.put_bytes(add_channel_request)
 
         # Replenish total 6 bytes in 3 FlowControls.
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=1,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=1)
         request.connection.put_bytes(flow_control)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=2,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=2)
         request.connection.put_bytes(flow_control)
 
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=3,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=3)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1647,9 +1628,8 @@ class MuxHandlerTest(unittest.TestCase):
             channel_id=2, encoding=0,
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
-        flow_control = mux._create_flow_control(channel_id=2,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1661,9 +1641,8 @@ class MuxHandlerTest(unittest.TestCase):
             channel_id=3, encoding=0,
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
-        flow_control = mux._create_flow_control(channel_id=3,
-                                                replenished_quota=6,
-                                                outer_frame_mask=True)
+        flow_control = _create_flow_control_frame(channel_id=3,
+                                                  replenished_quota=6)
         request.connection.put_bytes(flow_control)
 
         request.connection.put_bytes(
@@ -1700,10 +1679,9 @@ class MuxHandlerTest(unittest.TestCase):
             encoded_handshake=encoded_handshake)
         request.connection.put_bytes(add_channel_request)
         # Replenish 0x7FFFFFFFFFFFFFFF bytes twice.
-        flow_control = mux._create_flow_control(
+        flow_control = _create_flow_control_frame(
             channel_id=2,
-            replenished_quota=0x7FFFFFFFFFFFFFFF,
-            outer_frame_mask=True)
+            replenished_quota=0x7FFFFFFFFFFFFFFF)
         request.connection.put_bytes(flow_control)
         request.connection.put_bytes(flow_control)
 

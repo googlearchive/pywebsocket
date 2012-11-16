@@ -33,18 +33,21 @@
 """Tests for mux module."""
 
 import Queue
+import copy
 import logging
 import optparse
-import unittest
 import struct
 import sys
+import unittest
 import time
+import zlib
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket import common
 from mod_pywebsocket import mux
 from mod_pywebsocket._stream_base import ConnectionTerminatedException
+from mod_pywebsocket._stream_base import UnsupportedFrameException
 from mod_pywebsocket._stream_hybi import Frame
 from mod_pywebsocket._stream_hybi import Stream
 from mod_pywebsocket._stream_hybi import StreamOptions
@@ -262,7 +265,7 @@ class _MuxMockDispatcher(object):
             raise
 
 
-def _create_mock_request(connection=None):
+def _create_mock_request(connection=None, logical_channel_extensions=None):
     if connection is None:
         connection = _MockMuxConnection()
 
@@ -272,6 +275,8 @@ def _create_mock_request(connection=None):
     request.ws_stream = Stream(request, options=StreamOptions())
     request.mux_processor = MuxExtensionProcessor(
         common.ExtensionParameter(common.MUX_EXTENSION))
+    if logical_channel_extensions is not None:
+        request.mux_processor.set_extensions(logical_channel_extensions)
     request.mux_processor.set_quota(8 * 1024)
     return request
 
@@ -300,19 +305,23 @@ def _create_flow_control_frame(channel_id, replenished_quota):
 
 
 def _create_logical_frame(channel_id, message, opcode=common.OPCODE_BINARY,
-                          fin=True, mask=True):
-    bits = chr((fin << 7) | opcode)
+                          fin=True, rsv1=False, rsv2=False, rsv3=False,
+                          mask=True):
+    bits = chr((fin << 7) | (rsv1 << 6) | (rsv2 << 5) | (rsv3 << 4) | opcode)
     payload = mux._encode_channel_id(channel_id) + bits + message
     return create_binary_frame(payload, mask=True)
 
 
-def _create_request_header(path='/echo'):
-    return (
+def _create_request_header(path='/echo', extensions=None):
+    headers = (
         'GET %s HTTP/1.1\r\n'
         'Host: server.example.com\r\n'
         'Connection: Upgrade\r\n'
-        'Origin: http://example.com\r\n'
-        '\r\n') % path
+        'Origin: http://example.com\r\n') % path
+    if extensions:
+        headers += '%s: %s' % (
+            common.SEC_WEBSOCKET_EXTENSIONS_HEADER, extensions)
+    return headers
 
 
 class MuxTest(unittest.TestCase):
@@ -829,6 +838,107 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertEqual(
             None,
             dispatcher.channel_events[3].request.ws_protocol)
+
+    def test_add_channel_delta_encoding_permessage_compress(self):
+        # Enable permessage compress extension on the implicitly opened channel.
+        extensions = common.parse_extensions(
+            '%s; method=deflate' % common.PERMESSAGE_COMPRESSION_EXTENSION)
+        request = _create_mock_request(
+            logical_channel_extensions=extensions)
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        delta = 'GET /echo HTTP/1.1\r\n\r\n'
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=1, encoded_handshake=delta)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=20)
+        request.connection.put_bytes(flow_control)
+
+        # Send compressed 'Hello' on logical channel 1 and 2.
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message=compressed_hello,
+                                  rsv1=True))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message=compressed_hello,
+                                  rsv1=True))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        self.assertEqual(['Hello'], dispatcher.channel_events[1].messages)
+        self.assertEqual(['Hello'], dispatcher.channel_events[2].messages)
+        # Written 'Hello's should be compressed.
+        messages = request.connection.get_written_messages(1)
+        self.assertEqual(1, len(messages))
+        self.assertEqual(compressed_hello, messages[0])
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(1, len(messages))
+        self.assertEqual(compressed_hello, messages[0])
+
+    def test_add_channel_delta_encoding_remove_extensions(self):
+        # Enable permessage compress extension on the implicitly opened channel.
+        extensions = common.parse_extensions(
+            '%s; method=deflate' % common.PERMESSAGE_COMPRESSION_EXTENSION)
+        request = _create_mock_request(
+            logical_channel_extensions=extensions)
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        # Remove permessage compress extension.
+        delta = ('GET /echo HTTP/1.1\r\n'
+                 'Sec-WebSocket-Extensions:\r\n'
+                 '\r\n')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=1, encoded_handshake=delta)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=20)
+        request.connection.put_bytes(flow_control)
+
+        # Send compressed message on logical channel 2. The message should
+        # be rejected (since rsv1 is set).
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message=compressed_hello,
+                                  rsv1=True))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        drop_channel = next(
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL)
+        self.assertEqual(mux._DROP_CODE_NORMAL_CLOSURE, drop_channel.drop_code)
+        self.assertEqual(2, drop_channel.channel_id)
+        # UnsupportedFrameException should be raised on logical channel 2.
+        self.assertTrue(isinstance(dispatcher.channel_events[2].exception,
+                                   UnsupportedFrameException))
 
     def test_add_channel_invalid_encoding(self):
         request = _create_mock_request()
@@ -1801,6 +1911,102 @@ class MuxHandlerTest(unittest.TestCase):
                          drop_channel.drop_code)
         self.assertEqual(common.STATUS_INTERNAL_ENDPOINT_ERROR,
                          request.connection.server_close_code)
+
+    def test_permessage_compress(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        # Enable permessage compress extension on logical channel 2.
+        extensions = '%s; method=deflate' % (
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        encoded_handshake = _create_request_header(path='/echo',
+                                                   extensions=extensions)
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        flow_control = _create_flow_control_frame(channel_id=2,
+                                                  replenished_quota=20)
+        request.connection.put_bytes(flow_control)
+
+        # Send compressed 'Hello' twice.
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_hello1 = compress.compress('Hello')
+        compressed_hello1 += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello1 = compressed_hello1[:-4]
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message=compressed_hello1,
+                                  rsv1=True))
+        compressed_hello2 = compress.compress('Hello')
+        compressed_hello2 += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello2 = compressed_hello2[:-4]
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message=compressed_hello2,
+                                  rsv1=True))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=2, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        self.assertEqual(['Hello', 'Hello'],
+                         dispatcher.channel_events[2].messages)
+        # Written 'Hello's should be compressed.
+        messages = request.connection.get_written_messages(2)
+        self.assertEqual(2, len(messages))
+        self.assertEqual(compressed_hello1, messages[0])
+        self.assertEqual(compressed_hello2, messages[1])
+
+
+    def test_permessage_compress_fragmented_message(self):
+        extensions = common.parse_extensions(
+            '%s; method=deflate' % common.PERMESSAGE_COMPRESSION_EXTENSION)
+        request = _create_mock_request(
+            logical_channel_extensions=extensions)
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        # Send compressed 'HelloHelloHello' as fragmented message.
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_hello = compress.compress('HelloHelloHello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+
+        m = len(compressed_hello) / 2
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1,
+                                  message=compressed_hello[:m],
+                                  fin=False, rsv1=True,
+                                  opcode=common.OPCODE_TEXT))
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1,
+                                  message=compressed_hello[m:],
+                                  fin=True, rsv1=False,
+                                  opcode=common.OPCODE_CONTINUATION))
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        self.assertEqual(['HelloHelloHello'],
+                         dispatcher.channel_events[1].messages)
+        messages = request.connection.get_written_messages(1)
+        self.assertEqual(1, len(messages))
+        self.assertEqual(compressed_hello, messages[0])
+
 
 if __name__ == '__main__':
     unittest.main()

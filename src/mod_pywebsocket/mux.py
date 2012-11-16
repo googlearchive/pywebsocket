@@ -805,17 +805,16 @@ class _LogicalStream(Stream):
     frames.
     """
 
-    def __init__(self, request, send_quota, receive_quota):
+    def __init__(self, request, stream_options, send_quota, receive_quota):
         """Constructs an instance.
 
         Args:
             request: _LogicalRequest instance.
+            stream_options: StreamOptions instance.
             send_quota: Initial send quota.
             receive_quota: Initial receive quota.
         """
 
-        # TODO(bashi): Support frame filters.
-        stream_options = StreamOptions()
         # Physical stream is responsible for masking.
         stream_options.unmask_receive = False
         Stream.__init__(self, request, stream_options)
@@ -1314,8 +1313,9 @@ class _MuxHandshaker(hybi.Handshaker):
 
         self._logger.debug('Creating logical stream for %d' %
                            self._request.channel_id)
-        return _LogicalStream(self._request, self._send_quota,
-                              self._receive_quota)
+        return _LogicalStream(
+            self._request, stream_options, self._send_quota,
+            self._receive_quota)
 
     def _create_handshake_response(self, accept):
         """Override hybi._create_handshake_response."""
@@ -1390,8 +1390,6 @@ class _HandshakeDeltaBase(object):
                     del headers[key]
                 else:
                     headers[key] = value
-        # TODO(bashi): Support extensions
-        headers['Sec-WebSocket-Extensions'] = ''
         return headers
 
 
@@ -1453,8 +1451,12 @@ class _MuxHandler(object):
 
         # Create "Implicitly Opened Connection".
         logical_connection = _LogicalConnection(self, _DEFAULT_CHANNEL_ID)
-        self._handshake_base = _HandshakeDeltaBase(
-            self.original_request.headers_in)
+        headers = copy.copy(self.original_request.headers_in)
+        # Add extensions for logical channel.
+        headers[common.SEC_WEBSOCKET_EXTENSIONS_HEADER] = (
+            common.format_extensions(
+                self.original_request.mux_processor.extensions()))
+        self._handshake_base = _HandshakeDeltaBase(headers)
         logical_request = _LogicalRequest(
             _DEFAULT_CHANNEL_ID,
             self.original_request.method,

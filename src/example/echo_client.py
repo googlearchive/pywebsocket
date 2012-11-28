@@ -244,6 +244,9 @@ class _TLSSocket(object):
     def close(self):
         return self._tls_socket.close()
 
+    def getpeername(self):
+        return self._tls_socket.getpeername()
+
 
 class ClientHandshakeBase(object):
     """A base class for WebSocket opening handshake processors for each

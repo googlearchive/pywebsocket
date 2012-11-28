@@ -2007,6 +2007,80 @@ class MuxHandlerTest(unittest.TestCase):
         self.assertEqual(1, len(messages))
         self.assertEqual(compressed_hello, messages[0])
 
+    def test_receive_bad_fragmented_message(self):
+        request = _create_mock_request()
+        dispatcher = _MuxMockDispatcher()
+        mux_handler = mux._MuxHandler(request, dispatcher)
+        mux_handler.start()
+        mux_handler.add_channel_slots(mux._INITIAL_NUMBER_OF_CHANNEL_SLOTS,
+                                      mux._INITIAL_QUOTA_FOR_CLIENT)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=2, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Send a frame with fin=False, and then send a frame with
+        # opcode=TEXT (not CONTINUATION). Logical channel 2 should be dropped.
+        frame1 = _create_logical_frame(channel_id=2,
+                                       message='Hello ',
+                                       fin=False,
+                                       opcode=common.OPCODE_TEXT)
+        request.connection.put_bytes(frame1)
+        frame2 = _create_logical_frame(channel_id=2,
+                                       message='World!',
+                                       fin=True,
+                                       opcode=common.OPCODE_TEXT)
+        request.connection.put_bytes(frame2)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=3, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Send a frame with opcode=CONTINUATION without a preceding frame
+        # the fin of which is not set. Logical channel 3 should be dropped.
+        frame3 = _create_logical_frame(channel_id=3,
+                                       message='Hello',
+                                       fin=True,
+                                       opcode=common.OPCODE_CONTINUATION)
+        request.connection.put_bytes(frame3)
+
+        encoded_handshake = _create_request_header(path='/echo')
+        add_channel_request = _create_add_channel_request_frame(
+            channel_id=4, encoding=0,
+            encoded_handshake=encoded_handshake)
+        request.connection.put_bytes(add_channel_request)
+
+        # Send a frame with opcode=PING and fin=False, and then send a frame
+        # with opcode=TEXT (not CONTINUATION). Logical channel 4 should be
+        # dropped.
+        frame4 = _create_logical_frame(channel_id=4,
+                                       message='Ping',
+                                       fin=False,
+                                       opcode=common.OPCODE_PING)
+        request.connection.put_bytes(frame4)
+        frame5 = _create_logical_frame(channel_id=4,
+                                       message='Hello',
+                                       fin=True,
+                                       opcode=common.OPCODE_TEXT)
+        request.connection.put_bytes(frame5)
+
+        request.connection.put_bytes(
+            _create_logical_frame(channel_id=1, message='Goodbye'))
+
+        self.assertTrue(mux_handler.wait_until_done(timeout=2))
+
+        drop_channels = [
+            b for b in request.connection.get_written_control_blocks()
+            if b.opcode == mux._MUX_OPCODE_DROP_CHANNEL]
+        self.assertEqual(3, len(drop_channels))
+        for d in drop_channels:
+            self.assertEqual(mux._DROP_CODE_BAD_FRAGMENTATION,
+                             d.drop_code)
+
 
 if __name__ == '__main__':
     unittest.main()

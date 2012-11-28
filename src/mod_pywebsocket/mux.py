@@ -100,6 +100,7 @@ _DROP_CODE_UNKNOWN_REQUEST_ENCODING = 2010
 _DROP_CODE_SEND_QUOTA_VIOLATION = 3005
 _DROP_CODE_SEND_QUOTA_OVERFLOW = 3006
 _DROP_CODE_ACKNOWLEDGED = 3008
+_DROP_CODE_BAD_FRAGMENTATION = 3009
 
 
 class MuxUnexpectedException(Exception):
@@ -719,7 +720,7 @@ class _InnerMessageBuilder(object):
 
     def _handle_first(self, frame):
         if frame.opcode == common.OPCODE_CONTINUATION:
-            raise Exception('Sending invalid continuation opcode')
+            raise InvalidFrameException('Sending invalid continuation opcode')
 
         if common.is_control_opcode(frame.opcode):
             return self._process_first_fragmented_control(frame)
@@ -795,6 +796,10 @@ class _InnerMessageBuilder(object):
 
         Args:
             frame: an inner frame.
+        Raises:
+            InvalidFrameException: when received invalid opcode. (e.g.
+                receiving non continuation data opcode but the fin flag of
+                the previous inner frame was not set.)
         """
 
         return self._frame_handler(frame)
@@ -1005,7 +1010,12 @@ class _LogicalStream(Stream):
         """Overrides Stream._get_message_from_frame.
         """
 
-        inner_message = self._inner_message_builder.build(frame)
+        try:
+            inner_message = self._inner_message_builder.build(frame)
+        except InvalidFrameException:
+            raise LogicalChannelError(
+                self._request.channel_id, _DROP_CODE_BAD_FRAGMENTATION)
+
         if inner_message is None:
             return None
         self._original_opcode = inner_message.opcode
@@ -1275,6 +1285,9 @@ class _Worker(threading.Thread):
         try:
             # Non-critical exceptions will be handled by dispatcher.
             self._mux_handler.dispatcher.transfer_data(self._request)
+        except LogicalChannelError, e:
+            self._mux_handler.fail_logical_channel(
+                e.channel_id, e.drop_code, e.message)
         finally:
             self._mux_handler.notify_worker_done(self._request.channel_id)
 

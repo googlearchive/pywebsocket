@@ -668,7 +668,7 @@ class Stream(StreamBase):
                 reason = ''
         self._send_closing_handshake(code, reason)
         self._logger.debug(
-            'Sent ack for client-initiated closing handshake '
+            'Acknowledged closing handshake initiated by the peer '
             '(code=%r, reason=%r)', code, reason)
 
     def _process_ping_message(self, message):
@@ -842,7 +842,7 @@ class Stream(StreamBase):
 
         self._send_closing_handshake(code, reason)
         self._logger.debug(
-            'Sent server-initiated closing handshake (code=%r, reason=%r)',
+            'Initiated closing handshake (code=%r, reason=%r)',
             code, reason)
 
         if (code == common.STATUS_GOING_AWAY or

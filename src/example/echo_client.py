@@ -193,6 +193,8 @@ class _TLSSocket(object):
     """Wrapper for a TLS connection."""
 
     def __init__(self, raw_socket, tls_version):
+        self._logger = util.get_class_logger(self)
+
         if _HAS_SSL:
             if tls_version == _TLS_VERSION_SSL23:
                 version = ssl.PROTOCOL_SSLv23
@@ -205,6 +207,9 @@ class _TLSSocket(object):
                     'Invalid --tls-version flag: %r' % tls_version)
 
             self._tls_socket = ssl.wrap_socket(raw_socket, ssl_version=version)
+
+            # Print cipher in use. Handshake is done on wrap_socket call.
+            self._logger.info("Cipher: %s", self._tls_socket.cipher())
         elif _HAS_OPEN_SSL:
             if tls_version == _TLS_VERSION_SSL23:
                 version = OpenSSL.SSL.SSLv23_METHOD
@@ -221,12 +226,11 @@ class _TLSSocket(object):
             # Client mode.
             self._tls_socket.set_connect_state()
             self._tls_socket.setblocking(True)
+
+            # Do handshake now (not necessary).
+            self._tls_socket.do_handshake()
         else:
             raise ValueError('No TLS support module is available')
-
-        # Do handshake now (not necessary). Method name is the same for both
-        # libraries.
-        self._tls_socket.do_handshake()
 
     def send(self, data):
         return self._tls_socket.write(data)

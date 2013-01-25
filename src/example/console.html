@@ -47,6 +47,7 @@ var socket = null;
 var showTimeStamp = false;
 
 var addressBox = null;
+var protocolsBox = null;
 var logBox = null;
 var messageBox = null;
 var fileBox = null;
@@ -104,17 +105,50 @@ function sendfile() {
   addToLog('> Send ' + files[0].name);
 }
 
+function parseProtocols(protocolsText) {
+  var protocols = protocolsText.split(',');
+  for (var i = 0; i < protocols.length; ++i) {
+    protocols[i] = protocols[i].trim();
+  }
+
+  if (protocols.length == 0) {
+    // Don't pass.
+    protocols = null;
+  } else if (protocols.length == 1) {
+    if (protocols[0].length == 0) {
+      // Don't pass.
+      protocols = null;
+    } else {
+      // Pass as a string.
+      protocols = protocols[0];
+    }
+  }
+
+  return protocols;
+}
+
 function connect() {
+  var url = addressBox.value;
+  var protocols = parseProtocols(protocolsBox.value);
+
   if ('WebSocket' in window) {
-    socket = new WebSocket(addressBox.value);
+    if (protocols) {
+      socket = new WebSocket(url, protocols);
+    } else {
+      socket = new WebSocket(url);
+    }
   } else if ('MozWebSocket' in window) {
-    socket = new MozWebSocket(addressBox.value);
+    socket = new MozWebSocket(url);
   } else {
     return;
   }
 
   socket.onopen = function () {
-    addToLog('Opened');
+    if (('protocol' in socket) && socket.protocol) {
+      addToLog('Opened (protocol = ' + socket.protocol + ')');
+    } else {
+      addToLog('Opened');
+    }
   };
   socket.onmessage = function (event) {
     if (('ArrayBuffer' in window) && (event.data instanceof ArrayBuffer)) {
@@ -148,7 +182,11 @@ function connect() {
     addToLog(logMessage + ')');
   };
 
-  addToLog('Connect ' + addressBox.value);
+  if (protocols) {
+    addToLog('Connect ' + url + ' (protocols = ' + protocols + ')');
+  } else {
+    addToLog('Connect ' + url);
+  }
 }
 
 function closeSocket() {
@@ -181,6 +219,7 @@ function init() {
   var defaultAddress = scheme + window.location.host + '/echo';
 
   addressBox = document.getElementById('address');
+  protocolsBox = document.getElementById('protocols');
   logBox = document.getElementById('log');
   messageBox = document.getElementById('message');
   fileBox = document.getElementById('file');
@@ -196,50 +235,79 @@ function init() {
   }
 }
 </script>
+<style type="text/css">
+form {
+  margin: 0px;
+}
+
+#connect_div, #log_div, #send_div, #sendfile_div, #close_div, #printstate_div {
+  padding: 5px;
+  margin: 5px;
+  border-width: 0px 0px 0px 10px;
+  border-style: solid;
+  border-color: silver;
+}
+</style>
 </head>
 <body onload="init()">
 
-<form action="#" onsubmit="connect(); return false;">
-<input type="text" id="address" size="40">
-<input type="submit" value="connect">
-<input type="button" value="print state" onclick="printState();">
-</form>
+<div>
 
-<textarea id="log" rows="10" cols="40" readonly></textarea>
+<div id="connect_div">
+  <form action="#" onsubmit="connect(); return false;">
+    url <input type="text" id="address" size="40">
+    <input type="submit" value="connect">
+    <br/>
+    protocols <input type="text" id="protocols" size="20">
+  </form>
+</div>
 
-<form action="#" onsubmit="send(); return false;">
-<input type="text" id="message" size="40">
-<input type="submit" value="send">
-</form>
+<div id="log_div">
+  <textarea id="log" rows="10" cols="40" readonly></textarea>
+  <br/>
+  <input type="checkbox"
+         name="showtimestamp"
+         value="showtimestamp"
+         onclick="showTimeStamp = this.checked">Show time stamp
+</div>
 
-<form action="#" onsubmit="sendfile(); return false;">
-<input type="file" id="file" size="40">
-<input type="submit" value="send file">
-</form>
+<div id="send_div">
+  <form action="#" onsubmit="send(); return false;">
+    data <input type="text" id="message" size="40">
+    <input type="submit" value="send">
+  </form>
+</div>
 
-<form>
-<input type="radio"
-       name="binarytype"
-       value="blob"
-       onclick="setbinarytype('blob')" checked>blob
-<input type="radio"
-       name="binarytype"
-       value="arraybuffer"
-       onclick="setbinarytype('arraybuffer')">arraybuffer
-</form>
+<div id="sendfile_div">
+  <form action="#" onsubmit="sendfile(); return false;">
+    <input type="file" id="file" size="40">
+    <input type="submit" value="send file">
+  </form>
 
-<form>
-<input type="checkbox"
-       name="showtimestamp"
-       value="showtimestamp"
-       onclick="showTimeStamp = this.checked">Show time stamp
-</form>
+  Set binaryType
+  <input type="radio"
+         name="binarytype"
+         value="blob"
+         onclick="setbinarytype('blob')" checked>blob
+  <input type="radio"
+         name="binarytype"
+         value="arraybuffer"
+         onclick="setbinarytype('arraybuffer')">arraybuffer
+</div>
 
-<form action="#" onsubmit="closeSocket(); return false;">
-Code <input type="text" id="code" size="10">
-Reason <input type="text" id="reason" size="20">
-<input type="submit" value="close">
-</form>
+<div id="close_div">
+  <form action="#" onsubmit="closeSocket(); return false;">
+    code <input type="text" id="code" size="10">
+    reason <input type="text" id="reason" size="20">
+    <input type="submit" value="close">
+  </form>
+</div>
+
+<div id="printstate_div">
+  <input type="button" value="print state" onclick="printState();">
+</div>
+
+</div>
 
 </body>
 </html>

@@ -180,6 +180,11 @@ class Handshaker(object):
                         processors.append(processor)
             self._request.ws_extension_processors = processors
 
+            # List of extra headers. The extra handshake handler may add header
+            # data as name/value pairs to this list and pywebsocket appends
+            # them to the WebSocket handshake.
+            self._request.extra_headers = []
+
             # Extra handshake handler may modify/remove processors.
             self._dispatcher.do_extra_handshake(self._request)
             processors = filter(lambda processor: processor is not None,
@@ -383,6 +388,7 @@ class Handshaker(object):
 
         response.append('HTTP/1.1 101 Switching Protocols\r\n')
 
+        # WebSocket headers
         response.append(format_header(
             common.UPGRADE_HEADER, common.WEBSOCKET_UPGRADE_TYPE))
         response.append(format_header(
@@ -398,6 +404,11 @@ class Handshaker(object):
             response.append(format_header(
                 common.SEC_WEBSOCKET_EXTENSIONS_HEADER,
                 common.format_extensions(self._request.ws_extensions)))
+
+        # Headers not specific for WebSocket
+        for name, value in self._request.extra_headers:
+            response.append(format_header(name, value))
+
         response.append('\r\n')
 
         return ''.join(response)

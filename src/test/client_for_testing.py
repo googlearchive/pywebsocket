@@ -130,18 +130,18 @@ def _format_host_header(host, port, secure):
 
 
 def receive_bytes(socket, length):
-    bytes = []
+    received_bytes = []
     remaining = length
     while remaining > 0:
-        received_bytes = socket.recv(remaining)
-        if not received_bytes:
+        new_received_bytes = socket.recv(remaining)
+        if not new_received_bytes:
             raise Exception(
                 'Connection closed before receiving requested length '
                 '(requested %d bytes but received only %d bytes)' %
                 (length, length - remaining))
-        bytes.append(received_bytes)
-        remaining -= len(received_bytes)
-    return ''.join(bytes)
+        received_bytes.append(new_received_bytes)
+        remaining -= len(new_received_bytes)
+    return ''.join(received_bytes)
 
 
 # TODO(tyoshino): Now the WebSocketHandshake class diverts these methods. We

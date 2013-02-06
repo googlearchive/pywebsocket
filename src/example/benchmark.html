@@ -1,0 +1,165 @@
+<!--
+Copyright 2013, Google Inc.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+    * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+    * Neither the name of Google Inc. nor the names of its
+contributors may be used to endorse or promote products derived from
+this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+-->
+
+<html>
+<head>
+<title>WebSocket benchmark</title>
+<script>
+var socket = null;
+
+var addressBox = null;
+var logBox = null;
+
+var startTime = null;
+
+var ITERATION = 10;
+
+var results = [];
+
+function getTimeStamp() {
+  return Date.now();
+}
+
+function addToLog(log) {
+  logBox.value += log + '\n'
+  logBox.scrollTop = 1000000;
+}
+
+function buildBenchmarkFunction(size, multiplier) {
+  return function() {
+    socket.binaryType = 'arraybuffer';
+
+    startTime = null;
+    results = [];
+
+    socket.onmessage = function (event) {
+      if (startTime) {
+        var endTime = getTimeStamp();
+
+        if (results.length == ITERATION) {
+          var sum = 0;
+          for (var i = 0; i < ITERATION; ++i) {
+            sum += results[i];
+          }
+          var average = Math.round(sum / ITERATION * 1000) / 1000;
+          addToLog('Echo ' + (size / 1024) + 'kB: ' + average + 'kB/s');
+
+          setTimeout(buildBenchmarkFunction(size * multiplier, multiplier), 0);
+          return;
+        }
+
+        results.push(2 * event.data.byteLength / (endTime - startTime));
+      }
+
+      startTime = getTimeStamp();
+      socket.send(new ArrayBuffer(size));
+    }
+
+    socket.onmessage();
+  }
+}
+
+function benchmark() {
+  // TODO(tyoshino): Add TCP warm up.
+
+  var url = addressBox.value;
+
+  if ('WebSocket' in window) {
+    socket = new WebSocket(url);
+  } else {
+    return;
+  }
+
+  socket.onopen = function () {
+    addToLog('Opened');
+
+    buildBenchmarkFunction(1024, 2)();
+  };
+  socket.onmessage = function (event) {
+    addToLog('Unexpected message is received. Aborting.');
+  };
+  socket.onerror = function () {
+    addToLog('Error');
+  };
+  socket.onclose = function (event) {
+    addToLog('Closed');
+  };
+
+  addToLog('Connect ' + url);
+}
+
+function init() {
+  addressBox = document.getElementById('address');
+  logBox = document.getElementById('log');
+
+  var scheme = window.location.protocol == 'https:' ? 'wss://' : 'ws://';
+  var defaultAddress = scheme + window.location.host + '/echo_noext';
+
+  addressBox.value = defaultAddress;
+
+  if (!('WebSocket' in window)) {
+    addToLog('WebSocket is not available');
+  }
+}
+</script>
+<style type="text/css">
+form {
+  margin: 0px;
+}
+
+#benchmark_div {
+  padding: 5px;
+  margin: 5px;
+  border-width: 0px 0px 0px 10px;
+  border-style: solid;
+  border-color: silver;
+}
+</style>
+</head>
+<body onload="init()">
+
+<div>
+
+<div id="benchmark_div">
+  <form action="#" onsubmit="benchmark(); return false;">
+    url <input type="text" id="address" size="40">
+    <input type="submit" value="connect">
+  </form>
+</div>
+
+<div id="log_div">
+  <textarea id="log" rows="10" cols="40" readonly></textarea>
+</div>
+
+</div>
+
+</body>
+</html>

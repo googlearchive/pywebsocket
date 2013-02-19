@@ -280,7 +280,7 @@ def parse_frame(receive_bytes, logger=None,
     if logger.isEnabledFor(common.LOGLEVEL_FINE):
         unmask_start = time.time()
 
-    bytes = masker.mask(raw_payload_bytes)
+    unmasked_bytes = masker.mask(raw_payload_bytes)
 
     if logger.isEnabledFor(common.LOGLEVEL_FINE):
         logger.log(
@@ -288,7 +288,7 @@ def parse_frame(receive_bytes, logger=None,
             'Done unmasking payload data at %s MB/s',
             payload_length / (time.time() - unmask_start) / 1000 / 1000)
 
-    return opcode, bytes, fin, rsv1, rsv2, rsv3
+    return opcode, unmasked_bytes, fin, rsv1, rsv2, rsv3
 
 
 class FragmentedFrameBuilder(object):
@@ -460,10 +460,10 @@ class Stream(StreamBase):
                            unmask_receive=self._options.unmask_receive)
 
     def _receive_frame_as_frame_object(self):
-        opcode, bytes, fin, rsv1, rsv2, rsv3 = self._receive_frame()
+        opcode, unmasked_bytes, fin, rsv1, rsv2, rsv3 = self._receive_frame()
 
         return Frame(fin=fin, rsv1=rsv1, rsv2=rsv2, rsv3=rsv3,
-                     opcode=opcode, payload=bytes)
+                     opcode=opcode, payload=unmasked_bytes)
 
     def receive_filtered_frame(self):
         """Receives a frame and applies frame filters and message filters.

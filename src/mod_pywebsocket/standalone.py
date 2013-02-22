@@ -499,8 +499,15 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         """
 
         accepted_socket, client_address = self.socket.accept()
-        if self.websocket_server_options.use_tls and _HAS_OPEN_SSL:
-            accepted_socket = _StandaloneSSLConnection(accepted_socket)
+        if self.websocket_server_options.use_tls:
+            if _HAS_SSL:
+                # Print cipher in use. Handshake is done on accept.
+                self._logger.debug("Cipher: %s", accepted_socket.cipher())
+            elif _HAS_OPEN_SSL:
+                accepted_socket = _StandaloneSSLConnection(accepted_socket)
+                # We cannot print the cipher in use. pyOpenSSL doesn't provide
+                # any method to fetch that.
+
         return accepted_socket, client_address
 
     def serve_forever(self, poll_interval=0.5):

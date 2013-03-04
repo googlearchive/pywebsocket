@@ -390,24 +390,26 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
             except Exception, e:
                 self._logger.info('Skip by failure: %r', e)
                 continue
-            if self.websocket_server_options.use_tls:
+            server_options = self.websocket_server_options
+            if server_options.use_tls:
                 if _HAS_SSL:
-                    if self.websocket_server_options.tls_client_auth:
-                        client_cert_ = ssl.CERT_REQUIRED
+                    if server_options.tls_client_auth:
+                        if server_options.tls_client_cert_optional:
+                            client_cert_ = ssl.CERT_OPTIONAL
+                        else:
+                            client_cert_ = ssl.CERT_REQUIRED
                     else:
                         client_cert_ = ssl.CERT_NONE
                     socket_ = ssl.wrap_socket(socket_,
-                        keyfile=self.websocket_server_options.private_key,
-                        certfile=self.websocket_server_options.certificate,
+                        keyfile=server_options.private_key,
+                        certfile=server_options.certificate,
                         ssl_version=ssl.PROTOCOL_SSLv23,
-                        ca_certs=self.websocket_server_options.tls_client_ca,
+                        ca_certs=server_options.tls_client_ca,
                         cert_reqs=client_cert_)
                 if _HAS_OPEN_SSL:
                     ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
-                    ctx.use_privatekey_file(
-                        self.websocket_server_options.private_key)
-                    ctx.use_certificate_file(
-                        self.websocket_server_options.certificate)
+                    ctx.use_privatekey_file(server_options.private_key)
+                    ctx.use_certificate_file(server_options.certificate)
                     socket_ = OpenSSL.SSL.Connection(ctx, socket_)
             self._sockets.append((socket_, addrinfo))
 
@@ -816,7 +818,12 @@ def _build_option_parser():
                       default='', help='TLS certificate file.')
     parser.add_option('--tls-client-auth', dest='tls_client_auth',
                       action='store_true', default=False,
-                      help='Requires TLS client auth on every connection.')
+                      help='Requests TLS client auth on every connection.')
+    parser.add_option('--tls-client-cert-optional',
+                      dest='tls_client_cert_optional',
+                      action='store_true', default=False,
+                      help=('Makes client certificate optional even though '
+                            'TLS client auth is enabled.'))
     parser.add_option('--tls-client-ca', dest='tls_client_ca', default='',
                       help=('Specifies a pem file which contains a set of '
                             'concatenated CA certificates which are used to '
@@ -990,6 +997,15 @@ def _main(args=None):
             sys.exit(1)
         if not _HAS_SSL:
             logging.critical('Client authentication requires ssl module.')
+
+    if options.tls_client_cert_optional:
+        if not options.use_tls:
+            logging.critical('TLS must be enabled for client authentication.')
+            sys.exit(1)
+        if not options.tls_client_auth:
+            logging.critical('Client authentication must be enabled to '
+                             'specify tls_client_cert_optional')
+            sys.exit(1)
 
     if not options.scan_dir:
         options.scan_dir = options.websock_handlers

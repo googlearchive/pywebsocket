@@ -33,16 +33,36 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <head>
 <title>WebSocket benchmark</title>
 <script>
-var socket = null;
+var PRINT_SIZE = true;
+
+// Initial size of messages.
+var SEND_START_SIZE = 10 * 1024;
+// Stops benchmark when the size of message exceeds this threshold.
+var SEND_STOP_THRESHOLD = 100000 * 1024;
+// If the size of each message is small, send/receive multiple messages until
+// the sum of sizes reaches this threshold.
+var SEND_MIN_TOTAL = 100000 * 1024;
+var SEND_MULTIPLIERS = [5, 2];
+var SEND_NUM_SOCKETS = 1;
+
+var RECEIVE_START_SIZE = 10 * 1024;
+var RECEIVE_STOP_THRESHOLD = 100000 * 1024;
+var RECEIVE_MIN_TOTAL = 100000 * 1024;
+var RECEIVE_MULTIPLIERS = [5, 2];
+var RECEIVE_NUM_SOCKETS = 1;
+
+var sockets = [];
+var numEstablishedSockets = 0;
 
 var addressBox = null;
 var logBox = null;
 
-var startTime = null;
+var timerID = null;
 
-var ITERATION = 10;
+var startTimeInMs = 0;
 
-var results = [];
+var totalSize = 0;
+var totalReplied = 0;
 
 function getTimeStamp() {
   return Date.now();
@@ -53,67 +73,287 @@ function addToLog(log) {
   logBox.scrollTop = 1000000;
 }
 
-function buildBenchmarkFunction(size, multiplier) {
-  return function() {
-    socket.binaryType = 'arraybuffer';
+function calculateAndLogResult(size, totalSize) {
+  var spentTimeInMs = getTimeStamp() - startTimeInMs;
+  var speed = Math.round((totalSize / spentTimeInMs) * 1000) / 1000;
 
-    startTime = null;
-    results = [];
-
-    socket.onmessage = function (event) {
-      if (startTime) {
-        var endTime = getTimeStamp();
-
-        if (results.length == ITERATION) {
-          var sum = 0;
-          for (var i = 0; i < ITERATION; ++i) {
-            sum += results[i];
-          }
-          var average = Math.round(sum / ITERATION * 1000) / 1000;
-          addToLog('Echo ' + (size / 1024) + 'kB: ' + average + 'kB/s');
-
-          setTimeout(buildBenchmarkFunction(size * multiplier, multiplier), 0);
-          return;
-        }
-
-        results.push(2 * event.data.byteLength / (endTime - startTime));
-      }
-
-      startTime = getTimeStamp();
-      socket.send(new ArrayBuffer(size));
-    }
-
-    socket.onmessage();
+  if (PRINT_SIZE) {
+    addToLog((size / 1024) + '\t' + speed);
+  } else {
+    addToLog(speed);
   }
 }
 
-function benchmark() {
+function destroySocket(socket) {
+  socket.onopen = function() {};
+  socket.onmessage = function() {};
+  socket.onerror = function() {};
+  socket.onclose = function() {};
+  socket.close();
+}
+
+function destroyAllSockets() {
+  for (var i = 0; i < sockets.length; ++i) {
+    destroySocket(sockets[i]);
+  }
+  sockets = [];
+}
+
+function verifyAcknowledgement(message, size) {
+  if (typeof message != 'string') {
+    addToLog('Invalid ack type: ' + typeof event.data);
+    return false;
+  }
+  var parsedAck = parseInt(message);
+  if (isNaN(parsedAck)) {
+    addToLog('Invalid ack value: ' + event.data);
+    return false;
+  }
+  if (parsedAck != size) {
+    addToLog(
+        'Expected ack for ' + size + 'B but received one for ' + ack + 'B');
+    return false;
+  }
+
+  return true;
+}
+
+function buildSendBenchmarkFunction(
+    size, stopThreshold, minTotal, multipliers, multiplierIndex) {
+  if (size > stopThreshold) {
+    addToLog('Finished');
+    destroyAllSockets();
+    return function() {};
+  }
+
+  var onMessageHandler = function(event) {
+    if (!verifyAcknowledgement(event.data, size)) {
+      destroyAllSockets();
+      return;
+    }
+
+    totalReplied += size;
+
+    if (totalReplied < totalSize) {
+      return;
+    }
+
+    calculateAndLogResult(size, totalSize);
+
+    timerID = setTimeout(
+        buildSendBenchmarkFunction(
+            size * multipliers[multiplierIndex],
+            stopThreshold,
+            minTotal,
+            multipliers,
+            (multiplierIndex + 1) % multipliers.length),
+        0);
+  }
+
+  return function() {
+    for (var i = 0; i < sockets.length; ++i) {
+      var socket = sockets[i];
+      socket.onmessage = onMessageHandler;
+    }
+
+    startTimeInMs = getTimeStamp();
+
+    totalReplied = 0;
+
+    totalSize = 0;
+
+    var socketIndex = 0;
+    var buffer = null;
+    while (totalSize < minTotal) {
+      var buffer = new ArrayBuffer(size);
+
+      {
+        var u32Blocks = Math.floor(buffer.byteLength / 4);
+        var u32View = new Uint32Array(buffer, 0, u32Blocks);
+        for (var i = 0; i < u32Blocks; ++i) {
+          u32View[i] = 0x61616161;
+        }
+      }
+
+      {
+        var u8Blocks = buffer.byteLength - u32Blocks * 4;
+        var u8View = new Uint8Array(buffer, u32Blocks * 4, u8Blocks);
+        for (var i = 0; i < u8Blocks; ++i) {
+          u8View[i] = 0x61;
+        }
+      }
+
+      sockets[socketIndex].send(buffer);
+      socketIndex = (socketIndex + 1) % sockets.length;
+
+      totalSize += size;
+    }
+  };
+}
+
+function verifyReceivedArrayBuffer(buffer) {
+  {
+    var u32Blocks = Math.floor(buffer.byteLength / 4);
+    var u32View = new Uint32Array(buffer, 0, u32Blocks);
+    // length attribute is slow on Chrome.
+    for (var i = 0; i < u32Blocks; ++i) {
+      if (u32View[i] != 0x61616161) {
+        return false;
+      }
+    }
+  }
+
+  {
+    var u8Blocks = buffer.byteLength - u32Blocks * 4;
+    var u8View = new Uint8Array(buffer, u32Blocks * 4, u8Blocks);
+    for (var i = 0; i < u8Blocks; ++i) {
+      if (u8View[i] != 0x61) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function buildReceiveBenchmarkFunction(
+    size, stopThreshold, minTotal, multipliers, multiplierIndex) {
+  if (size > stopThreshold) {
+    addToLog('Finished');
+    destroyAllSockets();
+    return function() {};
+  }
+
+  var onMessageHandler = function(event) {
+    var bytesReceived = event.data.byteLength;
+    if (bytesReceived != size) {
+      addToLog('Expected ' + size + 'B but received ' + bytesReceived + 'B');
+      destroyAllSockets();
+      return;
+    }
+
+    if (!verifyReceivedArrayBuffer(event.data)) {
+      addToLog('Verification failed');
+      destroyAllSockets();
+      return;
+    }
+
+    totalReplied += bytesReceived;
+
+    if (totalReplied < totalSize) {
+      return;
+    }
+
+    calculateAndLogResult(size, totalSize);
+
+    timerID = setTimeout(
+        buildReceiveBenchmarkFunction(
+            size * multipliers[multiplierIndex],
+            stopThreshold,
+            minTotal,
+            multipliers,
+            (multiplierIndex + 1) % multipliers.length),
+        0);
+  }
+
+  return function() {
+    for (var i = 0; i < sockets.length; ++i) {
+      var socket = sockets[i];
+      socket.binaryType = 'arraybuffer';
+      socket.onmessage = onMessageHandler;
+    }
+
+    startTimeInMs = getTimeStamp();
+
+    totalReplied = 0;
+
+    totalSize = 0;
+
+    var socketIndex = 0;
+    while (totalSize < minTotal) {
+      sockets[socketIndex].send(size);
+      socketIndex = (socketIndex + 1) % sockets.length;
+
+      totalSize += size;
+    }
+  }
+}
+
+function createSocket() {
   // TODO(tyoshino): Add TCP warm up.
 
-  var url = addressBox.value;
-
-  if ('WebSocket' in window) {
-    socket = new WebSocket(url);
-  } else {
+  if (!('WebSocket' in window)) {
     return;
   }
 
-  socket.onopen = function () {
-    addToLog('Opened');
-
-    buildBenchmarkFunction(1024, 2)();
-  };
-  socket.onmessage = function (event) {
-    addToLog('Unexpected message is received. Aborting.');
-  };
-  socket.onerror = function () {
-    addToLog('Error');
-  };
-  socket.onclose = function (event) {
-    addToLog('Closed');
-  };
+  var url = addressBox.value;
 
   addToLog('Connect ' + url);
+
+  var socket = new WebSocket(url);
+  socket.onmessage = function(event) {
+    addToLog('Unexpected message received. Aborting.');
+  };
+  socket.onerror = function() {
+    addToLog('Error');
+  };
+  socket.onclose = function(event) {
+    addToLog('Closed');
+  };
+  return socket;
+}
+
+function startBenchmark(runner, numSockets) {
+  clearTimeout(timerID);
+  destroyAllSockets();
+
+  numEstablishedSockets = 0;
+
+  for (var i = 0; i < numSockets; ++i) {
+    var socket = createSocket();
+    socket.onopen = function() {
+      addToLog('Opened');
+
+      ++numEstablishedSockets;
+
+      if (numEstablishedSockets == sockets.length) {
+        setTimeout(runner, 0);
+      }
+    };
+    sockets.push(socket);
+  }
+}
+
+function sendBenchmark() {
+  addToLog('Send benchmark');
+  addToLog('Message size in KiB, Speed in kB/s');
+
+  var runner = buildSendBenchmarkFunction(
+      SEND_START_SIZE,
+      SEND_STOP_THRESHOLD,
+      SEND_MIN_TOTAL,
+      SEND_MULTIPLIERS,
+      0);
+
+  startBenchmark(runner, SEND_NUM_SOCKETS);
+}
+
+function receiveBenchmark() {
+  addToLog('Receive benchmark');
+  addToLog('Message size in KiB, Speed in kB/s');
+
+  var runner = buildReceiveBenchmarkFunction(
+      RECEIVE_START_SIZE,
+      RECEIVE_STOP_THRESHOLD,
+      RECEIVE_MIN_TOTAL,
+      RECEIVE_MULTIPLIERS,
+      0);
+
+  startBenchmark(runner, RECEIVE_NUM_SOCKETS);
+}
+
+function stop() {
+  addToLog('Stopped');
+  destroyAllSockets();
 }
 
 function init() {
@@ -121,45 +361,33 @@ function init() {
   logBox = document.getElementById('log');
 
   var scheme = window.location.protocol == 'https:' ? 'wss://' : 'ws://';
-  var defaultAddress = scheme + window.location.host + '/echo_noext';
+  var defaultAddress = scheme + window.location.host + '/benchmark_helper';
 
   addressBox.value = defaultAddress;
+
+  addToLog(window.navigator.userAgent.toLowerCase());
 
   if (!('WebSocket' in window)) {
     addToLog('WebSocket is not available');
   }
 }
 </script>
-<style type="text/css">
-form {
-  margin: 0px;
-}
-
-#benchmark_div {
-  padding: 5px;
-  margin: 5px;
-  border-width: 0px 0px 0px 10px;
-  border-style: solid;
-  border-color: silver;
-}
-</style>
 </head>
 <body onload="init()">
 
-<div>
-
 <div id="benchmark_div">
-  <form action="#" onsubmit="benchmark(); return false;">
-    url <input type="text" id="address" size="40">
-    <input type="submit" value="connect">
-  </form>
+  url <input type="text" id="address" size="40">
+  <input type="button" value="send" onclick="sendBenchmark()">
+  <input type="button" value="receive" onclick="receiveBenchmark()">
+  <input type="button" value="stop" onclick="stop()">
 </div>
 
 <div id="log_div">
-  <textarea id="log" rows="10" cols="40" readonly></textarea>
+  <textarea
+      id="log" rows="20" style="width: 100%" readonly></textarea>
 </div>
 
-</div>
+Note: Effect of RTT and time spent for ArrayBuffer creation are not eliminated.
 
 </body>
 </html>

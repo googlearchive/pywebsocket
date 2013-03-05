@@ -56,6 +56,11 @@ import socket
 import traceback
 import zlib
 
+try:
+    from mod_pywebsocket import fast_masking
+except ImportError:
+    pass
+
 
 def get_stack_trace():
     """Get the current stack trace as string.
@@ -169,25 +174,36 @@ class RepeatedXorMasker(object):
     ended and resumes from that point on the next mask method call.
     """
 
-    def __init__(self, mask):
-        self._mask = map(ord, mask)
-        self._mask_size = len(self._mask)
-        self._count = 0
+    def __init__(self, masking_key):
+        self._masking_key = masking_key
+        self._masking_key_size = len(self._masking_key)
+        self._masking_key_index = 0
 
-    def mask(self, s):
+    def _mask_using_swig(self, s):
+        return fast_masking.mask(s, self._masking_key)
+
+    def _mask_using_array(self, s):
         result = array.array('B')
         result.fromstring(s)
+
         # Use temporary local variables to eliminate the cost to access
         # attributes
-        count = self._count
-        mask = self._mask
-        mask_size = self._mask_size
+        masking_key = map(ord, self._masking_key)
+        masking_key_size = self._masking_key_size
+        masking_key_index = self._masking_key_index
+
         for i in xrange(len(result)):
-            result[i] ^= mask[count]
-            count = (count + 1) % mask_size
-        self._count = count
+            result[i] ^= masking_key[masking_key_index]
+            masking_key_index = (masking_key_index + 1) % masking_key_size
+
+        self._masking_key_index = masking_key_index
 
         return result.tostring()
+
+    if 'fast_masking' in globals():
+        mask = _mask_using_swig
+    else:
+        mask = _mask_using_array
 
 
 class DeflateRequest(object):

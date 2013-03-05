@@ -34,15 +34,25 @@
 """
 
 
-from distutils.core import setup
+from distutils.core import setup, Extension
 import sys
 
 
 _PACKAGE_NAME = 'mod_pywebsocket'
 
+# Build and use a C++ extension for faster masking. SWIG is required.
+_USE_FAST_MASKING = False
+
 if sys.version < '2.3':
     print >> sys.stderr, '%s requires Python 2.3 or later.' % _PACKAGE_NAME
     sys.exit(1)
+
+if _USE_FAST_MASKING:
+    setup(ext_modules=[
+                  Extension(
+                          'mod_pywebsocket/_fast_masking',
+                          ['mod_pywebsocket/fast_masking.i'],
+                          swig_opts=['-c++'])])
 
 setup(author='Yuzo Fujishima',
       author_email='yuzo@chromium.org',

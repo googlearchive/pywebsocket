@@ -271,24 +271,30 @@ class _StandaloneRequest(object):
 
 class _StandaloneSSLConnection(object):
     """A wrapper class for OpenSSL.SSL.Connection to provide makefile method
-    which is not supported by the class.
+    which is not supported by the class, and to tweak shutdown method since
+    OpenSSL.SSL.Connection.shutdown doesn't accept the "how" argument.
     """
+
+    _OVERRIDDEN_ATTRIBUTES = ['_connection', 'makefile', 'shutdown']
 
     def __init__(self, connection):
         self._connection = connection
 
     def __getattribute__(self, name):
-        if name in ('_connection', 'makefile'):
+        if name in _StandaloneSSLConnection._OVERRIDDEN_ATTRIBUTES:
             return object.__getattribute__(self, name)
         return self._connection.__getattribute__(name)
 
     def __setattr__(self, name, value):
-        if name in ('_connection', 'makefile'):
+        if name in _StandaloneSSLConnection._OVERRIDDEN_ATTRIBUTES:
             return object.__setattr__(self, name, value)
         return self._connection.__setattr__(name, value)
 
     def makefile(self, mode='r', bufsize=-1):
         return socket._fileobject(self._connection, mode, bufsize)
+
+    def shutdown(self, unused_how):
+        self._connection.shutdown()
 
 
 def _alias_handlers(dispatcher, websock_handlers_map_file):
@@ -997,6 +1003,7 @@ def _main(args=None):
             sys.exit(1)
         if not _HAS_SSL:
             logging.critical('Client authentication requires ssl module.')
+            sys.exit(1)
 
     if options.tls_client_cert_optional:
         if not options.use_tls:

@@ -270,12 +270,16 @@ class _StandaloneRequest(object):
 
 
 class _StandaloneSSLConnection(object):
-    """A wrapper class for OpenSSL.SSL.Connection to provide makefile method
-    which is not supported by the class, and to tweak shutdown method since
-    OpenSSL.SSL.Connection.shutdown doesn't accept the "how" argument.
+    """A wrapper class for OpenSSL.SSL.Connection to
+    - provide makefile method which is not supported by the class
+    - tweak shutdown method since OpenSSL.SSL.Connection.shutdown doesn't
+      accept the "how" argument.
+    - convert SysCallError exceptions that its recv method may raise into a
+      return value of '', meaning EOF. We cannot overwrite the recv method on
+      self._connection since it's immutable.
     """
 
-    _OVERRIDDEN_ATTRIBUTES = ['_connection', 'makefile', 'shutdown']
+    _OVERRIDDEN_ATTRIBUTES = ['_connection', 'makefile', 'shutdown', 'recv']
 
     def __init__(self, connection):
         self._connection = connection
@@ -291,10 +295,23 @@ class _StandaloneSSLConnection(object):
         return self._connection.__setattr__(name, value)
 
     def makefile(self, mode='r', bufsize=-1):
-        return socket._fileobject(self._connection, mode, bufsize)
+        return socket._fileobject(self, mode, bufsize)
 
     def shutdown(self, unused_how):
         self._connection.shutdown()
+
+    def recv(self, bufsize, flags=0):
+        if flags != 0:
+            raise ValueError('Non-zero flags not allowed')
+
+        try:
+            return self._connection.recv(bufsize)
+        except OpenSSL.SSL.SysCallError, (err, message):
+            if err == -1:
+                # Suppress "unexpected EOF" exception. See the OpenSSL document
+                # for SSL_get_error.
+                return ''
+            raise
 
 
 def _alias_handlers(dispatcher, websock_handlers_map_file):
@@ -398,6 +415,8 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                 continue
             server_options = self.websocket_server_options
             if server_options.use_tls:
+                # For the case of _HAS_OPEN_SSL, we do wrapper setup after
+                # accept.
                 if _HAS_SSL:
                     if server_options.tls_client_auth:
                         if server_options.tls_client_cert_optional:
@@ -411,12 +430,8 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                         certfile=server_options.certificate,
                         ssl_version=ssl.PROTOCOL_SSLv23,
                         ca_certs=server_options.tls_client_ca,
-                        cert_reqs=client_cert_)
-                if _HAS_OPEN_SSL:
-                    ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
-                    ctx.use_privatekey_file(server_options.private_key)
-                    ctx.use_certificate_file(server_options.certificate)
-                    socket_ = OpenSSL.SSL.Connection(ctx, socket_)
+                        cert_reqs=client_cert_,
+                        do_handshake_on_connect=False)
             self._sockets.append((socket_, addrinfo))
 
     def server_bind(self):
@@ -507,14 +522,60 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
         """
 
         accepted_socket, client_address = self.socket.accept()
-        if self.websocket_server_options.use_tls:
+
+        server_options = self.websocket_server_options
+        if server_options.use_tls:
             if _HAS_SSL:
+                try:
+                    accepted_socket.do_handshake()
+                except ssl.SSLError, e:
+                    self._logger.debug('%r', e)
+                    raise
+
                 # Print cipher in use. Handshake is done on accept.
-                self._logger.debug("Cipher: %s", accepted_socket.cipher())
+                self._logger.debug('Cipher: %s', accepted_socket.cipher())
+                self._logger.debug('Client cert: %r',
+                                   accepted_socket.getpeercert())
             elif _HAS_OPEN_SSL:
-                accepted_socket = _StandaloneSSLConnection(accepted_socket)
                 # We cannot print the cipher in use. pyOpenSSL doesn't provide
                 # any method to fetch that.
+
+                ctx = OpenSSL.SSL.Context(OpenSSL.SSL.SSLv23_METHOD)
+                ctx.use_privatekey_file(server_options.private_key)
+                ctx.use_certificate_file(server_options.certificate)
+
+                def default_callback(conn, cert, errnum, errdepth, ok):
+                    return ok == 1
+
+                # See the OpenSSL document for SSL_CTX_set_verify.
+                if server_options.tls_client_auth:
+                    verify_mode = OpenSSL.SSL.VERIFY_PEER
+                    if not server_options.tls_client_cert_optional:
+                        verify_mode |= OpenSSL.SSL.VERIFY_FAIL_IF_NO_PEER_CERT
+                    ctx.set_verify(verify_mode, default_callback)
+                    ctx.load_verify_locations(server_options.tls_client_ca,
+                                              None)
+                else:
+                    ctx.set_verify(OpenSSL.SSL.VERIFY_NONE, default_callback)
+
+                accepted_socket = OpenSSL.SSL.Connection(ctx, accepted_socket)
+                accepted_socket.set_accept_state()
+
+                # Convert SSL related error into socket.error so that
+                # SocketServer ignores them and keeps running.
+                #
+                # TODO(tyoshino): Convert all kinds of errors.
+                try:
+                    accepted_socket.do_handshake()
+                except OpenSSL.SSL.Error, e:
+                    # Set errno part to 1 (SSL_ERROR_SSL) like the ssl module
+                    # does.
+                    self._logger.debug('%r', e)
+                    raise socket.error(1, '%r' % e)
+                cert = accepted_socket.get_peer_certificate()
+                self._logger.debug('Client cert subject: %r',
+                                   cert.get_subject().get_components())
+                accepted_socket = _StandaloneSSLConnection(accepted_socket)
 
         return accepted_socket, client_address
 
@@ -1000,9 +1061,6 @@ def _main(args=None):
     if options.tls_client_auth:
         if not options.use_tls:
             logging.critical('TLS must be enabled for client authentication.')
-            sys.exit(1)
-        if not _HAS_SSL:
-            logging.critical('Client authentication requires ssl module.')
             sys.exit(1)
 
     if options.tls_client_cert_optional:

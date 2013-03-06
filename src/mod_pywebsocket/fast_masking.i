@@ -51,6 +51,7 @@
 void mask(
     const char* payload, int payload_length,
     const char* masking_key, int masking_key_length,
+    int masking_key_index,
     char** result, int* result_length) {
   *result = new char[payload_length];
   *result_length = payload_length;
@@ -58,8 +59,6 @@ void mask(
 
   char* cursor = *result;
   char* cursor_end = *result + *result_length;
-
-  int masking_key_index = 0;
 
 #ifdef __SSE2__
   while ((cursor < cursor_end) &&

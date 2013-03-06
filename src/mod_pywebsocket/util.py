@@ -176,11 +176,14 @@ class RepeatedXorMasker(object):
 
     def __init__(self, masking_key):
         self._masking_key = masking_key
-        self._masking_key_size = len(self._masking_key)
         self._masking_key_index = 0
 
     def _mask_using_swig(self, s):
-        return fast_masking.mask(s, self._masking_key)
+        masked_data = fast_masking.mask(
+                s, self._masking_key, self._masking_key_index)
+        self._masking_key_index = (
+                (self._masking_key_index + len(s)) % len(self._masking_key))
+        return masked_data
 
     def _mask_using_array(self, s):
         result = array.array('B')
@@ -189,7 +192,7 @@ class RepeatedXorMasker(object):
         # Use temporary local variables to eliminate the cost to access
         # attributes
         masking_key = map(ord, self._masking_key)
-        masking_key_size = self._masking_key_size
+        masking_key_size = len(masking_key)
         masking_key_index = self._masking_key_index
 
         for i in xrange(len(result)):

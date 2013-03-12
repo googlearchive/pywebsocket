@@ -143,18 +143,6 @@ import sys
 import threading
 import time
 
-_HAS_SSL = False
-_HAS_OPEN_SSL = False
-try:
-    import ssl
-    _HAS_SSL = True
-except ImportError:
-    try:
-        import OpenSSL.SSL
-        _HAS_OPEN_SSL = True
-    except ImportError:
-        pass
-
 from mod_pywebsocket import common
 from mod_pywebsocket import dispatch
 from mod_pywebsocket import handshake
@@ -170,6 +158,10 @@ _DEFAULT_REQUEST_QUEUE_SIZE = 128
 
 # 1024 is practically large enough to contain WebSocket handshake lines.
 _MAX_MEMORIZED_LINES = 1024
+
+# Constants for the --tls_module flag.
+_TLS_BY_STANDARD_MODULE = 'ssl'
+_TLS_BY_PYOPENSSL = 'pyopenssl'
 
 
 class _StandaloneConnection(object):
@@ -267,6 +259,24 @@ class _StandaloneRequest(object):
         if drained_data:
             self._logger.debug(
                 'Drained data following close frame: %r', drained_data)
+
+
+def _import_ssl():
+    global ssl
+    try:
+        import ssl
+        return True
+    except ImportError:
+        return False
+
+
+def _import_pyopenssl():
+    global OpenSSL
+    try:
+        import OpenSSL.SSL
+        return True
+    except ImportError:
+        return False
 
 
 class _StandaloneSSLConnection(object):
@@ -417,7 +427,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
             if server_options.use_tls:
                 # For the case of _HAS_OPEN_SSL, we do wrapper setup after
                 # accept.
-                if _HAS_SSL:
+                if server_options.tls_module == _TLS_BY_STANDARD_MODULE:
                     if server_options.tls_client_auth:
                         if server_options.tls_client_cert_optional:
                             client_cert_ = ssl.CERT_OPTIONAL
@@ -525,7 +535,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
 
         server_options = self.websocket_server_options
         if server_options.use_tls:
-            if _HAS_SSL:
+            if server_options.tls_module == _TLS_BY_STANDARD_MODULE:
                 try:
                     accepted_socket.do_handshake()
                 except ssl.SSLError, e:
@@ -536,7 +546,7 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                 self._logger.debug('Cipher: %s', accepted_socket.cipher())
                 self._logger.debug('Client cert: %r',
                                    accepted_socket.getpeercert())
-            elif _HAS_OPEN_SSL:
+            elif server_options.tls_module == _TLS_BY_PYOPENSSL:
                 # We cannot print the cipher in use. pyOpenSSL doesn't provide
                 # any method to fetch that.
 
@@ -576,6 +586,8 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                 self._logger.debug('Client cert subject: %r',
                                    cert.get_subject().get_components())
                 accepted_socket = _StandaloneSSLConnection(accepted_socket)
+            else:
+                raise ValueError('No TLS support module is available')
 
         return accepted_socket, client_address
 
@@ -878,6 +890,12 @@ def _build_option_parser():
                             'as CGI programs. Must be executable.'))
     parser.add_option('-t', '--tls', dest='use_tls', action='store_true',
                       default=False, help='use TLS (wss://)')
+    parser.add_option('--tls-module', '--tls_module', dest='tls_module',
+                      type='choice',
+                      choices = [_TLS_BY_STANDARD_MODULE, _TLS_BY_PYOPENSSL],
+                      help='Use ssl module if "%s" is specified. '
+                      'Use pyOpenSSL module if "%s" is specified' %
+                      (_TLS_BY_STANDARD_MODULE, _TLS_BY_PYOPENSSL))
     parser.add_option('-k', '--private-key', '--private_key',
                       dest='private_key',
                       default='', help='TLS private key file.')
@@ -1045,31 +1063,52 @@ def _main(args=None):
             options.is_executable_method = __check_script
 
     if options.use_tls:
-        if not (_HAS_SSL or _HAS_OPEN_SSL):
-            logging.critical('TLS support requires ssl or pyOpenSSL module.')
+        if options.tls_module is None:
+            if _import_ssl():
+                options.tls_module = _TLS_BY_STANDARD_MODULE
+                logging.debug('Using ssl module')
+            elif _import_pyopenssl():
+                options.tls_module = _TLS_BY_PYOPENSSL
+                logging.debug('Using pyOpenSSL module')
+            else:
+                logging.critical(
+                        'TLS support requires ssl or pyOpenSSL module.')
+                sys.exit(1)
+        elif options.tls_module == _TLS_BY_STANDARD_MODULE:
+            if not _import_ssl():
+                logging.critical('ssl module is not available')
+                sys.exit(1)
+        elif options.tls_module == _TLS_BY_PYOPENSSL:
+            if not _import_pyopenssl():
+                logging.critical('pyOpenSSL module is not available')
+                sys.exit(1)
+        else:
+            logging.critical('Invalid --tls-module option: %r',
+                             options.tls_module)
             sys.exit(1)
+
         if not options.private_key or not options.certificate:
             logging.critical(
                     'To use TLS, specify private_key and certificate.')
             sys.exit(1)
 
-        if _HAS_SSL:
-            logging.debug('Using ssl module')
-        if _HAS_OPEN_SSL:
-            logging.debug('Using pyOpenSSL module')
-
-    if options.tls_client_auth:
-        if not options.use_tls:
-            logging.critical('TLS must be enabled for client authentication.')
-            sys.exit(1)
-
-    if options.tls_client_cert_optional:
-        if not options.use_tls:
-            logging.critical('TLS must be enabled for client authentication.')
-            sys.exit(1)
-        if not options.tls_client_auth:
+        if (options.tls_client_cert_optional and
+            not options.tls_client_auth):
             logging.critical('Client authentication must be enabled to '
                              'specify tls_client_cert_optional')
+            sys.exit(1)
+    else:
+        if options.tls_module is not None:
+            logging.critical('Use --tls-module option only together with '
+                             '--use-tls option.')
+            sys.exit(1)
+
+        if options.tls_client_auth:
+            logging.critical('TLS must be enabled for client authentication.')
+            sys.exit(1)
+
+        if options.tls_client_cert_optional:
+            logging.critical('TLS must be enabled for client authentication.')
             sys.exit(1)
 
     if not options.scan_dir:

@@ -87,6 +87,10 @@ _PROTOCOL_VERSION_HYBI08 = 'hybi08'
 _PROTOCOL_VERSION_HYBI00 = 'hybi00'
 _PROTOCOL_VERSION_HIXIE75 = 'hixie75'
 
+# Constants for the --tls_module flag.
+_TLS_BY_STANDARD_MODULE = 'ssl'
+_TLS_BY_PYOPENSSL = 'pyopenssl'
+
 # Values used by the --tls-version flag.
 _TLS_VERSION_SSL23 = 'ssl23'
 _TLS_VERSION_SSL3 = 'ssl3'
@@ -184,7 +188,7 @@ class _TLSSocket(object):
                  raw_socket, tls_module, tls_version, disable_tls_compression):
         self._logger = util.get_class_logger(self)
 
-        if tls_module == 'ssl':
+        if tls_module == _TLS_BY_STANDARD_MODULE:
             if tls_version == _TLS_VERSION_SSL23:
                 version = ssl.PROTOCOL_SSLv23
             elif tls_version == _TLS_VERSION_SSL3:
@@ -204,7 +208,7 @@ class _TLSSocket(object):
 
             # Print cipher in use. Handshake is done on wrap_socket call.
             self._logger.info("Cipher: %s", self._tls_socket.cipher())
-        elif tls_module == 'pyopenssl':
+        elif tls_module == _TLS_BY_PYOPENSSL:
             if tls_version == _TLS_VERSION_SSL23:
                 version = OpenSSL.SSL.SSLv23_METHOD
             elif tls_version == _TLS_VERSION_SSL3:
@@ -943,9 +947,10 @@ def main():
                       'to use')
     parser.add_option('--tls-module', '--tls_module', dest='tls_module',
                       type='choice',
-                      choices = ['ssl', 'pyopenssl'],
-                      help='Use ssl module if "ssl" is specified. '
-                      'Use pyOpenSSL module if "pyopenssl" is specified')
+                      choices = [_TLS_BY_STANDARD_MODULE, _TLS_BY_PYOPENSSL],
+                      help='Use ssl module if "%s" is specified. '
+                      'Use pyOpenSSL module if "%s" is specified' %
+                      (_TLS_BY_STANDARD_MODULE, _TLS_BY_PYOPENSSL))
     parser.add_option('--tls-version', '--tls_version',
                       dest='tls_version',
                       type='string', default=_TLS_VERSION_SSL23,
@@ -1009,20 +1014,20 @@ def main():
     if options.use_tls:
         if options.tls_module is None:
             if _import_ssl():
-                options.tls_module = 'ssl'
+                options.tls_module = _TLS_BY_STANDARD_MODULE
                 logging.debug('Using ssl module')
             elif _import_pyopenssl():
-                options.tls_module = 'pyopenssl'
+                options.tls_module = _TLS_BY_PYOPENSSL
                 logging.debug('Using pyOpenSSL module')
             else:
                 logging.critical(
                         'TLS support requires ssl or pyOpenSSL module.')
                 sys.exit(1)
-        elif options.tls_module == 'ssl':
+        elif options.tls_module == _TLS_BY_STANDARD_MODULE:
             if not _import_ssl():
                 logging.critical('ssl module is not available')
                 sys.exit(1)
-        elif options.tls_module == 'pyopenssl':
+        elif options.tls_module == _TLS_BY_PYOPENSSL:
             if not _import_pyopenssl():
                 logging.critical('pyOpenSSL module is not available')
                 sys.exit(1)
@@ -1032,7 +1037,7 @@ def main():
             sys.exit(1)
 
         if (options.disable_tls_compression and
-            options.tls_module != 'pyopenssl'):
+            options.tls_module != _TLS_BY_PYOPENSSL):
             logging.critical('You can disable TLS compression only when '
                              'pyOpenSSL module is used.')
             sys.exit(1)
@@ -1041,6 +1046,7 @@ def main():
             logging.critical('Use --tls-module option only together with '
                              '--use-tls option.')
             sys.exit(1)
+
         if options.disable_tls_compression:
             logging.critical('Use --disable-tls-compression only together '
                              'with --use-tls option.')

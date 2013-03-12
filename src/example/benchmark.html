@@ -32,6 +32,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <html>
 <head>
 <title>WebSocket benchmark</title>
+<script src="util.js"></script>
 <script>
 var PRINT_SIZE = true;
 
@@ -64,24 +65,14 @@ var startTimeInMs = 0;
 var totalSize = 0;
 var totalReplied = 0;
 
-function getTimeStamp() {
-  return Date.now();
-}
-
 function addToLog(log) {
   logBox.value += log + '\n'
   logBox.scrollTop = 1000000;
 }
 
 function calculateAndLogResult(size, totalSize) {
-  var spentTimeInMs = getTimeStamp() - startTimeInMs;
-  var speed = Math.round((totalSize / spentTimeInMs) * 1000) / 1000;
-
-  if (PRINT_SIZE) {
-    addToLog((size / 1024) + '\t' + speed);
-  } else {
-    addToLog(speed);
-  }
+  var speed = calculateSpeedInKB(totalSize, startTimeInMs);
+  addToLog(formatResultInKiB(size, speed, PRINT_SIZE));
 }
 
 function destroySocket(socket) {
@@ -167,21 +158,7 @@ function buildSendBenchmarkFunction(
     while (totalSize < minTotal) {
       var buffer = new ArrayBuffer(size);
 
-      {
-        var u32Blocks = Math.floor(buffer.byteLength / 4);
-        var u32View = new Uint32Array(buffer, 0, u32Blocks);
-        for (var i = 0; i < u32Blocks; ++i) {
-          u32View[i] = 0x61616161;
-        }
-      }
-
-      {
-        var u8Blocks = buffer.byteLength - u32Blocks * 4;
-        var u8View = new Uint8Array(buffer, u32Blocks * 4, u8Blocks);
-        for (var i = 0; i < u8Blocks; ++i) {
-          u8View[i] = 0x61;
-        }
-      }
+      fillArrayBuffer(buffer, 0x61);
 
       sockets[socketIndex].send(buffer);
       socketIndex = (socketIndex + 1) % sockets.length;
@@ -189,30 +166,6 @@ function buildSendBenchmarkFunction(
       totalSize += size;
     }
   };
-}
-
-function verifyReceivedArrayBuffer(buffer) {
-  {
-    var u32Blocks = Math.floor(buffer.byteLength / 4);
-    var u32View = new Uint32Array(buffer, 0, u32Blocks);
-    // length attribute is slow on Chrome.
-    for (var i = 0; i < u32Blocks; ++i) {
-      if (u32View[i] != 0x61616161) {
-        return false;
-      }
-    }
-  }
-
-  {
-    var u8Blocks = buffer.byteLength - u32Blocks * 4;
-    var u8View = new Uint8Array(buffer, u32Blocks * 4, u8Blocks);
-    for (var i = 0; i < u8Blocks; ++i) {
-      if (u8View[i] != 0x61) {
-        return false;
-      }
-    }
-  }
-  return true;
 }
 
 function buildReceiveBenchmarkFunction(
@@ -231,7 +184,7 @@ function buildReceiveBenchmarkFunction(
       return;
     }
 
-    if (!verifyReceivedArrayBuffer(event.data)) {
+    if (!verifyArrayBuffer(event.data, 0x61)) {
       addToLog('Verification failed');
       destroyAllSockets();
       return;

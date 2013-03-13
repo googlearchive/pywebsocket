@@ -30,7 +30,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Tests for handshake module."""
+"""Tests for handshake._base module."""
 
 
 import unittest
@@ -45,62 +45,35 @@ from mod_pywebsocket.handshake._base import HandshakeException
 from mod_pywebsocket.handshake._base import validate_subprotocol
 
 
-class HandshakerTest(unittest.TestCase):
-    """A unittest for handshake module."""
+class ValidateSubprotocolTest(unittest.TestCase):
+    """A unittest for validate_subprotocol method."""
 
     def test_validate_subprotocol(self):
-        # should succeed.
-        validate_subprotocol('sample', hixie=True)
-        validate_subprotocol('Sample', hixie=True)
-        validate_subprotocol('sample\x7eprotocol', hixie=True)
-        validate_subprotocol('sample\x20protocol', hixie=True)
-        validate_subprotocol('sample', hixie=False)
-        validate_subprotocol('Sample', hixie=False)
-        validate_subprotocol('sample\x7eprotocol', hixie=False)
+        # Should succeed.
+        validate_subprotocol('sample')
+        validate_subprotocol('Sample')
+        validate_subprotocol('sample\x7eprotocol')
 
-        # should fail.
+        # Should fail.
         self.assertRaises(HandshakeException,
                           validate_subprotocol,
-                          '',
-                          hixie=True)
+                          '')
         self.assertRaises(HandshakeException,
                           validate_subprotocol,
-                          'sample\x19protocol',
-                          hixie=True)
+                          'sample\x09protocol')
         self.assertRaises(HandshakeException,
                           validate_subprotocol,
-                          'sample\x7fprotocol',
-                          hixie=True)
+                          'sample\x19protocol')
         self.assertRaises(HandshakeException,
                           validate_subprotocol,
-                          # "Japan" in Japanese
-                          u'\u65e5\u672c',
-                          hixie=True)
+                          'sample\x20protocol')
         self.assertRaises(HandshakeException,
                           validate_subprotocol,
-                          '',
-                          hixie=False)
-        self.assertRaises(HandshakeException,
-                          validate_subprotocol,
-                          'sample\x09protocol',
-                          hixie=False)
-        self.assertRaises(HandshakeException,
-                          validate_subprotocol,
-                          'sample\x19protocol',
-                          hixie=False)
-        self.assertRaises(HandshakeException,
-                          validate_subprotocol,
-                          'sample\x20protocol',
-                          hixie=False)
-        self.assertRaises(HandshakeException,
-                          validate_subprotocol,
-                          'sample\x7fprotocol',
-                          hixie=False)
+                          'sample\x7fprotocol')
         self.assertRaises(HandshakeException,
                           validate_subprotocol,
                           # "Japan" in Japanese
-                          u'\u65e5\u672c',
-                          hixie=False)
+                          u'\u65e5\u672c')
 
 
 _TEST_TOKEN_EXTENSION_DATA = [

@@ -38,7 +38,8 @@ import unittest
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket.handshake._base import HandshakeException
-from mod_pywebsocket.handshake import hybi00 as handshake
+from mod_pywebsocket.handshake.hybi00 import Handshaker
+from mod_pywebsocket.handshake.hybi00 import _validate_subprotocol
 from test import mock
 
 
@@ -344,12 +345,11 @@ def _create_requests_with_lines(request_lines_set):
     return requests
 
 
-class Hybi00HandshakerTest(unittest.TestCase):
+class HyBi00HandshakerTest(unittest.TestCase):
 
     def test_good_request_default_port(self):
         request = _create_request(_GOOD_REQUEST)
-        handshaker = handshake.Handshaker(request,
-                                          mock.MockDispatcher())
+        handshaker = Handshaker(request, mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_DEFAULT_PORT,
                          request.connection.written_data())
@@ -360,8 +360,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
 
     def test_good_request_capitalized_header_values(self):
         request = _create_request(_GOOD_REQUEST_CAPITALIZED_HEADER_VALUES)
-        handshaker = handshake.Handshaker(request,
-                                          mock.MockDispatcher())
+        handshaker = Handshaker(request, mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_DEFAULT_PORT,
                          request.connection.written_data())
@@ -370,8 +369,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
         request = _create_request(_GOOD_REQUEST)
         request.connection.local_addr = ('0.0.0.0', 443)
         request.is_https_ = True
-        handshaker = handshake.Handshaker(request,
-                                          mock.MockDispatcher())
+        handshaker = Handshaker(request, mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_SECURE,
                          request.connection.written_data())
@@ -379,7 +377,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
 
     def test_good_request_nondefault_port(self):
         request = _create_request(_GOOD_REQUEST_NONDEFAULT_PORT)
-        handshaker = handshake.Handshaker(request,
+        handshaker = Handshaker(request,
                                           mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_NONDEFAULT_PORT,
@@ -389,8 +387,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
     def test_good_request_secure_non_default_port(self):
         request = _create_request(_GOOD_REQUEST_NONDEFAULT_PORT)
         request.is_https_ = True
-        handshaker = handshake.Handshaker(request,
-                                          mock.MockDispatcher())
+        handshaker = Handshaker(request, mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_SECURE_NONDEF,
                          request.connection.written_data())
@@ -398,8 +395,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
 
     def test_good_request_default_no_protocol(self):
         request = _create_request(_GOOD_REQUEST_NO_PROTOCOL)
-        handshaker = handshake.Handshaker(request,
-                                          mock.MockDispatcher())
+        handshaker = Handshaker(request, mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_NO_PROTOCOL,
                          request.connection.written_data())
@@ -407,8 +403,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
 
     def test_good_request_optional_headers(self):
         request = _create_request(_GOOD_REQUEST_WITH_OPTIONAL_HEADERS)
-        handshaker = handshake.Handshaker(request,
-                                          mock.MockDispatcher())
+        handshaker = Handshaker(request, mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual('AValue',
                          request.headers_in['AKey'])
@@ -417,8 +412,7 @@ class Hybi00HandshakerTest(unittest.TestCase):
 
     def test_good_request_with_nonprintable_key(self):
         request = _create_request(_GOOD_REQUEST_WITH_NONPRINTABLE_KEY)
-        handshaker = handshake.Handshaker(request,
-                                          mock.MockDispatcher())
+        handshaker = Handshaker(request, mock.MockDispatcher())
         handshaker.do_handshake()
         self.assertEqual(_GOOD_RESPONSE_WITH_NONPRINTABLE_KEY,
                          request.connection.written_data())
@@ -426,9 +420,32 @@ class Hybi00HandshakerTest(unittest.TestCase):
 
     def test_bad_requests(self):
         for request in map(_create_request, _BAD_REQUESTS):
-            handshaker = handshake.Handshaker(request,
-                                              mock.MockDispatcher())
+            handshaker = Handshaker(request, mock.MockDispatcher())
             self.assertRaises(HandshakeException, handshaker.do_handshake)
+
+
+class HyBi00ValidateSubprotocolTest(unittest.TestCase):
+    def test_validate_subprotocol(self):
+        # should succeed.
+        _validate_subprotocol('sample')
+        _validate_subprotocol('Sample')
+        _validate_subprotocol('sample\x7eprotocol')
+        _validate_subprotocol('sample\x20protocol')
+
+        # should fail.
+        self.assertRaises(HandshakeException,
+                          _validate_subprotocol,
+                          '')
+        self.assertRaises(HandshakeException,
+                          _validate_subprotocol,
+                          'sample\x19protocol')
+        self.assertRaises(HandshakeException,
+                          _validate_subprotocol,
+                          'sample\x7fprotocol')
+        self.assertRaises(HandshakeException,
+                          _validate_subprotocol,
+                          # "Japan" in Japanese
+                          u'\u65e5\u672c')
 
 
 if __name__ == '__main__':

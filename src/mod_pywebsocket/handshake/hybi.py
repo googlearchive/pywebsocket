@@ -255,7 +255,7 @@ class Handshaker(object):
                     raise HandshakeException(
                         'do_extra_handshake must choose one subprotocol from '
                         'ws_requested_protocols and set it to ws_protocol')
-                validate_subprotocol(self._request.ws_protocol, hixie=False)
+                validate_subprotocol(self._request.ws_protocol)
 
                 self._logger.debug(
                     'Subprotocol accepted: %r',

@@ -48,6 +48,7 @@ import os
 import re
 
 from mod_pywebsocket import common
+from mod_pywebsocket import deflate_stream_extension
 from mod_pywebsocket.extensions import get_extension_processor
 from mod_pywebsocket.handshake._base import check_request_line
 from mod_pywebsocket.handshake._base import format_header

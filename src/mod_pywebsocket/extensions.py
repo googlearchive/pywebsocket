@@ -76,38 +76,6 @@ class ExtensionProcessorInterface(object):
             self._setup_stream_options_internal(stream_options)
 
 
-class DeflateStreamExtensionProcessor(ExtensionProcessorInterface):
-    """WebSocket DEFLATE stream extension processor.
-
-    Specification:
-    Section 9.2.1 in
-    http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10
-    """
-
-    def __init__(self, request):
-        ExtensionProcessorInterface.__init__(self, request)
-        self._logger = util.get_class_logger(self)
-
-    def name(self):
-        return common.DEFLATE_STREAM_EXTENSION
-
-    def _get_extension_response_internal(self):
-        if len(self._request.get_parameter_names()) != 0:
-            return None
-
-        self._logger.debug(
-            'Enable %s extension', common.DEFLATE_STREAM_EXTENSION)
-
-        return common.ExtensionParameter(common.DEFLATE_STREAM_EXTENSION)
-
-    def _setup_stream_options_internal(self, stream_options):
-        stream_options.deflate_stream = True
-
-
-_available_processors[common.DEFLATE_STREAM_EXTENSION] = (
-    DeflateStreamExtensionProcessor)
-
-
 def _log_compression_ratio(logger, original_bytes, total_original_bytes,
                            filtered_bytes, total_filtered_bytes):
     # Print inf when ratio is not available.

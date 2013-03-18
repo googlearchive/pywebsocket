@@ -59,7 +59,7 @@ setup(author='Yuzo Fujishima',
       description='WebSocket extension for Apache HTTP Server.',
       long_description=(
               'mod_pywebsocket is an Apache HTTP Server extension for '
-              'WebSocket (http://tools.ietf.org/html/rfc6455). '
+              'the WebSocket Protocol (RFC 6455). '
               'See mod_pywebsocket/__init__.py for more detail.'),
       license='See COPYING',
       name=_PACKAGE_NAME,
@@ -67,7 +67,7 @@ setup(author='Yuzo Fujishima',
       url='http://code.google.com/p/pywebsocket/',
       # See the source of distutils.version, distutils.versionpredicate and
       # distutils.dist to understand how to name version numbers.
-      version='0.7.8',
+      version='0.7.9',
       )
 
 

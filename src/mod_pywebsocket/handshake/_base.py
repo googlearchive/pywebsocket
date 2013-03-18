@@ -106,7 +106,7 @@ def validate_subprotocol(subprotocol):
 
 
 def parse_host_header(request):
-    fields = request.headers_in['Host'].split(':', 1)
+    fields = request.headers_in[common.HOST_HEADER].split(':', 1)
     if len(fields) == 1:
         return fields[0], get_default_port(request.is_https())
     try:

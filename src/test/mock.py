@@ -186,6 +186,7 @@ class MockRequest(object):
         See the document of mod_python Request for details.
         """
         self.uri = uri
+        self.unparsed_uri = uri
         self.connection = connection
         self.method = method
         self.protocol = protocol

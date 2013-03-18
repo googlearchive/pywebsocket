@@ -226,10 +226,22 @@ class _StandaloneRequest(object):
         self.headers_in = request_handler.headers
 
     def get_uri(self):
-        """Getter to mimic request.uri."""
+        """Getter to mimic request.uri.
+
+        This method returns the raw data at the Request-URI part of the
+        Request-Line, while the uri method on the request object of mod_python
+        returns the path portion after parsing the raw data. This behavior is
+        kept for compatibility.
+        """
 
         return self._request_handler.path
     uri = property(get_uri)
+
+    def get_unparsed_uri(self):
+        """Getter to mimic request.unparsed_uri."""
+
+        return self._request_handler.path
+    unparsed_uri = property(get_unparsed_uri)
 
     def get_method(self):
         """Getter to mimic request.method."""

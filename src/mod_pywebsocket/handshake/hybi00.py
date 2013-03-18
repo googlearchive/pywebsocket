@@ -112,7 +112,7 @@ def _build_location(request):
     if (port != get_default_port(request.is_https())):
         location_parts.append(':')
         location_parts.append(str(port))
-    location_parts.append(request.uri)
+    location_parts.append(request.unparsed_uri)
     return ''.join(location_parts)
 
 

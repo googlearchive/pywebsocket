@@ -90,7 +90,6 @@ STATUS_INTERNAL_ENDPOINT_ERROR = 1011
 STATUS_TLS_HANDSHAKE = 1015
 
 # Extension tokens
-_DEFLATE_STREAM_EXTENSION = 'deflate-stream'
 _DEFLATE_FRAME_EXTENSION = 'deflate-frame'
 # TODO(bashi): Update after mux implementation finished.
 _MUX_EXTENSION = 'mux_DO_NOT_USE'
@@ -433,16 +432,11 @@ class WebSocketHandshake(object):
         # extensions or extensions we didn't request in it. Then, for
         # extensions we request, parse them and store parameters. They will be
         # used later by each extension.
-        deflate_stream_accepted = False
         deflate_frame_accepted = False
         mux_accepted = False
         for extension in accepted_extensions:
             if extension == '':
                 continue
-            if extension == _DEFLATE_STREAM_EXTENSION:
-                if self._options.use_deflate_stream:
-                    deflate_stream_accepted = True
-                    continue
             if extension == _DEFLATE_FRAME_EXTENSION:
                 if self._options.use_deflate_frame:
                     deflate_frame_accepted = True
@@ -456,10 +450,6 @@ class WebSocketHandshake(object):
                 'Received unrecognized extension: %s' % extension)
 
         # Let all extensions check the response for extension request.
-
-        if self._options.use_deflate_stream and not deflate_stream_accepted:
-            raise Exception('%s extension not accepted' %
-                            _DEFLATE_STREAM_EXTENSION)
 
         if (self._options.use_deflate_frame and
             not deflate_frame_accepted):
@@ -749,10 +739,7 @@ class WebSocketStream(object):
 
     def __init__(self, socket, handshake):
         self._handshake = handshake
-        if self._handshake._options.use_deflate_stream:
-            self._socket = util.DeflateSocket(socket)
-        else:
-            self._socket = socket
+        self._socket = socket
 
         # Filters applied to application data part of data frames.
         self._outgoing_frame_filter = None
@@ -983,16 +970,10 @@ class ClientOptions(object):
         self.socket_timeout = 1000
         self.use_tls = False
         self.extensions = []
-        # Enable deflate-stream.
-        self.use_deflate_stream = False
         # Enable deflate-application-data.
         self.use_deflate_frame = False
         # Enable mux
         self.use_mux = False
-
-    def enable_deflate_stream(self):
-        self.use_deflate_stream = True
-        self.extensions.append(_DEFLATE_STREAM_EXTENSION)
 
     def enable_deflate_frame(self):
         self.use_deflate_frame = True

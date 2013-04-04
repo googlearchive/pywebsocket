@@ -389,9 +389,6 @@ class StreamOptions(object):
     def __init__(self):
         """Constructs StreamOptions."""
 
-        # Enables deflate-stream extension.
-        self.deflate_stream = False
-
         # Filters applied to frames.
         self.outgoing_frame_filters = []
         self.incoming_frame_filters = []
@@ -422,10 +419,6 @@ class Stream(StreamBase):
         self._logger = util.get_class_logger(self)
 
         self._options = options
-
-        if self._options.deflate_stream:
-            self._logger.debug('Setup filter for deflate-stream')
-            self._request = util.DeflateRequest(self._request)
 
         self._request.client_terminated = False
         self._request.server_terminated = False
@@ -643,8 +636,9 @@ class Stream(StreamBase):
                 self._request.ws_close_code,
                 self._request.ws_close_reason)
 
-        # Drain junk data after the close frame if necessary.
-        self._drain_received_data()
+        # As we've received a close frame, no more data is coming over the
+        # socket. We can now safely close the socket without worrying about
+        # RST sending.
 
         if self._request.server_terminated:
             self._logger.debug(
@@ -888,26 +882,6 @@ class Stream(StreamBase):
         """
 
         return self._original_opcode
-
-    def _drain_received_data(self):
-        """Drains unread data in the receive buffer to avoid sending out TCP
-        RST packet. This is because when deflate-stream is enabled, some
-        DEFLATE block for flushing data may follow a close frame. If any data
-        remains in the receive buffer of a socket when the socket is closed,
-        it sends out TCP RST packet to the other peer.
-
-        Since mod_python's mp_conn object doesn't support non-blocking read,
-        we perform this only when pywebsocket is running in standalone mode.
-        """
-
-        # If self._options.deflate_stream is true, self._request is
-        # DeflateRequest, so we can get wrapped request object by
-        # self._request._request.
-        #
-        # Only _StandaloneRequest has _drain_received_data method.
-        if (self._options.deflate_stream and
-            ('_drain_received_data' in dir(self._request._request))):
-            self._request._request._drain_received_data()
 
 
 # vi:sts=4 sw=4 et

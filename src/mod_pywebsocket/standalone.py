@@ -260,18 +260,6 @@ class _StandaloneRequest(object):
 
         return self._use_tls
 
-    def _drain_received_data(self):
-        """Don't use this method from WebSocket handler. Drains unread data
-        in the receive buffer.
-        """
-
-        raw_socket = self._request_handler.connection
-        drained_data = util.drain_received_data(raw_socket)
-
-        if drained_data:
-            self._logger.debug(
-                'Drained data following close frame: %r', drained_data)
-
 
 def _import_ssl():
     global ssl

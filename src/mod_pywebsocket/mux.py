@@ -1067,13 +1067,6 @@ class _LogicalStream(Stream):
                            self._request.channel_id)
         self._request.server_terminated = True
 
-    def _drain_received_data(self):
-        """Overrides Stream._drain_received_data. Nothing need to be done for
-        logical channel.
-        """
-
-        pass
-
     def stop_sending(self):
         """Stops accepting new send operation (_write_inner_frame)."""
 

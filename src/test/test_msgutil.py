@@ -79,12 +79,13 @@ def _install_extension_processor(processor, request, stream_options):
 
 
 def _create_request_from_rawdata(
-    read_data, deflate_stream=False, deflate_frame_request=None,
-    perframe_compression_request=None, permessage_compression_request=None):
+        read_data,
+        deflate_frame_request=None,
+        perframe_compression_request=None,
+        permessage_compression_request=None):
     req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
     req.ws_version = common.VERSION_HYBI_LATEST
     stream_options = StreamOptions()
-    stream_options.deflate_stream = deflate_stream
     req.ws_extension_processors = []
     if deflate_frame_request is not None:
         processor = DeflateFrameExtensionProcessor(deflate_frame_request)
@@ -427,50 +428,6 @@ class BasicMessageTest(unittest.TestCase):
         self.assertRaises(msgutil.InvalidFrameException,
                           msgutil.receive_message,
                           request)
-
-
-class DeflateStreamTest(unittest.TestCase):
-    """Tests for checking deflate-stream extension."""
-
-    def test_send_message(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        request = _create_request_from_rawdata('', deflate_stream=True)
-        msgutil.send_message(request, 'Hello')
-        expected = compress.compress('\x81\x05Hello')
-        expected += compress.flush(zlib.Z_SYNC_FLUSH)
-        self.assertEqual(expected, request.connection.written_data())
-
-    def test_receive_message(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data = compress.compress('\x81\x85' + _mask_hybi('Hello'))
-        data += compress.flush(zlib.Z_SYNC_FLUSH)
-        data += compress.compress('\x81\x89' + _mask_hybi('WebSocket'))
-        data += compress.flush(zlib.Z_FINISH)
-
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-
-        data += compress.compress('\x81\x85' + _mask_hybi('World'))
-        data += compress.flush(zlib.Z_SYNC_FLUSH)
-        # Close frame
-        data += compress.compress(
-            '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye'))
-        data += compress.flush(zlib.Z_SYNC_FLUSH)
-
-        request = _create_request_from_rawdata(data, deflate_stream=True)
-        self.assertEqual('Hello', msgutil.receive_message(request))
-        self.assertEqual('WebSocket', msgutil.receive_message(request))
-        self.assertEqual('World', msgutil.receive_message(request))
-
-        self.assertFalse(request.drain_received_data_called)
-
-        self.assertEqual(None, msgutil.receive_message(request))
-
-        self.assertTrue(request.drain_received_data_called)
 
 
 class DeflateFrameTest(unittest.TestCase):

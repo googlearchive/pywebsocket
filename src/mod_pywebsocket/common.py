@@ -101,7 +101,6 @@ SEC_WEBSOCKET_KEY2_HEADER = 'Sec-WebSocket-Key2'
 SEC_WEBSOCKET_LOCATION_HEADER = 'Sec-WebSocket-Location'
 
 # Extensions
-DEFLATE_STREAM_EXTENSION = 'deflate-stream'
 DEFLATE_FRAME_EXTENSION = 'deflate-frame'
 PERFRAME_COMPRESSION_EXTENSION = 'perframe-compress'
 PERMESSAGE_COMPRESSION_EXTENSION = 'permessage-compress'

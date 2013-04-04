@@ -396,11 +396,6 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
         extensions_to_request = []
 
-        if self._options.deflate_stream:
-            extensions_to_request.append(
-                common.ExtensionParameter(
-                    common.DEFLATE_STREAM_EXTENSION))
-
         if self._options.deflate_frame:
             extensions_to_request.append(
                 common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION))
@@ -497,7 +492,6 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 'Invalid %s header: %r (expected: %s)' %
                 (common.SEC_WEBSOCKET_ACCEPT_HEADER, accept, expected_accept))
 
-        deflate_stream_accepted = False
         deflate_frame_accepted = False
 
         extensions_header = fields.get(
@@ -508,12 +502,6 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         # TODO(bashi): Support the new style perframe compression extension.
         for extension in accepted_extensions:
             extension_name = extension.name()
-            if (extension_name == common.DEFLATE_STREAM_EXTENSION and
-                len(extension.get_parameter_names()) == 0 and
-                self._options.deflate_stream):
-                deflate_stream_accepted = True
-                continue
-
             if (extension_name == common.DEFLATE_FRAME_EXTENSION and
                 self._options.deflate_frame):
                 deflate_frame_accepted = True
@@ -524,11 +512,6 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
 
             raise ClientHandshakeError(
                 'Unexpected extension %r' % extension_name)
-
-        if (self._options.deflate_stream and not deflate_stream_accepted):
-            raise ClientHandshakeError(
-                'Requested %s, but the server rejected it' %
-                common.DEFLATE_STREAM_EXTENSION)
 
         if (self._options.deflate_frame and not deflate_frame_accepted):
             raise ClientHandshakeError(
@@ -782,15 +765,6 @@ class ClientRequest(object):
         self._socket = socket
         self.connection = ClientConnection(socket)
 
-    def _drain_received_data(self):
-        """Drains unread data in the receive buffer."""
-
-        drained_data = util.drain_received_data(self._socket)
-
-        if drained_data:
-            self._logger.debug(
-                'Drained data following close frame: %r', drained_data)
-
 
 def _import_ssl():
     global ssl
@@ -867,9 +841,6 @@ class EchoClient(object):
                 stream_option = StreamOptions()
                 stream_option.mask_send = True
                 stream_option.unmask_receive = False
-
-                if self._options.deflate_stream:
-                    stream_option.deflate_stream = True
 
                 if self._options.deflate_frame is not False:
                     processor = self._options.deflate_frame
@@ -980,12 +951,6 @@ def main():
                       dest='version_header',
                       type='int', default=-1,
                       help='specify Sec-WebSocket-Version header value')
-    parser.add_option('--deflate-stream', '--deflate_stream',
-                      dest='deflate_stream',
-                      action='store_true', default=False,
-                      help='use deflate-stream extension. This value will be '
-                      'ignored if used with protocol version that doesn\'t '
-                      'support deflate-stream.')
     parser.add_option('--deflate-frame', '--deflate_frame',
                       dest='deflate_frame',
                       action='store_true', default=False,

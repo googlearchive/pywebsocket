@@ -167,14 +167,15 @@ class HandshakerTest(unittest.TestCase):
     def test_do_handshake_with_extensions(self):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Extensions'] = (
-            'deflate-stream, unknown')
+            'permessage-compress; method=deflate, unknown')
 
         EXPECTED_RESPONSE = (
             'HTTP/1.1 101 Switching Protocols\r\n'
             'Upgrade: websocket\r\n'
             'Connection: Upgrade\r\n'
             'Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n'
-            'Sec-WebSocket-Extensions: deflate-stream\r\n\r\n')
+            'Sec-WebSocket-Extensions: permessage-compress; method=deflate\r\n'
+            '\r\n')
 
         request = _create_request(request_def)
         handshaker = _create_handshaker(request)
@@ -182,13 +183,15 @@ class HandshakerTest(unittest.TestCase):
         self.assertEqual(EXPECTED_RESPONSE, request.connection.written_data())
         self.assertEqual(1, len(request.ws_extensions))
         extension = request.ws_extensions[0]
-        self.assertEqual('deflate-stream', extension.name())
-        self.assertEqual(0, len(extension.get_parameter_names()))
+        self.assertEqual(common.PERMESSAGE_COMPRESSION_EXTENSION,
+                         extension.name())
+        self.assertEqual(['method'], extension.get_parameter_names())
+        self.assertEqual('deflate', extension.get_parameter_value('method'))
 
     def test_do_handshake_with_quoted_extensions(self):
         request_def = _create_good_request_def()
         request_def.headers['Sec-WebSocket-Extensions'] = (
-            'deflate-stream, , '
+            'permessage-compress; method=deflate, , '
             'unknown; e   =    "mc^2"; ma="\r\n      \\\rf  "; pv=nrt')
 
         request = _create_request(request_def)

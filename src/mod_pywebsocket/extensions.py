@@ -163,10 +163,10 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
         if not _validate_window_bits(window_bits):
             return None
 
-        self._deflater = util._RFC1979Deflater(
+        self._rfc1979_deflater = util._RFC1979Deflater(
             window_bits, no_context_takeover)
 
-        self._inflater = util._RFC1979Inflater()
+        self._rfc1979_inflater = util._RFC1979Inflater()
 
         self._compress_outgoing = True
 
@@ -243,7 +243,7 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
                 original_payload_size)
             return
 
-        frame.payload = self._deflater.filter(
+        frame.payload = self._rfc1979_deflater.filter(
             frame.payload, bfinal=self._bfinal)
         frame.rsv1 = 1
 
@@ -268,7 +268,7 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
                 received_payload_size)
             return
 
-        frame.payload = self._inflater.filter(frame.payload)
+        frame.payload = self._rfc1979_inflater.filter(frame.payload)
         frame.rsv1 = 0
 
         filtered_payload_size = len(frame.payload)
@@ -460,10 +460,10 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
                 self._S2C_NO_CONTEXT_TAKEOVER_PARAM) is not None):
             return None
 
-        self._deflater = util._RFC1979Deflater(
+        self._rfc1979_deflater = util._RFC1979Deflater(
             s2c_max_window_bits, s2c_no_context_takeover)
 
-        self._inflater = util._RFC1979Inflater()
+        self._rfc1979_inflater = util._RFC1979Inflater()
 
         self._compress_outgoing_enabled = True
 
@@ -582,7 +582,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         received_payload_size = len(message)
         self._total_incoming_payload_bytes += received_payload_size
 
-        message = self._inflater.filter(message)
+        message = self._rfc1979_inflater.filter(message)
 
         filtered_payload_size = len(message)
         self._total_filtered_incoming_payload_bytes += filtered_payload_size
@@ -604,7 +604,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         original_payload_size = len(message)
         self._total_outgoing_payload_bytes += original_payload_size
 
-        message = self._deflater.filter(
+        message = self._rfc1979_deflater.filter(
             message, flush=end, bfinal=self._bfinal)
 
         filtered_payload_size = len(message)

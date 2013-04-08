@@ -95,7 +95,7 @@ def _log_decompression_ratio(logger, received_bytes, total_received_bytes,
     # Print inf when ratio is not available.
     ratio = float('inf')
     average_ratio = float('inf')
-    if received_bytes != 0:
+    if filtered_bytes != 0:
         ratio = float(received_bytes) / filtered_bytes
     if total_filtered_bytes != 0:
         average_ratio = (

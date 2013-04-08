@@ -105,13 +105,19 @@ def _log_decompression_ratio(logger, received_bytes, total_received_bytes,
 
 
 def _validate_window_bits(bits):
-    if bits is not None:
-        try:
-            bits = int(bits)
-        except ValueError, e:
-            return False
-        if bits < 8 or bits > 15:
-            return False
+    """Return True iff the given string conforms to the grammar of the window
+    bits extension parameters.
+    """
+
+    try:
+        int_bits = int(bits)
+    except TypeError, e:  # E.g. drop None
+        return False
+    except ValueError, e:  # E.g. drop "10.0"
+        return False
+    # First condition is to e.g. drop "08".
+    if bits != str(int_bits) or int_bits < 8 or int_bits > 15:
+        return False
     return True
 
 
@@ -160,7 +166,8 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
                 self._NO_CONTEXT_TAKEOVER_PARAM) is not None):
             return None
 
-        if not _validate_window_bits(window_bits):
+        if ((window_bits is not None) and
+            not _validate_window_bits(window_bits)):
             return None
 
         self._rfc1979_deflater = util._RFC1979Deflater(
@@ -450,7 +457,8 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
 
         s2c_max_window_bits = self._request.get_parameter_value(
             self._S2C_MAX_WINDOW_BITS_PARAM)
-        if not _validate_window_bits(s2c_max_window_bits):
+        if ((s2c_max_window_bits is not None) and
+            not _validate_window_bits(s2c_max_window_bits)):
             return None
 
         s2c_no_context_takeover = self._request.has_parameter(

@@ -41,6 +41,32 @@ from mod_pywebsocket import common
 from mod_pywebsocket import extensions
 
 
+class ExtensionsTest(unittest.TestCase):
+    """A unittest for non-class methods in extensions.py"""
+
+    def test_validate_window_bits(self):
+        self.assertFalse(extensions._validate_window_bits(None))
+        self.assertFalse(extensions._validate_window_bits('foobar'))
+        self.assertFalse(extensions._validate_window_bits(' 8 '))
+        self.assertFalse(extensions._validate_window_bits('a8a'))
+        self.assertFalse(extensions._validate_window_bits('00000'))
+        self.assertFalse(extensions._validate_window_bits('00008'))
+        self.assertFalse(extensions._validate_window_bits('0x8'))
+
+        self.assertFalse(extensions._validate_window_bits('9.5'))
+        self.assertFalse(extensions._validate_window_bits('8.0'))
+
+        self.assertTrue(extensions._validate_window_bits('8'))
+        self.assertTrue(extensions._validate_window_bits('15'))
+
+        self.assertFalse(extensions._validate_window_bits('-8'))
+        self.assertFalse(extensions._validate_window_bits('0'))
+        self.assertFalse(extensions._validate_window_bits('7'))
+
+        self.assertFalse(extensions._validate_window_bits('16'))
+        self.assertFalse(extensions._validate_window_bits('10000000'))
+
+
 class CompressionMethodParameterParserTest(unittest.TestCase):
     """A unittest for _parse_compression_method which parses the compression
     method description used by perframe-compression and permessage-compression

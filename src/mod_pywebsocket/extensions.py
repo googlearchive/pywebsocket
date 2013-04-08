@@ -76,32 +76,26 @@ class ExtensionProcessorInterface(object):
             self._setup_stream_options_internal(stream_options)
 
 
-def _log_compression_ratio(logger, original_bytes, total_original_bytes,
-                           filtered_bytes, total_filtered_bytes):
+def _log_outgoing_compression_ratio(
+        logger, original_bytes, filtered_bytes, average_ratio):
     # Print inf when ratio is not available.
     ratio = float('inf')
-    average_ratio = float('inf')
     if original_bytes != 0:
         ratio = float(filtered_bytes) / original_bytes
-    if total_original_bytes != 0:
-        average_ratio = (
-            float(total_filtered_bytes) / total_original_bytes)
-    logger.debug('Outgoing compress ratio: %f (average: %f)' %
-        (ratio, average_ratio))
+
+    logger.debug('Outgoing compression ratio: %f (average: %f)' %
+            (ratio, average_ratio))
 
 
-def _log_decompression_ratio(logger, received_bytes, total_received_bytes,
-                             filtered_bytes, total_filtered_bytes):
+def _log_incoming_compression_ratio(
+        logger, received_bytes, filtered_bytes, average_ratio):
     # Print inf when ratio is not available.
     ratio = float('inf')
-    average_ratio = float('inf')
     if filtered_bytes != 0:
         ratio = float(received_bytes) / filtered_bytes
-    if total_filtered_bytes != 0:
-        average_ratio = (
-            float(total_received_bytes) / total_filtered_bytes)
-    logger.debug('Incoming compress ratio: %f (average: %f)' %
-        (ratio, average_ratio))
+
+    logger.debug('Incoming compression ratio: %f (average: %f)' %
+            (ratio, average_ratio))
 
 
 def _validate_window_bits(bits):
@@ -119,6 +113,29 @@ def _validate_window_bits(bits):
     if bits != str(int_bits) or int_bits < 8 or int_bits > 15:
         return False
     return True
+
+
+class _AverageRatioCalculator(object):
+    """Stores total bytes of original and result data, and calculates average
+    result / original ratio.
+    """
+
+    def __init__(self):
+        self._total_original_bytes = 0
+        self._total_result_bytes = 0
+
+    def add_original_bytes(self, value):
+        self._total_original_bytes += value
+
+    def add_result_bytes(self, value):
+        self._total_result_bytes += value
+
+    def get_average_ratio(self):
+        if self._total_original_bytes != 0:
+            return (float(self._total_result_bytes) /
+                    self._total_original_bytes)
+        else:
+            return float('inf')
 
 
 class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
@@ -139,17 +156,15 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
         self._response_no_context_takeover = False
         self._bfinal = False
 
-        # Counters for statistics.
+        # Calculates
+        #     (Total outgoing bytes supplied to this filter) /
+        #     (Total bytes sent to the network after applying this filter)
+        self._outgoing_average_ratio_calculator = _AverageRatioCalculator()
 
-        # Total number of outgoing bytes supplied to this filter.
-        self._total_outgoing_payload_bytes = 0
-        # Total number of bytes sent to the network after applying this filter.
-        self._total_filtered_outgoing_payload_bytes = 0
-
-        # Total number of bytes received from the network.
-        self._total_incoming_payload_bytes = 0
-        # Total number of incoming bytes obtained after applying this filter.
-        self._total_filtered_incoming_payload_bytes = 0
+        # Calculates
+        #     (Total bytes received from the network) /
+        #     (Total incoming bytes obtained after applying this filter)
+        self._incoming_average_ratio_calculator = _AverageRatioCalculator()
 
     def name(self):
         return common.DEFLATE_FRAME_EXTENSION
@@ -242,12 +257,13 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
         """
 
         original_payload_size = len(frame.payload)
-        self._total_outgoing_payload_bytes += original_payload_size
+        self._outgoing_average_ratio_calculator.add_original_bytes(
+                original_payload_size)
 
         if (not self._compress_outgoing or
             common.is_control_opcode(frame.opcode)):
-            self._total_filtered_outgoing_payload_bytes += (
-                original_payload_size)
+            self._outgoing_average_ratio_calculator.add_result_bytes(
+                    original_payload_size)
             return
 
         frame.payload = self._rfc1979_deflater.filter(
@@ -255,12 +271,14 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
         frame.rsv1 = 1
 
         filtered_payload_size = len(frame.payload)
-        self._total_filtered_outgoing_payload_bytes += filtered_payload_size
+        self._outgoing_average_ratio_calculator.add_result_bytes(
+                filtered_payload_size)
 
-        _log_compression_ratio(self._logger, original_payload_size,
-                               self._total_outgoing_payload_bytes,
-                               filtered_payload_size,
-                               self._total_filtered_outgoing_payload_bytes)
+        _log_outgoing_compression_ratio(
+                self._logger,
+                original_payload_size,
+                filtered_payload_size,
+                self._outgoing_average_ratio_calculator.get_average_ratio())
 
     def _incoming_filter(self, frame):
         """Transform incoming frames. This method is called only by
@@ -268,23 +286,26 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
         """
 
         received_payload_size = len(frame.payload)
-        self._total_incoming_payload_bytes += received_payload_size
+        self._incoming_average_ratio_calculator.add_result_bytes(
+                received_payload_size)
 
         if frame.rsv1 != 1 or common.is_control_opcode(frame.opcode):
-            self._total_filtered_incoming_payload_bytes += (
-                received_payload_size)
+            self._incoming_average_ratio_calculator.add_original_bytes(
+                    received_payload_size)
             return
 
         frame.payload = self._rfc1979_inflater.filter(frame.payload)
         frame.rsv1 = 0
 
         filtered_payload_size = len(frame.payload)
-        self._total_filtered_incoming_payload_bytes += filtered_payload_size
+        self._incoming_average_ratio_calculator.add_original_bytes(
+                filtered_payload_size)
 
-        _log_decompression_ratio(self._logger, received_payload_size,
-                                 self._total_incoming_payload_bytes,
-                                 filtered_payload_size,
-                                 self._total_filtered_incoming_payload_bytes)
+        _log_incoming_compression_ratio(
+                self._logger,
+                received_payload_size,
+                filtered_payload_size,
+                self._incoming_average_ratio_calculator.get_average_ratio())
 
 
 _available_processors[common.DEFLATE_FRAME_EXTENSION] = (
@@ -437,17 +458,15 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         # True if a message is fragmented and compression is ongoing.
         self._compress_ongoing = False
 
-        # Counters for statistics.
+        # Calculates
+        #     (Total outgoing bytes supplied to this filter) /
+        #     (Total bytes sent to the network after applying this filter)
+        self._outgoing_average_ratio_calculator = _AverageRatioCalculator()
 
-        # Total number of outgoing bytes supplied to this filter.
-        self._total_outgoing_payload_bytes = 0
-        # Total number of bytes sent to the network after applying this filter.
-        self._total_filtered_outgoing_payload_bytes = 0
-
-        # Total number of bytes received from the network.
-        self._total_incoming_payload_bytes = 0
-        # Total number of incoming bytes obtained after applying this filter.
-        self._total_filtered_incoming_payload_bytes = 0
+        # Calculates
+        #     (Total bytes received from the network) /
+        #     (Total incoming bytes obtained after applying this filter)
+        self._incoming_average_ratio_calculator = _AverageRatioCalculator()
 
     def name(self):
         return 'deflate'
@@ -588,17 +607,20 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
             return message
 
         received_payload_size = len(message)
-        self._total_incoming_payload_bytes += received_payload_size
+        self._incoming_average_ratio_calculator.add_result_bytes(
+                received_payload_size)
 
         message = self._rfc1979_inflater.filter(message)
 
         filtered_payload_size = len(message)
-        self._total_filtered_incoming_payload_bytes += filtered_payload_size
+        self._incoming_average_ratio_calculator.add_original_bytes(
+                filtered_payload_size)
 
-        _log_decompression_ratio(self._logger, received_payload_size,
-                                 self._total_incoming_payload_bytes,
-                                 filtered_payload_size,
-                                 self._total_filtered_incoming_payload_bytes)
+        _log_incoming_compression_ratio(
+                self._logger,
+                received_payload_size,
+                filtered_payload_size,
+                self._incoming_average_ratio_calculator.get_average_ratio())
 
         return message
 
@@ -610,18 +632,21 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
             return message
 
         original_payload_size = len(message)
-        self._total_outgoing_payload_bytes += original_payload_size
+        self._outgoing_average_ratio_calculator.add_original_bytes(
+            original_payload_size)
 
         message = self._rfc1979_deflater.filter(
             message, flush=end, bfinal=self._bfinal)
 
         filtered_payload_size = len(message)
-        self._total_filtered_outgoing_payload_bytes += filtered_payload_size
+        self._outgoing_average_ratio_calculator.add_result_bytes(
+            filtered_payload_size)
 
-        _log_compression_ratio(self._logger, original_payload_size,
-                               self._total_outgoing_payload_bytes,
-                               filtered_payload_size,
-                               self._total_filtered_outgoing_payload_bytes)
+        _log_outgoing_compression_ratio(
+                self._logger,
+                original_payload_size,
+                filtered_payload_size,
+                self._outgoing_average_ratio_calculator.get_average_ratio())
 
         if not self._compress_ongoing:
             self._outgoing_frame_filter.set_compression_bit()

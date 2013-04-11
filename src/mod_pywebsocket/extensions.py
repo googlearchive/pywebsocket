@@ -588,9 +588,23 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         stream_options.encode_text_message_to_utf8 = False
 
     def set_c2s_max_window_bits(self, value):
+        """If this option is specified, this class adds the c2s_max_window_bits
+        extension parameter to the handshake response, but doesn't reduce the
+        LZ77 sliding window size of its inflater. I.e., you can use this for
+        testing client implementation but cannot reduce memory usage of this
+        class.
+        """
+
         self._c2s_max_window_bits = value
 
     def set_c2s_no_context_takeover(self, value):
+        """If this option is specified, this class adds the
+        c2s_no_context_takeover extension parameter to the handshake response,
+        but doesn't reset inflater for each message. I.e., you can use this for
+        testing client implementation but cannot reduce memory usage of this
+        class.
+        """
+
         self._c2s_no_context_takeover = value
 
     def set_bfinal(self, value):

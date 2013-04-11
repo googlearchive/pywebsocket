@@ -451,22 +451,6 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
 
         self._c2s_max_window_bits = None
         self._c2s_no_context_takeover = False
-        self._bfinal = False
-
-        self._compress_outgoing_enabled = False
-
-        # True if a message is fragmented and compression is ongoing.
-        self._compress_ongoing = False
-
-        # Calculates
-        #     (Total outgoing bytes supplied to this filter) /
-        #     (Total bytes sent to the network after applying this filter)
-        self._outgoing_average_ratio_calculator = _AverageRatioCalculator()
-
-        # Calculates
-        #     (Total bytes received from the network) /
-        #     (Total incoming bytes obtained after applying this filter)
-        self._incoming_average_ratio_calculator = _AverageRatioCalculator()
 
     def name(self):
         return 'deflate'
@@ -492,7 +476,10 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
 
         self._rfc1979_inflater = util._RFC1979Inflater()
 
-        self._compress_outgoing_enabled = True
+        self._framer = _PerMessageDeflateFramer(
+            s2c_max_window_bits, s2c_no_context_takeover)
+        self._framer.set_bfinal(False)
+        self._framer.set_compress_outgoing_enabled(True)
 
         response = common.ExtensionParameter(self._request.name())
 
@@ -525,67 +512,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         return response
 
     def _setup_stream_options_internal(self, stream_options):
-        class _OutgoingMessageFilter(object):
-
-            def __init__(self, parent):
-                self._parent = parent
-
-            def filter(self, message, end=True, binary=False):
-                return self._parent._process_outgoing_message(
-                    message, end, binary)
-
-        class _IncomingMessageFilter(object):
-
-            def __init__(self, parent):
-                self._parent = parent
-                self._decompress_next_message = False
-
-            def decompress_next_message(self):
-                self._decompress_next_message = True
-
-            def filter(self, message):
-                message = self._parent._process_incoming_message(
-                    message, self._decompress_next_message)
-                self._decompress_next_message = False
-                return message
-
-        self._outgoing_message_filter = _OutgoingMessageFilter(self)
-        self._incoming_message_filter = _IncomingMessageFilter(self)
-        stream_options.outgoing_message_filters.append(
-            self._outgoing_message_filter)
-        stream_options.incoming_message_filters.append(
-            self._incoming_message_filter)
-
-        class _OutgoingFrameFilter(object):
-
-            def __init__(self, parent):
-                self._parent = parent
-                self._set_compression_bit = False
-
-            def set_compression_bit(self):
-                self._set_compression_bit = True
-
-            def filter(self, frame):
-                self._parent._process_outgoing_frame(
-                    frame, self._set_compression_bit)
-                self._set_compression_bit = False
-
-        class _IncomingFrameFilter(object):
-
-            def __init__(self, parent):
-                self._parent = parent
-
-            def filter(self, frame):
-                self._parent._process_incoming_frame(frame)
-
-        self._outgoing_frame_filter = _OutgoingFrameFilter(self)
-        self._incoming_frame_filter = _IncomingFrameFilter(self)
-        stream_options.outgoing_frame_filters.append(
-            self._outgoing_frame_filter)
-        stream_options.incoming_frame_filters.append(
-            self._incoming_frame_filter)
-
-        stream_options.encode_text_message_to_utf8 = False
+        self._framer.setup_stream_options(stream_options)
 
     def set_c2s_max_window_bits(self, value):
         """If this option is specified, this class adds the c2s_max_window_bits
@@ -608,13 +535,48 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         self._c2s_no_context_takeover = value
 
     def set_bfinal(self, value):
-        self._bfinal = value
+        self._framer.set_bfinal(value)
 
     def enable_outgoing_compression(self):
-        self._compress_outgoing_enabled = True
+        self._framer.set_compress_outgoing_enabled(True)
 
     def disable_outgoing_compression(self):
+        self._framer.set_compress_outgoing_enabled(False)
+
+
+class _PerMessageDeflateFramer(object):
+    """A framer for extensions with per-message DEFLATE feature."""
+
+    def __init__(self, deflate_max_window_bits, deflate_no_context_takeover):
+        self._logger = util.get_class_logger(self)
+
+        self._rfc1979_deflater = util._RFC1979Deflater(
+            deflate_max_window_bits, deflate_no_context_takeover)
+
+        self._rfc1979_inflater = util._RFC1979Inflater()
+
+        self._bfinal = False
+
         self._compress_outgoing_enabled = False
+
+        # True if a message is fragmented and compression is ongoing.
+        self._compress_ongoing = False
+
+        # Calculates
+        #     (Total outgoing bytes supplied to this filter) /
+        #     (Total bytes sent to the network after applying this filter)
+        self._outgoing_average_ratio_calculator = _AverageRatioCalculator()
+
+        # Calculates
+        #     (Total bytes received from the network) /
+        #     (Total incoming bytes obtained after applying this filter)
+        self._incoming_average_ratio_calculator = _AverageRatioCalculator()
+
+    def set_bfinal(self, value):
+        self._bfinal = value
+
+    def set_compress_outgoing_enabled(self, value):
+        self._compress_outgoing_enabled = value
 
     def _process_incoming_message(self, message, decompress):
         if not decompress:
@@ -678,6 +640,71 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
             return
 
         frame.rsv1 = 1
+
+    def setup_stream_options(self, stream_options):
+        """Creates filters and sets them to the StreamOptions."""
+
+        class _OutgoingMessageFilter(object):
+
+            def __init__(self, parent):
+                self._parent = parent
+
+            def filter(self, message, end=True, binary=False):
+                return self._parent._process_outgoing_message(
+                    message, end, binary)
+
+        class _IncomingMessageFilter(object):
+
+            def __init__(self, parent):
+                self._parent = parent
+                self._decompress_next_message = False
+
+            def decompress_next_message(self):
+                self._decompress_next_message = True
+
+            def filter(self, message):
+                message = self._parent._process_incoming_message(
+                    message, self._decompress_next_message)
+                self._decompress_next_message = False
+                return message
+
+        self._outgoing_message_filter = _OutgoingMessageFilter(self)
+        self._incoming_message_filter = _IncomingMessageFilter(self)
+        stream_options.outgoing_message_filters.append(
+            self._outgoing_message_filter)
+        stream_options.incoming_message_filters.append(
+            self._incoming_message_filter)
+
+        class _OutgoingFrameFilter(object):
+
+            def __init__(self, parent):
+                self._parent = parent
+                self._set_compression_bit = False
+
+            def set_compression_bit(self):
+                self._set_compression_bit = True
+
+            def filter(self, frame):
+                self._parent._process_outgoing_frame(
+                    frame, self._set_compression_bit)
+                self._set_compression_bit = False
+
+        class _IncomingFrameFilter(object):
+
+            def __init__(self, parent):
+                self._parent = parent
+
+            def filter(self, frame):
+                self._parent._process_incoming_frame(frame)
+
+        self._outgoing_frame_filter = _OutgoingFrameFilter(self)
+        self._incoming_frame_filter = _IncomingFrameFilter(self)
+        stream_options.outgoing_frame_filters.append(
+            self._outgoing_frame_filter)
+        stream_options.incoming_frame_filters.append(
+            self._incoming_frame_filter)
+
+        stream_options.encode_text_message_to_utf8 = False
 
 
 class PerMessageCompressionExtensionProcessor(

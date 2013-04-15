@@ -34,6 +34,7 @@
 
 
 import unittest
+import zlib
 
 import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
@@ -44,27 +45,28 @@ from mod_pywebsocket import extensions
 class ExtensionsTest(unittest.TestCase):
     """A unittest for non-class methods in extensions.py"""
 
-    def test_validate_window_bits(self):
-        self.assertFalse(extensions._validate_window_bits(None))
-        self.assertFalse(extensions._validate_window_bits('foobar'))
-        self.assertFalse(extensions._validate_window_bits(' 8 '))
-        self.assertFalse(extensions._validate_window_bits('a8a'))
-        self.assertFalse(extensions._validate_window_bits('00000'))
-        self.assertFalse(extensions._validate_window_bits('00008'))
-        self.assertFalse(extensions._validate_window_bits('0x8'))
+    def test_parse_window_bits(self):
+        self.assertRaises(ValueError, extensions._parse_window_bits, None)
+        self.assertRaises(ValueError, extensions._parse_window_bits, 'foobar')
+        self.assertRaises(ValueError, extensions._parse_window_bits, ' 8 ')
+        self.assertRaises(ValueError, extensions._parse_window_bits, 'a8a')
+        self.assertRaises(ValueError, extensions._parse_window_bits, '00000')
+        self.assertRaises(ValueError, extensions._parse_window_bits, '00008')
+        self.assertRaises(ValueError, extensions._parse_window_bits, '0x8')
 
-        self.assertFalse(extensions._validate_window_bits('9.5'))
-        self.assertFalse(extensions._validate_window_bits('8.0'))
+        self.assertRaises(ValueError, extensions._parse_window_bits, '9.5')
+        self.assertRaises(ValueError, extensions._parse_window_bits, '8.0')
 
-        self.assertTrue(extensions._validate_window_bits('8'))
-        self.assertTrue(extensions._validate_window_bits('15'))
+        self.assertTrue(extensions._parse_window_bits, '8')
+        self.assertTrue(extensions._parse_window_bits, '15')
 
-        self.assertFalse(extensions._validate_window_bits('-8'))
-        self.assertFalse(extensions._validate_window_bits('0'))
-        self.assertFalse(extensions._validate_window_bits('7'))
+        self.assertRaises(ValueError, extensions._parse_window_bits, '-8')
+        self.assertRaises(ValueError, extensions._parse_window_bits, '0')
+        self.assertRaises(ValueError, extensions._parse_window_bits, '7')
 
-        self.assertFalse(extensions._validate_window_bits('16'))
-        self.assertFalse(extensions._validate_window_bits('10000000'))
+        self.assertRaises(ValueError, extensions._parse_window_bits, '16')
+        self.assertRaises(
+                ValueError, extensions._parse_window_bits, '10000000')
 
 
 class CompressionMethodParameterParserTest(unittest.TestCase):
@@ -138,6 +140,186 @@ class CompressionMethodParameterParserTest(unittest.TestCase):
         desc = extensions._create_accepted_method_desc('foo',
                                                        params.get_parameters())
         self.assertEqual('foo; x="Hello, World"; y=10', desc)
+
+
+class DeflateFrameExtensionProcessorParsingTest(unittest.TestCase):
+    """A unittest for checking that DeflateFrameExtensionProcessor parses given
+    extension parameter correctly.
+    """
+
+    def test_minimal_offer(self):
+        processor = extensions.DeflateFrameExtensionProcessor(
+            common.ExtensionParameter('perframe-deflate'))
+
+        response = processor.get_extension_response()
+        self.assertEqual('perframe-deflate', response.name())
+        self.assertEqual(0, len(response.get_parameters()))
+
+        self.assertEqual(zlib.MAX_WBITS,
+                         processor._rfc1979_deflater._window_bits)
+        self.assertFalse(processor._rfc1979_deflater._no_context_takeover)
+
+    def test_offer_with_max_window_bits(self):
+        parameter = common.ExtensionParameter('perframe-deflate')
+        parameter.add_parameter('max_window_bits', '10')
+        processor = extensions.DeflateFrameExtensionProcessor(parameter)
+
+        response = processor.get_extension_response()
+        self.assertEqual('perframe-deflate', response.name())
+        self.assertEqual(0, len(response.get_parameters()))
+
+        self.assertEqual(10, processor._rfc1979_deflater._window_bits)
+
+    def test_offer_with_out_of_range_max_window_bits(self):
+        parameter = common.ExtensionParameter('perframe-deflate')
+        parameter.add_parameter('max_window_bits', '0')
+        processor = extensions.DeflateFrameExtensionProcessor(parameter)
+
+        self.assertIsNone(processor.get_extension_response())
+
+    def test_offer_with_max_window_bits_without_value(self):
+        parameter = common.ExtensionParameter('perframe-deflate')
+        parameter.add_parameter('max_window_bits', None)
+        processor = extensions.DeflateFrameExtensionProcessor(parameter)
+
+        self.assertIsNone(processor.get_extension_response())
+
+    def test_offer_with_no_context_takeover(self):
+        parameter = common.ExtensionParameter('perframe-deflate')
+        parameter.add_parameter('no_context_takeover', None)
+        processor = extensions.DeflateFrameExtensionProcessor(parameter)
+
+        response = processor.get_extension_response()
+        self.assertEqual('perframe-deflate', response.name())
+        self.assertEqual(0, len(response.get_parameters()))
+
+        self.assertTrue(processor._rfc1979_deflater._no_context_takeover)
+
+    def test_offer_with_no_context_takeover_with_value(self):
+        parameter = common.ExtensionParameter('perframe-deflate')
+        parameter.add_parameter('no_context_takeover', 'foobar')
+        processor = extensions.DeflateFrameExtensionProcessor(parameter)
+
+        self.assertIsNone(processor.get_extension_response())
+
+    def test_offer_with_unknown_parameter(self):
+        parameter = common.ExtensionParameter('perframe-deflate')
+        parameter.add_parameter('foo', 'bar')
+        processor = extensions.DeflateFrameExtensionProcessor(parameter)
+
+        response = processor.get_extension_response()
+        self.assertEqual('perframe-deflate', response.name())
+        self.assertEqual(0, len(response.get_parameters()))
+
+
+class DeflateMessageProcessorParsingTest(unittest.TestCase):
+    """A unittest for checking that DeflateMessageProcessor parses given
+    extension parameter correctly.
+    """
+
+    def test_minimal_offer(self):
+        processor = extensions.DeflateMessageProcessor(
+            common.ExtensionParameter('permessage-deflate'))
+
+        response = processor.get_extension_response()
+        self.assertEqual('permessage-deflate', response.name())
+        self.assertEqual(0, len(response.get_parameters()))
+
+        self.assertEqual(zlib.MAX_WBITS,
+                         processor._rfc1979_deflater._window_bits)
+        self.assertFalse(processor._rfc1979_deflater._no_context_takeover)
+
+    def test_offer_with_max_window_bits(self):
+        parameter = common.ExtensionParameter('permessage-deflate')
+        parameter.add_parameter('s2c_max_window_bits', '10')
+        processor = extensions.DeflateMessageProcessor(parameter)
+
+        response = processor.get_extension_response()
+        self.assertEqual('permessage-deflate', response.name())
+        self.assertEqual([('s2c_max_window_bits', '10')],
+                         response.get_parameters())
+
+        self.assertEqual(10, processor._rfc1979_deflater._window_bits)
+
+    def test_offer_with_out_of_range_max_window_bits(self):
+        parameter = common.ExtensionParameter('permessage-deflate')
+        parameter.add_parameter('s2c_max_window_bits', '0')
+        processor = extensions.DeflateMessageProcessor(parameter)
+
+        self.assertIsNone(processor.get_extension_response())
+
+    def test_offer_with_max_window_bits_without_value(self):
+        parameter = common.ExtensionParameter('permessage-deflate')
+        parameter.add_parameter('s2c_max_window_bits', None)
+        processor = extensions.DeflateMessageProcessor(parameter)
+
+        self.assertIsNone(processor.get_extension_response())
+
+    def test_offer_with_no_context_takeover(self):
+        parameter = common.ExtensionParameter('permessage-deflate')
+        parameter.add_parameter('s2c_no_context_takeover', None)
+        processor = extensions.DeflateMessageProcessor(parameter)
+
+        response = processor.get_extension_response()
+        self.assertEqual('permessage-deflate', response.name())
+        self.assertEqual([('s2c_no_context_takeover', None)],
+                         response.get_parameters())
+
+        self.assertTrue(processor._rfc1979_deflater._no_context_takeover)
+
+    def test_offer_with_no_context_takeover_with_value(self):
+        parameter = common.ExtensionParameter('permessage-deflate')
+        parameter.add_parameter('s2c_no_context_takeover', 'foobar')
+        processor = extensions.DeflateMessageProcessor(parameter)
+
+        self.assertIsNone(processor.get_extension_response())
+
+    def test_offer_with_unknown_parameter(self):
+        parameter = common.ExtensionParameter('permessage-deflate')
+        parameter.add_parameter('foo', 'bar')
+        processor = extensions.DeflateMessageProcessor(parameter)
+
+        response = processor.get_extension_response()
+        self.assertEqual('permessage-deflate', response.name())
+        self.assertEqual(0, len(response.get_parameters()))
+
+
+class DeflateMessageProcessorBuildingTest(unittest.TestCase):
+    """A unittest for checking that DeflateMessageProcessor builds a response
+    based on specified options correctly.
+    """
+
+    def test_response_with_max_window_bits(self):
+        processor = extensions.DeflateMessageProcessor(
+            common.ExtensionParameter('permessage-deflate'))
+
+        processor.set_c2s_max_window_bits(10)
+
+        response = processor.get_extension_response()
+        self.assertEqual('permessage-deflate', response.name())
+        self.assertEqual([('c2s_max_window_bits', '10')],
+                         response.get_parameters())
+
+    def test_response_with_true_for_no_context_takeover(self):
+        processor = extensions.DeflateMessageProcessor(
+            common.ExtensionParameter('permessage-deflate'))
+
+        processor.set_c2s_no_context_takeover(True)
+
+        response = processor.get_extension_response()
+        self.assertEqual('permessage-deflate', response.name())
+        self.assertEqual([('c2s_no_context_takeover', None)],
+                         response.get_parameters())
+
+    def test_response_with_false_for_no_context_takeover(self):
+        processor = extensions.DeflateMessageProcessor(
+            common.ExtensionParameter('permessage-deflate'))
+
+        processor.set_c2s_no_context_takeover(False)
+
+        response = processor.get_extension_response()
+        self.assertEqual('permessage-deflate', response.name())
+        self.assertEqual(0, len(response.get_parameters()))
 
 
 if __name__ == '__main__':

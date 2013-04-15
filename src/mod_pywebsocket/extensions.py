@@ -98,21 +98,22 @@ def _log_incoming_compression_ratio(
             (ratio, average_ratio))
 
 
-def _validate_window_bits(bits):
-    """Return True iff the given string conforms to the grammar of the window
-    bits extension parameters.
+def _parse_window_bits(bits):
+    """Return parsed integer value iff the given string conforms to the
+    grammar of the window bits extension parameters.
     """
 
-    try:
-        int_bits = int(bits)
-    except TypeError, e:  # E.g. drop None
-        return False
-    except ValueError, e:  # E.g. drop "10.0"
-        return False
-    # First condition is to e.g. drop "08".
+    if bits is None:
+        raise ValueError('Value is required')
+
+    # For non integer values such as "10.0", ValueError will be raised.
+    int_bits = int(bits)
+
+    # First condition is to drop leading zero case e.g. "08".
     if bits != str(int_bits) or int_bits < 8 or int_bits > 15:
-        return False
-    return True
+        raise ValueError('Invalid value: %r' % bits)
+
+    return int_bits
 
 
 class _AverageRatioCalculator(object):
@@ -172,17 +173,20 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
     def _get_extension_response_internal(self):
         # Any unknown parameter will be just ignored.
 
-        window_bits = self._request.get_parameter_value(
-            self._WINDOW_BITS_PARAM)
+        window_bits = None
+        if self._request.has_parameter(self._WINDOW_BITS_PARAM):
+            window_bits = self._request.get_parameter_value(
+                self._WINDOW_BITS_PARAM)
+            try:
+                window_bits = _parse_window_bits(window_bits)
+            except ValueError, e:
+                return None
+
         no_context_takeover = self._request.has_parameter(
             self._NO_CONTEXT_TAKEOVER_PARAM)
         if (no_context_takeover and
             self._request.get_parameter_value(
                 self._NO_CONTEXT_TAKEOVER_PARAM) is not None):
-            return None
-
-        if ((window_bits is not None) and
-            not _validate_window_bits(window_bits)):
             return None
 
         self._rfc1979_deflater = util._RFC1979Deflater(
@@ -314,8 +318,8 @@ _available_processors[common.DEFLATE_FRAME_EXTENSION] = (
 
 # Adding vendor-prefixed deflate-frame extension.
 # TODO(bashi): Remove this after WebKit stops using vendor prefix.
-_available_processors[common.X_WEBKIT_DEFLATE_FRAME_EXTENSION] = (
-    DeflateFrameExtensionProcessor)
+#_available_processors[common.X_WEBKIT_DEFLATE_FRAME_EXTENSION] = (
+#    DeflateFrameExtensionProcessor)
 
 
 def _parse_compression_method(data):
@@ -458,17 +462,26 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
     def _get_extension_response_internal(self):
         # Any unknown parameter will be just ignored.
 
-        s2c_max_window_bits = self._request.get_parameter_value(
-            self._S2C_MAX_WINDOW_BITS_PARAM)
-        if ((s2c_max_window_bits is not None) and
-            not _validate_window_bits(s2c_max_window_bits)):
-            return None
+        s2c_max_window_bits = None
+        if self._request.has_parameter(self._S2C_MAX_WINDOW_BITS_PARAM):
+            s2c_max_window_bits = self._request.get_parameter_value(
+                    self._S2C_MAX_WINDOW_BITS_PARAM)
+            try:
+                s2c_max_window_bits = _parse_window_bits(s2c_max_window_bits)
+            except ValueError, e:
+                self._logger.debug('Bad %s parameter: %r',
+                                   self._S2C_MAX_WINDOW_BITS_PARAM,
+                                   e)
+                return None
 
         s2c_no_context_takeover = self._request.has_parameter(
             self._S2C_NO_CONTEXT_TAKEOVER_PARAM)
         if (s2c_no_context_takeover and
             self._request.get_parameter_value(
                 self._S2C_NO_CONTEXT_TAKEOVER_PARAM) is not None):
+            self._logger.debug('%s parameter must not have a value: %r',
+                               self._S2C_NO_CONTEXT_TAKEOVER_PARAM,
+                               s2c_no_context_takeover)
             return None
 
         self._rfc1979_deflater = util._RFC1979Deflater(
@@ -707,6 +720,10 @@ class _PerMessageDeflateFramer(object):
         stream_options.encode_text_message_to_utf8 = False
 
 
+_available_processors[common.PERMESSAGE_DEFLATE_EXTENSION] = (
+    DeflateMessageProcessor)
+
+
 class PerMessageCompressionExtensionProcessor(
     CompressionExtensionProcessorBase):
     """WebSocket Per-message compression extension processor.
@@ -735,8 +752,8 @@ _available_processors[common.PERMESSAGE_COMPRESSION_EXTENSION] = (
 
 # Adding vendor-prefixed permessage-compress extension.
 # TODO(bashi): Remove this after WebKit stops using vendor prefix.
-_available_processors[common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION] = (
-    PerMessageCompressionExtensionProcessor)
+#_available_processors[common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION] = (
+#    PerMessageCompressionExtensionProcessor)
 
 
 class MuxExtensionProcessor(ExtensionProcessorInterface):

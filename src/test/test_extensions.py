@@ -279,9 +279,7 @@ class DeflateMessageProcessorParsingTest(unittest.TestCase):
         parameter.add_parameter('foo', 'bar')
         processor = extensions.DeflateMessageProcessor(parameter)
 
-        response = processor.get_extension_response()
-        self.assertEqual('permessage-deflate', response.name())
-        self.assertEqual(0, len(response.get_parameters()))
+        self.assertIsNone(processor.get_extension_response())
 
 
 class DeflateMessageProcessorBuildingTest(unittest.TestCase):

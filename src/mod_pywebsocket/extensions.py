@@ -34,6 +34,7 @@ from mod_pywebsocket.http_header_util import quote_if_necessary
 
 
 _available_processors = {}
+_compression_extension_names = []
 
 
 class ExtensionProcessorInterface(object):
@@ -314,12 +315,14 @@ class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
 
 _available_processors[common.DEFLATE_FRAME_EXTENSION] = (
     DeflateFrameExtensionProcessor)
+_compression_extension_names.append(common.DEFLATE_FRAME_EXTENSION)
 
 
 # Adding vendor-prefixed deflate-frame extension.
 # TODO(bashi): Remove this after WebKit stops using vendor prefix.
 #_available_processors[common.X_WEBKIT_DEFLATE_FRAME_EXTENSION] = (
 #    DeflateFrameExtensionProcessor)
+#_compression_extension_names.append(common.X_WEBKIT_DEFLATE_FRAME_EXTENSION)
 
 
 def _parse_compression_method(data):
@@ -439,6 +442,7 @@ class PerFrameCompressionExtensionProcessor(CompressionExtensionProcessorBase):
 
 _available_processors[common.PERFRAME_COMPRESSION_EXTENSION] = (
     PerFrameCompressionExtensionProcessor)
+_compression_extension_names.append(common.PERFRAME_COMPRESSION_EXTENSION)
 
 
 class DeflateMessageProcessor(ExtensionProcessorInterface):
@@ -449,18 +453,38 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
     _C2S_MAX_WINDOW_BITS_PARAM = 'c2s_max_window_bits'
     _C2S_NO_CONTEXT_TAKEOVER_PARAM = 'c2s_no_context_takeover'
 
-    def __init__(self, request):
+    def __init__(self, request, draft08=True):
+        """Construct DeflateMessageProcessor
+
+        Args:
+            draft08: Follow the constraints on the parameters that were not
+                specified for permessage-compress but are specified for
+                permessage-deflate as on
+                draft-ietf-hybi-permessage-compression-08.
+        """
+
         ExtensionProcessorInterface.__init__(self, request)
         self._logger = util.get_class_logger(self)
 
         self._c2s_max_window_bits = None
         self._c2s_no_context_takeover = False
 
+        self._draft08 = draft08
+
     def name(self):
         return 'deflate'
 
     def _get_extension_response_internal(self):
-        # Any unknown parameter will be just ignored.
+        if self._draft08:
+            for name in self._request.get_parameter_names():
+                if name not in [self._S2C_MAX_WINDOW_BITS_PARAM,
+                                self._S2C_NO_CONTEXT_TAKEOVER_PARAM,
+                                self._C2S_MAX_WINDOW_BITS_PARAM]:
+                    self._logger.debug('Unknown parameter: %r', name)
+                    return None
+        else:
+            # Any unknown parameter will be just ignored.
+            pass
 
         s2c_max_window_bits = None
         if self._request.has_parameter(self._S2C_MAX_WINDOW_BITS_PARAM):
@@ -484,6 +508,18 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
                                s2c_no_context_takeover)
             return None
 
+        c2s_max_window_bits = self._request.has_parameter(
+            self._C2S_MAX_WINDOW_BITS_PARAM)
+        if (self._draft08 and
+            c2s_max_window_bits and
+            self._request.get_parameter_value(
+                self._C2S_MAX_WINDOW_BITS_PARAM) is not None):
+            self._logger.debug('%s parameter must not have a value in a '
+                               'client\'s opening handshake: %r',
+                               self._C2S_MAX_WINDOW_BITS_PARAM,
+                               c2s_max_window_bits)
+            return None
+
         self._rfc1979_deflater = util._RFC1979Deflater(
             s2c_max_window_bits, s2c_no_context_takeover)
 
@@ -505,9 +541,15 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
                 self._S2C_NO_CONTEXT_TAKEOVER_PARAM, None)
 
         if self._c2s_max_window_bits is not None:
+            if self._draft08 and c2s_max_window_bits:
+                self._logger.debug('Processor is configured to use %s but '
+                                   'the client cannot accept it',
+                                   self._C2S_MAX_WINDOW_BITS_PARAM)
+                return None
             response.add_parameter(
                 self._C2S_MAX_WINDOW_BITS_PARAM,
                 str(self._c2s_max_window_bits))
+
         if self._c2s_no_context_takeover:
             response.add_parameter(
                 self._C2S_NO_CONTEXT_TAKEOVER_PARAM, None)
@@ -533,6 +575,13 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
         LZ77 sliding window size of its inflater. I.e., you can use this for
         testing client implementation but cannot reduce memory usage of this
         class.
+
+        If this method has been called with True and an offer without the
+        c2s_max_window_bits extension parameter is received,
+        - (When processing the permessage-deflate extension) this processor
+          declines the request.
+        - (When processing the permessage-compress extension) this processor
+          accepts the request.
         """
 
         self._c2s_max_window_bits = value
@@ -721,7 +770,9 @@ class _PerMessageDeflateFramer(object):
 
 
 _available_processors[common.PERMESSAGE_DEFLATE_EXTENSION] = (
-    DeflateMessageProcessor)
+        DeflateMessageProcessor)
+# TODO(tyoshino): Reorganize class names.
+_compression_extension_names.append('deflate')
 
 
 class PerMessageCompressionExtensionProcessor(
@@ -742,18 +793,21 @@ class PerMessageCompressionExtensionProcessor(
 
     def _lookup_compression_processor(self, method_desc):
         if method_desc.name() == self._DEFLATE_METHOD:
-            return DeflateMessageProcessor(method_desc)
+            return DeflateMessageProcessor(method_desc, False)
         return None
 
 
 _available_processors[common.PERMESSAGE_COMPRESSION_EXTENSION] = (
     PerMessageCompressionExtensionProcessor)
+_compression_extension_names.append(common.PERMESSAGE_COMPRESSION_EXTENSION)
 
 
 # Adding vendor-prefixed permessage-compress extension.
 # TODO(bashi): Remove this after WebKit stops using vendor prefix.
 #_available_processors[common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION] = (
 #    PerMessageCompressionExtensionProcessor)
+#_compression_extension_names.append(
+#    common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION)
 
 
 class MuxExtensionProcessor(ExtensionProcessorInterface):
@@ -833,11 +887,14 @@ _available_processors[common.MUX_EXTENSION] = MuxExtensionProcessor
 
 
 def get_extension_processor(extension_request):
-    global _available_processors
     processor_class = _available_processors.get(extension_request.name())
     if processor_class is None:
         return None
     return processor_class(extension_request)
+
+
+def is_compression_extension(extension_name):
+    return extension_name in _compression_extension_names
 
 
 # vi:sts=4 sw=4 et

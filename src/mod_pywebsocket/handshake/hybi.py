@@ -49,6 +49,7 @@ import re
 
 from mod_pywebsocket import common
 from mod_pywebsocket.extensions import get_extension_processor
+from mod_pywebsocket.extensions import is_compression_extension
 from mod_pywebsocket.handshake._base import check_request_line
 from mod_pywebsocket.handshake._base import format_header
 from mod_pywebsocket.handshake._base import get_mandatory_header
@@ -230,7 +231,10 @@ class Handshaker(object):
 
             stream_options = StreamOptions()
 
-            for processor in processors:
+            for index, processor in enumerate(processors):
+                if not processor.is_active():
+                    continue
+
                 extension_response = processor.get_extension_response()
                 if extension_response is None:
                     # Rejected.
@@ -239,6 +243,14 @@ class Handshaker(object):
                 accepted_extensions.append(extension_response)
 
                 processor.setup_stream_options(stream_options)
+
+                if not is_compression_extension(processor.name()):
+                    continue
+
+                # Inactivate all of the following compression extensions.
+                for j in xrange(index + 1, len(processors)):
+                    if is_compression_extension(processors[j].name()):
+                        processors[j].set_active(False)
 
             if len(accepted_extensions) > 0:
                 self._request.ws_extensions = accepted_extensions

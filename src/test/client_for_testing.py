@@ -54,6 +54,7 @@ import re
 import socket
 import struct
 
+from mod_pywebsocket import common
 from mod_pywebsocket import util
 
 
@@ -93,6 +94,7 @@ STATUS_TLS_HANDSHAKE = 1015
 _DEFLATE_FRAME_EXTENSION = 'deflate-frame'
 # TODO(bashi): Update after mux implementation finished.
 _MUX_EXTENSION = 'mux_DO_NOT_USE'
+_PERMESSAGE_DEFLATE_EXTENSION = 'permessage-deflate'
 
 def _method_line(resource):
     return 'GET %s HTTP/1.1\r\n' % resource
@@ -420,13 +422,10 @@ class WebSocketHandshake(object):
                 '(actual)' % (accept, expected_accept))
 
         server_extensions_header = fields.get('sec-websocket-extensions')
-        if (server_extensions_header is None or
-            len(server_extensions_header) != 1):
-            accepted_extensions = []
-        else:
-            accepted_extensions = server_extensions_header[0].split(',')
-            # TODO(tyoshino): Follow the ABNF in the spec.
-            accepted_extensions = [s.strip() for s in accepted_extensions]
+        accepted_extensions = []
+        if server_extensions_header is not None:
+            accepted_extensions = common.parse_extensions(
+                    ', '.join(server_extensions_header))
 
         # Scan accepted extension list to check if there is any unrecognized
         # extensions or extensions we didn't request in it. Then, for
@@ -435,19 +434,22 @@ class WebSocketHandshake(object):
         deflate_frame_accepted = False
         mux_accepted = False
         for extension in accepted_extensions:
-            if extension == '':
-                continue
-            if extension == _DEFLATE_FRAME_EXTENSION:
+            if extension.name() == _DEFLATE_FRAME_EXTENSION:
                 if self._options.use_deflate_frame:
                     deflate_frame_accepted = True
                     continue
-            if extension == _MUX_EXTENSION:
+            if extension.name() == _MUX_EXTENSION:
                 if self._options.use_mux:
                     mux_accepted = True
                     continue
+            if extension.name() == _PERMESSAGE_DEFLATE_EXTENSION:
+                checker = self._options.check_permessage_deflate
+                if checker:
+                    checker(extension)
+                    continue
 
             raise Exception(
-                'Received unrecognized extension: %s' % extension)
+                'Received unrecognized extension: %s' % extension.name())
 
         # Let all extensions check the response for extension request.
 
@@ -767,7 +769,8 @@ class WebSocketStream(object):
     def send_frame_of_arbitrary_bytes(self, header, body):
         self._socket.sendall(header + self._mask_hybi(body))
 
-    def send_data(self, payload, frame_type, end=True, mask=True):
+    def send_data(self, payload, frame_type, end=True, mask=True,
+                  rsv1=0, rsv2=0, rsv3=0):
         if self._outgoing_frame_filter is not None:
             payload = self._outgoing_frame_filter.filter(payload)
 
@@ -783,7 +786,6 @@ class WebSocketStream(object):
             self._fragmented = True
             fin = 0
 
-        rsv1 = 0
         if self._handshake._options.use_deflate_frame:
             rsv1 = 1
 
@@ -792,7 +794,7 @@ class WebSocketStream(object):
         else:
             mask_bit = 0
 
-        header = chr(fin << 7 | rsv1 << 6 | opcode)
+        header = chr(fin << 7 | rsv1 << 6 | rsv2 << 5 | rsv3 << 4 | opcode)
         payload_length = len(payload)
         if payload_length <= 125:
             header += chr(mask_bit | payload_length)

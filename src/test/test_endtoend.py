@@ -249,6 +249,28 @@ class EndToEndTest(unittest.TestCase):
         finally:
             self._kill_process(server.pid)
 
+    def _run_hybi_permessage_deflate_test(
+            self, offer, response_checker, test_function):
+        server = self._run_server()
+        try:
+            time.sleep(0.2)
+
+            self._options.extensions += offer
+            self._options.check_permessage_deflate = response_checker
+            client = client_for_testing.create_client(self._options)
+
+            try:
+                client.connect()
+
+                if test_function is not None:
+                    test_function(client)
+
+                client.assert_connection_closed()
+            finally:
+                client.close_socket()
+        finally:
+            self._kill_process(server.pid)
+
     def _run_hybi_close_with_code_and_reason_test(self, test_function, code,
                                                   reason):
         server = self._run_server()
@@ -312,6 +334,151 @@ class EndToEndTest(unittest.TestCase):
     def test_echo_deflate_frame_server_close(self):
         self._run_hybi_deflate_frame_test(
             _echo_check_procedure_with_goodbye)
+
+    def test_echo_permessage_deflate(self):
+        def test_function(client):
+            # From the examples in the spec.
+            compressed_hello = '\xf2\x48\xcd\xc9\xc9\x07\x00'
+            client._stream.send_data(
+                    compressed_hello,
+                    client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.assert_receive_binary(
+                    compressed_hello,
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            self.assertEquals('permessage-deflate', parameter.name())
+            self.assertEquals([], parameter.get_parameters())
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate'],
+                response_checker,
+                test_function)
+
+    def test_echo_permessage_deflate_two_frames(self):
+        def test_function(client):
+            # From the examples in the spec.
+            client._stream.send_data(
+                    '\xf2\x48\xcd',
+                    client_for_testing.OPCODE_TEXT,
+                    end=False,
+                    rsv1=1)
+            client._stream.send_data(
+                    '\xc9\xc9\x07\x00',
+                    client_for_testing.OPCODE_TEXT)
+            client._stream.assert_receive_binary(
+                    '\xf2\x48\xcd\xc9\xc9\x07\x00',
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            self.assertEquals('permessage-deflate', parameter.name())
+            self.assertEquals([], parameter.get_parameters())
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate'],
+                response_checker,
+                test_function)
+
+    def test_echo_permessage_deflate_preference(self):
+        def test_function(client):
+            # From the examples in the spec.
+            compressed_hello = '\xf2\x48\xcd\xc9\xc9\x07\x00'
+            client._stream.send_data(
+                    compressed_hello,
+                    client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.assert_receive_binary(
+                    compressed_hello,
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            self.assertEquals('permessage-deflate', parameter.name())
+            self.assertEquals([], parameter.get_parameters())
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate', 'deflate-frame'],
+                response_checker,
+                test_function)
+
+    def test_echo_permessage_deflate_with_parameters(self):
+        def test_function(client):
+            # From the examples in the spec.
+            compressed_hello = '\xf2\x48\xcd\xc9\xc9\x07\x00'
+            client._stream.send_data(
+                    compressed_hello,
+                    client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.assert_receive_binary(
+                    compressed_hello,
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            self.assertEquals('permessage-deflate', parameter.name())
+            self.assertEquals([('s2c_max_window_bits', '10'),
+                               ('s2c_no_context_takeover', None)],
+                              parameter.get_parameters())
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate; s2c_max_window_bits=10; '
+                 's2c_no_context_takeover'],
+                response_checker,
+                test_function)
+
+    def test_echo_permessage_deflate_with_bad_s2c_max_window_bits(self):
+        def test_function(client):
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            raise Exception('Unexpected acceptance of permessage-deflate')
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate; s2c_max_window_bits=3000000'],
+                response_checker,
+                test_function)
+
+    def test_echo_permessage_deflate_with_bad_s2c_max_window_bits(self):
+        def test_function(client):
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            raise Exception('Unexpected acceptance of permessage-deflate')
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate; s2c_max_window_bits=3000000'],
+                response_checker,
+                test_function)
+
+    def test_echo_permessage_deflate_with_undefined_parameter(self):
+        def test_function(client):
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            raise Exception('Unexpected acceptance of permessage-deflate')
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate; foo=bar'],
+                response_checker,
+                test_function)
 
     def test_echo_close_with_code_and_reason(self):
         self._options.resource = '/close'

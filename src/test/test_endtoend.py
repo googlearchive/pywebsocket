@@ -153,11 +153,11 @@ def _mux_echo_check_procedure(mux_client):
     mux_client.assert_physical_connection_receive_close()
 
 
-class EndToEndTest(unittest.TestCase):
-    """An end-to-end test that launches pywebsocket standalone server as a
-    separate process, connects to it using the client_for_testing module, and
-    checks if the server behaves correctly by exchanging opening handshake and
-    frames over a TCP connection.
+class EndToEndTestBase(unittest.TestCase):
+    """Base class for end-to-end tests that launch pywebsocket standalone
+    server as a separate process, connect to it using the client_for_testing
+    module, and check if the server behaves correctly by exchanging opening
+    handshake and frames over a TCP connection.
     """
 
     def setUp(self):
@@ -184,6 +184,8 @@ class EndToEndTest(unittest.TestCase):
             self._options.server_port = _external_server_port
         else:
             self._options.server_port = self.test_port
+
+    # TODO(tyoshino): Use tearDown to kill the server.
 
     def _run_python_command(self, commandline, stdout=None, stderr=None):
         return subprocess.Popen([sys.executable] + commandline, close_fds=True,
@@ -216,6 +218,11 @@ class EndToEndTest(unittest.TestCase):
                 ('taskkill.exe', '/f', '/pid', str(pid)), close_fds=True)
         else:
             os.kill(pid, signal.SIGKILL)
+
+
+class EndToEndHyBiTest(EndToEndTestBase):
+    def setUp(self):
+        EndToEndTestBase.setUp(self)
 
     def _run_hybi_test_with_client_options(self, test_function, options):
         server = self._run_server()
@@ -620,25 +627,6 @@ class EndToEndTest(unittest.TestCase):
 
         self._run_hybi_test(test_function)
 
-    def _run_hybi00_test(self, test_function):
-        server = self._run_server()
-        try:
-            time.sleep(0.2)
-
-            client = client_for_testing.create_client_hybi00(self._options)
-            try:
-                test_function(client)
-            finally:
-                client.close_socket()
-        finally:
-            self._kill_process(server.pid)
-
-    def test_echo_hybi00(self):
-        self._run_hybi00_test(_echo_check_procedure)
-
-    def test_echo_server_close_hybi00(self):
-        self._run_hybi00_test(_echo_check_procedure_with_goodbye)
-
     # TODO(toyoshim): Add tests to verify invalid absolute uri handling like
     # host unmatch, port unmatch and invalid port description (':' without port
     # number).
@@ -667,6 +655,35 @@ class EndToEndTest(unittest.TestCase):
         options.version = 99
         self.server_stderr = subprocess.PIPE
         self._run_hybi_http_fallback_test(options, 400)
+
+
+class EndToEndHyBi00Test(EndToEndTestBase):
+    def setUp(self):
+        EndToEndTestBase.setUp(self)
+
+    def _run_hybi00_test(self, test_function):
+        server = self._run_server()
+        try:
+            time.sleep(0.2)
+
+            client = client_for_testing.create_client_hybi00(self._options)
+            try:
+                test_function(client)
+            finally:
+                client.close_socket()
+        finally:
+            self._kill_process(server.pid)
+
+    def test_echo_hybi00(self):
+        self._run_hybi00_test(_echo_check_procedure)
+
+    def test_echo_server_close_hybi00(self):
+        self._run_hybi00_test(_echo_check_procedure_with_goodbye)
+
+
+class EndToEndTestWithEchoClient(EndToEndTestBase):
+    def setUp(self):
+        EndToEndTestBase.setUp(self)
 
     def _check_example_echo_client_result(
         self, expected, stdoutdata, stderrdata):

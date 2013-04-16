@@ -141,7 +141,7 @@ class _AverageRatioCalculator(object):
 
 
 class DeflateFrameExtensionProcessor(ExtensionProcessorInterface):
-    """WebSocket Per-frame DEFLATE extension processor.
+    """deflate-frame extension processor.
 
     Specification:
     http://tools.ietf.org/html/draft-tyoshino-hybi-websocket-perframe-deflate
@@ -318,13 +318,6 @@ _available_processors[common.DEFLATE_FRAME_EXTENSION] = (
 _compression_extension_names.append(common.DEFLATE_FRAME_EXTENSION)
 
 
-# Adding vendor-prefixed deflate-frame extension.
-# TODO(bashi): Remove this after WebKit stops using vendor prefix.
-#_available_processors[common.X_WEBKIT_DEFLATE_FRAME_EXTENSION] = (
-#    DeflateFrameExtensionProcessor)
-#_compression_extension_names.append(common.X_WEBKIT_DEFLATE_FRAME_EXTENSION)
-
-
 def _parse_compression_method(data):
     """Parses the value of "method" extension parameter."""
 
@@ -341,7 +334,7 @@ def _create_accepted_method_desc(method_name, method_params):
 
 
 class CompressionExtensionProcessorBase(ExtensionProcessorInterface):
-    """Base class for Per-frame and Per-message compression extension."""
+    """Base class for perframe-compress and permessage-compress extension."""
 
     _METHOD_PARAM = 'method'
 
@@ -419,8 +412,8 @@ class CompressionExtensionProcessorBase(ExtensionProcessorInterface):
         return self._compression_processor
 
 
-class PerFrameCompressionExtensionProcessor(CompressionExtensionProcessorBase):
-    """WebSocket Per-frame compression extension processor.
+class PerFrameCompressExtensionProcessor(CompressionExtensionProcessorBase):
+    """perframe-compress processor.
 
     Specification:
     http://tools.ietf.org/html/draft-ietf-hybi-websocket-perframe-compression
@@ -441,12 +434,17 @@ class PerFrameCompressionExtensionProcessor(CompressionExtensionProcessorBase):
 
 
 _available_processors[common.PERFRAME_COMPRESSION_EXTENSION] = (
-    PerFrameCompressionExtensionProcessor)
+    PerFrameCompressExtensionProcessor)
 _compression_extension_names.append(common.PERFRAME_COMPRESSION_EXTENSION)
 
 
-class DeflateMessageProcessor(ExtensionProcessorInterface):
-    """Per-message deflate processor."""
+class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
+    """permessage-deflate extension processor. It's also used for
+    permessage-compress extension when the deflate method is chosen.
+
+    Specification:
+    http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-08
+    """
 
     _S2C_MAX_WINDOW_BITS_PARAM = 's2c_max_window_bits'
     _S2C_NO_CONTEXT_TAKEOVER_PARAM = 's2c_no_context_takeover'
@@ -454,7 +452,7 @@ class DeflateMessageProcessor(ExtensionProcessorInterface):
     _C2S_NO_CONTEXT_TAKEOVER_PARAM = 'c2s_no_context_takeover'
 
     def __init__(self, request, draft08=True):
-        """Construct DeflateMessageProcessor
+        """Construct PerMessageDeflateExtensionProcessor
 
         Args:
             draft08: Follow the constraints on the parameters that were not
@@ -770,14 +768,14 @@ class _PerMessageDeflateFramer(object):
 
 
 _available_processors[common.PERMESSAGE_DEFLATE_EXTENSION] = (
-        DeflateMessageProcessor)
+        PerMessageDeflateExtensionProcessor)
 # TODO(tyoshino): Reorganize class names.
 _compression_extension_names.append('deflate')
 
 
-class PerMessageCompressionExtensionProcessor(
+class PerMessageCompressExtensionProcessor(
     CompressionExtensionProcessorBase):
-    """WebSocket Per-message compression extension processor.
+    """permessage-compress extension processor.
 
     Specification:
     http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression
@@ -793,21 +791,13 @@ class PerMessageCompressionExtensionProcessor(
 
     def _lookup_compression_processor(self, method_desc):
         if method_desc.name() == self._DEFLATE_METHOD:
-            return DeflateMessageProcessor(method_desc, False)
+            return PerMessageDeflateExtensionProcessor(method_desc, False)
         return None
 
 
 _available_processors[common.PERMESSAGE_COMPRESSION_EXTENSION] = (
-    PerMessageCompressionExtensionProcessor)
+    PerMessageCompressExtensionProcessor)
 _compression_extension_names.append(common.PERMESSAGE_COMPRESSION_EXTENSION)
-
-
-# Adding vendor-prefixed permessage-compress extension.
-# TODO(bashi): Remove this after WebKit stops using vendor prefix.
-#_available_processors[common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION] = (
-#    PerMessageCompressionExtensionProcessor)
-#_compression_extension_names.append(
-#    common.X_WEBKIT_PERMESSAGE_COMPRESSION_EXTENSION)
 
 
 class MuxExtensionProcessor(ExtensionProcessorInterface):

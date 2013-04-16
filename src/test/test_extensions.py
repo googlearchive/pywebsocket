@@ -212,13 +212,13 @@ class DeflateFrameExtensionProcessorParsingTest(unittest.TestCase):
         self.assertEqual(0, len(response.get_parameters()))
 
 
-class DeflateMessageProcessorParsingTest(unittest.TestCase):
-    """A unittest for checking that DeflateMessageProcessor parses given
-    extension parameter correctly.
+class PerMessageDeflateExtensionProcessorParsingTest(unittest.TestCase):
+    """A unittest for checking that PerMessageDeflateExtensionProcessor parses
+    given extension parameter correctly.
     """
 
     def test_minimal_offer(self):
-        processor = extensions.DeflateMessageProcessor(
+        processor = extensions.PerMessageDeflateExtensionProcessor(
             common.ExtensionParameter('permessage-deflate'))
 
         response = processor.get_extension_response()
@@ -232,7 +232,7 @@ class DeflateMessageProcessorParsingTest(unittest.TestCase):
     def test_offer_with_max_window_bits(self):
         parameter = common.ExtensionParameter('permessage-deflate')
         parameter.add_parameter('s2c_max_window_bits', '10')
-        processor = extensions.DeflateMessageProcessor(parameter)
+        processor = extensions.PerMessageDeflateExtensionProcessor(parameter)
 
         response = processor.get_extension_response()
         self.assertEqual('permessage-deflate', response.name())
@@ -244,21 +244,21 @@ class DeflateMessageProcessorParsingTest(unittest.TestCase):
     def test_offer_with_out_of_range_max_window_bits(self):
         parameter = common.ExtensionParameter('permessage-deflate')
         parameter.add_parameter('s2c_max_window_bits', '0')
-        processor = extensions.DeflateMessageProcessor(parameter)
+        processor = extensions.PerMessageDeflateExtensionProcessor(parameter)
 
         self.assertIsNone(processor.get_extension_response())
 
     def test_offer_with_max_window_bits_without_value(self):
         parameter = common.ExtensionParameter('permessage-deflate')
         parameter.add_parameter('s2c_max_window_bits', None)
-        processor = extensions.DeflateMessageProcessor(parameter)
+        processor = extensions.PerMessageDeflateExtensionProcessor(parameter)
 
         self.assertIsNone(processor.get_extension_response())
 
     def test_offer_with_no_context_takeover(self):
         parameter = common.ExtensionParameter('permessage-deflate')
         parameter.add_parameter('s2c_no_context_takeover', None)
-        processor = extensions.DeflateMessageProcessor(parameter)
+        processor = extensions.PerMessageDeflateExtensionProcessor(parameter)
 
         response = processor.get_extension_response()
         self.assertEqual('permessage-deflate', response.name())
@@ -270,25 +270,25 @@ class DeflateMessageProcessorParsingTest(unittest.TestCase):
     def test_offer_with_no_context_takeover_with_value(self):
         parameter = common.ExtensionParameter('permessage-deflate')
         parameter.add_parameter('s2c_no_context_takeover', 'foobar')
-        processor = extensions.DeflateMessageProcessor(parameter)
+        processor = extensions.PerMessageDeflateExtensionProcessor(parameter)
 
         self.assertIsNone(processor.get_extension_response())
 
     def test_offer_with_unknown_parameter(self):
         parameter = common.ExtensionParameter('permessage-deflate')
         parameter.add_parameter('foo', 'bar')
-        processor = extensions.DeflateMessageProcessor(parameter)
+        processor = extensions.PerMessageDeflateExtensionProcessor(parameter)
 
         self.assertIsNone(processor.get_extension_response())
 
 
-class DeflateMessageProcessorBuildingTest(unittest.TestCase):
-    """A unittest for checking that DeflateMessageProcessor builds a response
-    based on specified options correctly.
+class PerMessageDeflateExtensionProcessorBuildingTest(unittest.TestCase):
+    """A unittest for checking that PerMessageDeflateExtensionProcessor builds
+    a response based on specified options correctly.
     """
 
     def test_response_with_max_window_bits(self):
-        processor = extensions.DeflateMessageProcessor(
+        processor = extensions.PerMessageDeflateExtensionProcessor(
             common.ExtensionParameter('permessage-deflate'))
 
         processor.set_c2s_max_window_bits(10)
@@ -299,7 +299,7 @@ class DeflateMessageProcessorBuildingTest(unittest.TestCase):
                          response.get_parameters())
 
     def test_response_with_true_for_no_context_takeover(self):
-        processor = extensions.DeflateMessageProcessor(
+        processor = extensions.PerMessageDeflateExtensionProcessor(
             common.ExtensionParameter('permessage-deflate'))
 
         processor.set_c2s_no_context_takeover(True)
@@ -310,7 +310,7 @@ class DeflateMessageProcessorBuildingTest(unittest.TestCase):
                          response.get_parameters())
 
     def test_response_with_false_for_no_context_takeover(self):
-        processor = extensions.DeflateMessageProcessor(
+        processor = extensions.PerMessageDeflateExtensionProcessor(
             common.ExtensionParameter('permessage-deflate'))
 
         processor.set_c2s_no_context_takeover(False)

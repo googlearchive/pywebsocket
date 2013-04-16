@@ -44,8 +44,8 @@ import set_sys_path  # Update sys.path to locate mod_pywebsocket module.
 
 from mod_pywebsocket import common
 from mod_pywebsocket.extensions import DeflateFrameExtensionProcessor
-from mod_pywebsocket.extensions import PerFrameCompressionExtensionProcessor
-from mod_pywebsocket.extensions import PerMessageCompressionExtensionProcessor
+from mod_pywebsocket.extensions import PerFrameCompressExtensionProcessor
+from mod_pywebsocket.extensions import PerMessageCompressExtensionProcessor
 from mod_pywebsocket import msgutil
 from mod_pywebsocket.stream import InvalidUTF8Exception
 from mod_pywebsocket.stream import Stream
@@ -91,11 +91,11 @@ def _create_request_from_rawdata(
         processor = DeflateFrameExtensionProcessor(deflate_frame_request)
         _install_extension_processor(processor, req, stream_options)
     elif perframe_compression_request is not None:
-        processor = PerFrameCompressionExtensionProcessor(
+        processor = PerFrameCompressExtensionProcessor(
             perframe_compression_request)
         _install_extension_processor(processor, req, stream_options)
     elif permessage_compression_request is not None:
-        processor = PerMessageCompressionExtensionProcessor(
+        processor = PerMessageCompressExtensionProcessor(
             permessage_compression_request)
         _install_extension_processor(processor, req, stream_options)
 
@@ -695,7 +695,7 @@ class PermessageCompressTest(unittest.TestCase):
         extension = common.ExtensionParameter(
             common.PERMESSAGE_COMPRESSION_EXTENSION)
         extension.add_parameter('method', 'deflate')
-        processor = PerMessageCompressionExtensionProcessor(extension)
+        processor = PerMessageCompressExtensionProcessor(extension)
         response = processor.get_extension_response()
         self.assertEqual('deflate',
                          response.get_parameter_value('method'))
@@ -703,7 +703,7 @@ class PermessageCompressTest(unittest.TestCase):
         extension = common.ExtensionParameter(
             common.PERMESSAGE_COMPRESSION_EXTENSION)
         extension.add_parameter('method', 'deflate')
-        processor = PerMessageCompressionExtensionProcessor(extension)
+        processor = PerMessageCompressExtensionProcessor(extension)
         def _compression_processor_hook(compression_processor):
             compression_processor.set_c2s_max_window_bits(8)
             compression_processor.set_c2s_no_context_takeover(True)
@@ -1024,7 +1024,7 @@ class PermessageCompressTest(unittest.TestCase):
         self.assertEqual(None, msgutil.receive_message(request))
 
 
-class PerframeCompressTest(unittest.TestCase):
+class PerFrameCompressTest(unittest.TestCase):
     """Tests for checking perframe-compression extension."""
 
     def test_send_message_deflate(self):

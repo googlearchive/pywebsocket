@@ -388,6 +388,71 @@ class EndToEndTest(unittest.TestCase):
                 response_checker,
                 test_function)
 
+    def test_echo_permessage_deflate_two_messages(self):
+        def test_function(client):
+            # From the examples in the spec.
+            client._stream.send_data(
+                    '\xf2\x48\xcd\xc9\xc9\x07\x00',
+                    client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.send_data(
+                    '\xf2\x00\x11\x00\x00',
+                    client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.assert_receive_binary(
+                    '\xf2\x48\xcd\xc9\xc9\x07\x00',
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.assert_receive_binary(
+                    '\xf2\x00\x11\x00\x00',
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            self.assertEquals('permessage-deflate', parameter.name())
+            self.assertEquals([], parameter.get_parameters())
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate'],
+                response_checker,
+                test_function)
+
+    def test_echo_permessage_deflate_two_msgs_s2c_no_context_takeover(self):
+        def test_function(client):
+            # From the examples in the spec.
+            client._stream.send_data(
+                    '\xf2\x48\xcd\xc9\xc9\x07\x00',
+                    client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.send_data(
+                    '\xf2\x00\x11\x00\x00',
+                    client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.assert_receive_binary(
+                    '\xf2\x48\xcd\xc9\xc9\x07\x00',
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+            client._stream.assert_receive_binary(
+                    '\xf2\x48\xcd\xc9\xc9\x07\x00',
+                    opcode=client_for_testing.OPCODE_TEXT,
+                    rsv1=1)
+
+            client.send_close()
+            client.assert_receive_close()
+
+        def response_checker(parameter):
+            self.assertEquals('permessage-deflate', parameter.name())
+            self.assertEquals([('s2c_no_context_takeover', None)],
+                              parameter.get_parameters())
+
+        self._run_hybi_permessage_deflate_test(
+                ['permessage-deflate; s2c_no_context_takeover'],
+                response_checker,
+                test_function)
+
     def test_echo_permessage_deflate_preference(self):
         def test_function(client):
             # From the examples in the spec.

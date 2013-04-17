@@ -77,7 +77,12 @@ if __name__ == '__main__':
                       choices=['debug', 'info', 'warning', 'warn', 'error',
                                'critical'])
     options, args = parser.parse_args()
-    logging.basicConfig(level=logging.getLevelName(options.log_level.upper()))
+    logging.basicConfig(
+            level=logging.getLevelName(options.log_level.upper()),
+            format='%(levelname)s %(asctime)s '
+                   '%(filename)s:%(lineno)d] '
+                   '%(message)s',
+            datefmt='%H:%M:%S')
     unittest.main(defaultTest='_suite', argv=[sys.argv[0]] + args)
 
 

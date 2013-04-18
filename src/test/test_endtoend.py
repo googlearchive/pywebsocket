@@ -224,7 +224,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
     def setUp(self):
         EndToEndTestBase.setUp(self)
 
-    def _run_hybi_test_with_client_options(self, test_function, options):
+    def _run_test_with_client_options(self, test_function, options):
         server = self._run_server()
         try:
             # TODO(tyoshino): add some logic to poll the server until it
@@ -239,10 +239,10 @@ class EndToEndHyBiTest(EndToEndTestBase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi_test(self, test_function):
-        self._run_hybi_test_with_client_options(test_function, self._options)
+    def _run_test(self, test_function):
+        self._run_test_with_client_options(test_function, self._options)
 
-    def _run_hybi_deflate_frame_test(self, test_function):
+    def _run_deflate_frame_test(self, test_function):
         server = self._run_server()
         try:
             time.sleep(0.2)
@@ -256,7 +256,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi_permessage_deflate_test(
+    def _run_permessage_deflate_test(
             self, offer, response_checker, test_function):
         server = self._run_server()
         try:
@@ -278,7 +278,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi_close_with_code_and_reason_test(self, test_function, code,
+    def _run_close_with_code_and_reason_test(self, test_function, code,
                                                   reason):
         server = self._run_server()
         try:
@@ -292,7 +292,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi_http_fallback_test(self, options, status):
+    def _run_http_fallback_test(self, options, status):
         server = self._run_server()
         try:
             time.sleep(0.2)
@@ -310,7 +310,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         finally:
             self._kill_process(server.pid)
 
-    def _run_hybi_mux_test(self, test_function):
+    def _run_mux_test(self, test_function):
         server = self._run_server()
         try:
             time.sleep(0.2)
@@ -324,22 +324,22 @@ class EndToEndHyBiTest(EndToEndTestBase):
             self._kill_process(server.pid)
 
     def test_echo(self):
-        self._run_hybi_test(_echo_check_procedure)
+        self._run_test(_echo_check_procedure)
 
     def test_echo_binary(self):
-        self._run_hybi_test(_echo_check_procedure_with_binary)
+        self._run_test(_echo_check_procedure_with_binary)
 
     def test_echo_server_close(self):
-        self._run_hybi_test(_echo_check_procedure_with_goodbye)
+        self._run_test(_echo_check_procedure_with_goodbye)
 
     def test_unmasked_frame(self):
-        self._run_hybi_test(_unmasked_frame_check_procedure)
+        self._run_test(_unmasked_frame_check_procedure)
 
     def test_echo_deflate_frame(self):
-        self._run_hybi_deflate_frame_test(_echo_check_procedure)
+        self._run_deflate_frame_test(_echo_check_procedure)
 
     def test_echo_deflate_frame_server_close(self):
-        self._run_hybi_deflate_frame_test(
+        self._run_deflate_frame_test(
             _echo_check_procedure_with_goodbye)
 
     def test_echo_permessage_deflate(self):
@@ -362,7 +362,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             self.assertEquals('permessage-deflate', parameter.name())
             self.assertEquals([], parameter.get_parameters())
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate'],
                 response_checker,
                 test_function)
@@ -390,7 +390,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             self.assertEquals('permessage-deflate', parameter.name())
             self.assertEquals([], parameter.get_parameters())
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate'],
                 response_checker,
                 test_function)
@@ -422,7 +422,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             self.assertEquals('permessage-deflate', parameter.name())
             self.assertEquals([], parameter.get_parameters())
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate'],
                 response_checker,
                 test_function)
@@ -455,7 +455,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             self.assertEquals([('s2c_no_context_takeover', None)],
                               parameter.get_parameters())
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate; s2c_no_context_takeover'],
                 response_checker,
                 test_function)
@@ -480,7 +480,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             self.assertEquals('permessage-deflate', parameter.name())
             self.assertEquals([], parameter.get_parameters())
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate', 'deflate-frame'],
                 response_checker,
                 test_function)
@@ -507,7 +507,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
                                ('s2c_no_context_takeover', None)],
                               parameter.get_parameters())
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate; s2c_max_window_bits=10; '
                  's2c_no_context_takeover'],
                 response_checker,
@@ -521,7 +521,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         def response_checker(parameter):
             raise Exception('Unexpected acceptance of permessage-deflate')
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate; s2c_max_window_bits=3000000'],
                 response_checker,
                 test_function)
@@ -534,7 +534,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         def response_checker(parameter):
             raise Exception('Unexpected acceptance of permessage-deflate')
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate; s2c_max_window_bits=3000000'],
                 response_checker,
                 test_function)
@@ -547,23 +547,23 @@ class EndToEndHyBiTest(EndToEndTestBase):
         def response_checker(parameter):
             raise Exception('Unexpected acceptance of permessage-deflate')
 
-        self._run_hybi_permessage_deflate_test(
+        self._run_permessage_deflate_test(
                 ['permessage-deflate; foo=bar'],
                 response_checker,
                 test_function)
 
     def test_echo_close_with_code_and_reason(self):
         self._options.resource = '/close'
-        self._run_hybi_close_with_code_and_reason_test(
+        self._run_close_with_code_and_reason_test(
             _echo_check_procedure_with_code_and_reason, 3333, 'sunsunsunsun')
 
     def test_echo_close_with_empty_body(self):
         self._options.resource = '/close'
-        self._run_hybi_close_with_code_and_reason_test(
+        self._run_close_with_code_and_reason_test(
             _echo_check_procedure_with_code_and_reason, None, '')
 
     def test_mux_echo(self):
-        self._run_hybi_mux_test(_mux_echo_check_procedure)
+        self._run_mux_test(_mux_echo_check_procedure)
 
     def test_close_on_protocol_error(self):
         """Tests that the server sends a close frame with protocol error status
@@ -579,7 +579,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             client.assert_receive_close(
                 client_for_testing.STATUS_PROTOCOL_ERROR)
 
-        self._run_hybi_test(test_function)
+        self._run_test(test_function)
 
     def test_close_on_unsupported_frame(self):
         """Tests that the server sends a close frame with unsupported operation
@@ -595,7 +595,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             client.assert_receive_close(
                 client_for_testing.STATUS_UNSUPPORTED_DATA)
 
-        self._run_hybi_test(test_function)
+        self._run_test(test_function)
 
     def test_close_on_invalid_frame(self):
         """Tests that the server sends a close frame with invalid frame payload
@@ -611,7 +611,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             client.assert_receive_close(
                 client_for_testing.STATUS_INVALID_FRAME_PAYLOAD_DATA)
 
-        self._run_hybi_test(test_function)
+        self._run_test(test_function)
 
     def test_close_on_internal_endpoint_error(self):
         """Tests that the server sends a close frame with internal endpoint
@@ -625,7 +625,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             client.assert_receive_close(
                 client_for_testing.STATUS_INTERNAL_ENDPOINT_ERROR)
 
-        self._run_hybi_test(test_function)
+        self._run_test(test_function)
 
     # TODO(toyoshim): Add tests to verify invalid absolute uri handling like
     # host unmatch, port unmatch and invalid port description (':' without port
@@ -636,7 +636,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
 
         options = self._options
         options.resource = 'ws://localhost:%d/echo' % options.server_port
-        self._run_hybi_test_with_client_options(_echo_check_procedure, options)
+        self._run_test_with_client_options(_echo_check_procedure, options)
 
     def test_origin_check(self):
         """Tests http fallback on origin check fail."""
@@ -646,7 +646,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         # Server shows warning message for http 403 fallback. This warning
         # message is confusing. Following pipe disposes warning messages.
         self.server_stderr = subprocess.PIPE
-        self._run_hybi_http_fallback_test(options, 403)
+        self._run_http_fallback_test(options, 403)
 
     def test_version_check(self):
         """Tests http fallback on version check fail."""
@@ -654,14 +654,14 @@ class EndToEndHyBiTest(EndToEndTestBase):
         options = self._options
         options.version = 99
         self.server_stderr = subprocess.PIPE
-        self._run_hybi_http_fallback_test(options, 400)
+        self._run_http_fallback_test(options, 400)
 
 
 class EndToEndHyBi00Test(EndToEndTestBase):
     def setUp(self):
         EndToEndTestBase.setUp(self)
 
-    def _run_hybi00_test(self, test_function):
+    def _run_test(self, test_function):
         server = self._run_server()
         try:
             time.sleep(0.2)
@@ -674,11 +674,11 @@ class EndToEndHyBi00Test(EndToEndTestBase):
         finally:
             self._kill_process(server.pid)
 
-    def test_echo_hybi00(self):
-        self._run_hybi00_test(_echo_check_procedure)
+    def test_echo(self):
+        self._run_test(_echo_check_procedure)
 
-    def test_echo_server_close_hybi00(self):
-        self._run_hybi00_test(_echo_check_procedure_with_goodbye)
+    def test_echo_server_close(self):
+        self._run_test(_echo_check_procedure_with_goodbye)
 
 
 class EndToEndTestWithEchoClient(EndToEndTestBase):

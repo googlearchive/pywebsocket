@@ -46,6 +46,7 @@ from mod_pywebsocket import common
 from mod_pywebsocket.extensions import DeflateFrameExtensionProcessor
 from mod_pywebsocket.extensions import PerFrameCompressExtensionProcessor
 from mod_pywebsocket.extensions import PerMessageCompressExtensionProcessor
+from mod_pywebsocket.extensions import PerMessageDeflateExtensionProcessor
 from mod_pywebsocket import msgutil
 from mod_pywebsocket.stream import InvalidUTF8Exception
 from mod_pywebsocket.stream import Stream
@@ -82,24 +83,30 @@ def _create_request_from_rawdata(
         read_data,
         deflate_frame_request=None,
         perframe_compression_request=None,
-        permessage_compression_request=None):
+        permessage_compression_request=None,
+        permessage_deflate_request=None):
     req = mock.MockRequest(connection=mock.MockConn(''.join(read_data)))
     req.ws_version = common.VERSION_HYBI_LATEST
-    stream_options = StreamOptions()
     req.ws_extension_processors = []
+
+    processor = None
     if deflate_frame_request is not None:
         processor = DeflateFrameExtensionProcessor(deflate_frame_request)
-        _install_extension_processor(processor, req, stream_options)
     elif perframe_compression_request is not None:
         processor = PerFrameCompressExtensionProcessor(
-            perframe_compression_request)
-        _install_extension_processor(processor, req, stream_options)
+                perframe_compression_request)
     elif permessage_compression_request is not None:
         processor = PerMessageCompressExtensionProcessor(
-            permessage_compression_request)
-        _install_extension_processor(processor, req, stream_options)
+                permessage_compression_request)
+    elif permessage_deflate_request is not None:
+        processor = PerMessageDeflateExtensionProcessor(
+                permessage_deflate_request)
 
+    stream_options = StreamOptions()
+    if processor is not None:
+        _install_extension_processor(processor, req, stream_options)
     req.ws_stream = Stream(req, stream_options)
+
     return req
 
 
@@ -688,7 +695,48 @@ class DeflateFrameTest(unittest.TestCase):
             self.assertEqual('Hello', msgutil.receive_message(request))
 
 
-class PermessageCompressTest(unittest.TestCase):
+class PerMessageDeflateTest(unittest.TestCase):
+    """Tests for permessage-deflate extension."""
+
+    def test_send_message(self):
+        extension = common.ExtensionParameter(
+                common.PERMESSAGE_DEFLATE_EXTENSION)
+        request = _create_request_from_rawdata(
+                '', permessage_deflate_request=extension)
+        msgutil.send_message(request, 'Hello')
+
+        compress = zlib.compressobj(
+                zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        expected = '\xc1%c' % len(compressed_hello)
+        expected += compressed_hello
+        self.assertEqual(expected, request.connection.written_data())
+
+    def test_receive_message_deflate(self):
+        compress = zlib.compressobj(
+            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        data = '\xc1%c' % (len(compressed_hello) | 0x80)
+        data += _mask_hybi(compressed_hello)
+
+        # Close frame
+        data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
+
+        extension = common.ExtensionParameter(
+                common.PERMESSAGE_DEFLATE_EXTENSION)
+        request = _create_request_from_rawdata(
+                data, permessage_deflate_request=extension)
+        self.assertEqual('Hello', msgutil.receive_message(request))
+
+        self.assertEqual(None, msgutil.receive_message(request))
+
+
+class PerMessageCompressTest(unittest.TestCase):
     """Tests for checking permessage-compression extension."""
 
     def test_deflate_response_parameters(self):
@@ -717,8 +765,6 @@ class PermessageCompressTest(unittest.TestCase):
     def test_send_message_deflate_empty(self):
         """Test that an empty message is compressed correctly."""
 
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
         extension = common.ExtensionParameter(
             common.PERMESSAGE_COMPRESSION_EXTENSION)
         extension.add_parameter('method', 'deflate')
@@ -741,8 +787,6 @@ class PermessageCompressTest(unittest.TestCase):
     def test_send_message_deflate_null_character(self):
         """Test that a simple payload (one null) is framed correctly."""
 
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
         extension = common.ExtensionParameter(
             common.PERMESSAGE_COMPRESSION_EXTENSION)
         extension.add_parameter('method', 'deflate')

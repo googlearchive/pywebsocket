@@ -51,6 +51,8 @@ from test import mux_client_for_testing
 # Special message that tells the echo server to start closing handshake
 _GOODBYE_MESSAGE = 'Goodbye'
 
+_SERVER_WARMUP_IN_SEC = 0.2
+
 # If you want to use external server to run end to end tests, set following
 # parameters correctly.
 _use_external_server = False
@@ -229,7 +231,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
         try:
             # TODO(tyoshino): add some logic to poll the server until it
             # becomes ready
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             client = client_for_testing.create_client(options)
             try:
@@ -245,7 +247,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
     def _run_deflate_frame_test(self, test_function):
         server = self._run_server()
         try:
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             self._options.enable_deflate_frame()
             client = client_for_testing.create_client(self._options)
@@ -260,7 +262,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
             self, offer, response_checker, test_function):
         server = self._run_server()
         try:
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             self._options.extensions += offer
             self._options.check_permessage_deflate = response_checker
@@ -282,7 +284,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
                                                   reason):
         server = self._run_server()
         try:
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             client = client_for_testing.create_client(self._options)
             try:
@@ -295,7 +297,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
     def _run_http_fallback_test(self, options, status):
         server = self._run_server()
         try:
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             client = client_for_testing.create_client(options)
             try:
@@ -313,7 +315,7 @@ class EndToEndHyBiTest(EndToEndTestBase):
     def _run_mux_test(self, test_function):
         server = self._run_server()
         try:
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             client = mux_client_for_testing.MuxClient(self._options)
             try:
@@ -664,7 +666,7 @@ class EndToEndHyBi00Test(EndToEndTestBase):
     def _run_test(self, test_function):
         server = self._run_server()
         try:
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             client = client_for_testing.create_client_hybi00(self._options)
             try:
@@ -701,7 +703,7 @@ class EndToEndTestWithEchoClient(EndToEndTestBase):
 
         server = self._run_server()
         try:
-            time.sleep(0.2)
+            time.sleep(_SERVER_WARMUP_IN_SEC)
 
             client_command = os.path.join(
                 self.top_dir, 'example', 'echo_client.py')

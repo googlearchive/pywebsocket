@@ -104,7 +104,7 @@ class CompressionMethodParameterParserTest(unittest.TestCase):
         self.assertEqual('Hello World', method.get_parameter_value('x'))
         self.assertTrue(method.has_parameter('y'))
         self.assertEqual('10', method.get_parameter_value('y'))
-        
+
     def test_parse_method_multiple(self):
         method_list = extensions._parse_compression_method('foo, bar')
         self.assertEqual(2, len(method_list))
@@ -158,6 +158,15 @@ class DeflateFrameExtensionProcessorParsingTest(unittest.TestCase):
         self.assertEqual(zlib.MAX_WBITS,
                          processor._rfc1979_deflater._window_bits)
         self.assertFalse(processor._rfc1979_deflater._no_context_takeover)
+
+    def test_x_webkit_deflate_frame(self):
+        class Request:
+            def name(self):
+                return 'x-webkit-deflate-frame'
+
+        processor = extensions.get_extension_processor(Request())
+        self.assertIsInstance(processor,
+                              extensions.DeflateFrameExtensionProcessor)
 
     def test_offer_with_max_window_bits(self):
         parameter = common.ExtensionParameter('perframe-deflate')

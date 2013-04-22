@@ -147,6 +147,17 @@ class DeflateFrameExtensionProcessorParsingTest(unittest.TestCase):
     extension parameter correctly.
     """
 
+    def test_registry(self):
+        processor = extensions.get_extension_processor(
+                common.ExtensionParameter('deflate-frame'))
+        self.assertIsInstance(processor,
+                              extensions.DeflateFrameExtensionProcessor)
+
+        processor = extensions.get_extension_processor(
+                common.ExtensionParameter('x-webkit-deflate-frame'))
+        self.assertIsInstance(processor,
+                              extensions.DeflateFrameExtensionProcessor)
+
     def test_minimal_offer(self):
         processor = extensions.DeflateFrameExtensionProcessor(
             common.ExtensionParameter('perframe-deflate'))
@@ -158,15 +169,6 @@ class DeflateFrameExtensionProcessorParsingTest(unittest.TestCase):
         self.assertEqual(zlib.MAX_WBITS,
                          processor._rfc1979_deflater._window_bits)
         self.assertFalse(processor._rfc1979_deflater._no_context_takeover)
-
-    def test_x_webkit_deflate_frame(self):
-        class Request:
-            def name(self):
-                return 'x-webkit-deflate-frame'
-
-        processor = extensions.get_extension_processor(Request())
-        self.assertIsInstance(processor,
-                              extensions.DeflateFrameExtensionProcessor)
 
     def test_offer_with_max_window_bits(self):
         parameter = common.ExtensionParameter('perframe-deflate')
@@ -221,10 +223,24 @@ class DeflateFrameExtensionProcessorParsingTest(unittest.TestCase):
         self.assertEqual(0, len(response.get_parameters()))
 
 
+class PerFrameCompressExtensionProcessorTest(unittest.TestCase):
+    def test_registry(self):
+        processor = extensions.get_extension_processor(
+                common.ExtensionParameter('perframe-compress'))
+        self.assertIsInstance(processor,
+                              extensions.PerFrameCompressExtensionProcessor)
+
+
 class PerMessageDeflateExtensionProcessorParsingTest(unittest.TestCase):
     """A unittest for checking that PerMessageDeflateExtensionProcessor parses
     given extension parameter correctly.
     """
+
+    def test_registry(self):
+        processor = extensions.get_extension_processor(
+                common.ExtensionParameter('permessage-deflate'))
+        self.assertIsInstance(processor,
+                              extensions.PerMessageDeflateExtensionProcessor)
 
     def test_minimal_offer(self):
         processor = extensions.PerMessageDeflateExtensionProcessor(
@@ -327,6 +343,14 @@ class PerMessageDeflateExtensionProcessorBuildingTest(unittest.TestCase):
         response = processor.get_extension_response()
         self.assertEqual('permessage-deflate', response.name())
         self.assertEqual(0, len(response.get_parameters()))
+
+
+class PerMessageCompressExtensionProcessorTest(unittest.TestCase):
+    def test_registry(self):
+        processor = extensions.get_extension_processor(
+                common.ExtensionParameter('permessage-compress'))
+        self.assertIsInstance(processor,
+                              extensions.PerMessageCompressExtensionProcessor)
 
 
 if __name__ == '__main__':

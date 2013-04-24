@@ -313,15 +313,23 @@ class PerMessageDeflateExtensionProcessorBuildingTest(unittest.TestCase):
     """
 
     def test_response_with_max_window_bits(self):
-        processor = extensions.PerMessageDeflateExtensionProcessor(
-            common.ExtensionParameter('permessage-deflate'))
-
+        parameter = common.ExtensionParameter('permessage-deflate')
+        parameter.add_parameter('c2s_max_window_bits', None)
+        processor = extensions.PerMessageDeflateExtensionProcessor(parameter)
         processor.set_c2s_max_window_bits(10)
 
         response = processor.get_extension_response()
         self.assertEqual('permessage-deflate', response.name())
         self.assertEqual([('c2s_max_window_bits', '10')],
                          response.get_parameters())
+
+    def test_response_with_max_window_bits_without_client_permission(self):
+        processor = extensions.PerMessageDeflateExtensionProcessor(
+            common.ExtensionParameter('permessage-deflate'))
+        processor.set_c2s_max_window_bits(10)
+
+        response = processor.get_extension_response()
+        self.assertIsNone(response)
 
     def test_response_with_true_for_no_context_takeover(self):
         processor = extensions.PerMessageDeflateExtensionProcessor(

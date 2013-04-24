@@ -543,7 +543,7 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
                 self._S2C_NO_CONTEXT_TAKEOVER_PARAM, None)
 
         if self._c2s_max_window_bits is not None:
-            if self._draft08 and c2s_max_window_bits:
+            if self._draft08 and not c2s_max_window_bits:
                 self._logger.debug('Processor is configured to use %s but '
                                    'the client cannot accept it',
                                    self._C2S_MAX_WINDOW_BITS_PARAM)

@@ -708,15 +708,17 @@ class EndToEndTestWithEchoClient(EndToEndTestBase):
             client_command = os.path.join(
                 self.top_dir, 'example', 'echo_client.py')
 
+            # Expected output for the default messages.
+            default_expectation = ('Send: Hello\n' 'Recv: Hello\n'
+                u'Send: \u65e5\u672c\n' u'Recv: \u65e5\u672c\n'
+                'Send close\n' 'Recv ack\n')
+
             args = [client_command,
                     '-p', str(self._options.server_port)]
             client = self._run_python_command(args, stdout=subprocess.PIPE)
             stdoutdata, stderrdata = client.communicate()
-            expected = ('Send: Hello\n' 'Recv: Hello\n'
-                u'Send: \u65e5\u672c\n' u'Recv: \u65e5\u672c\n'
-                'Send close\n' 'Recv ack\n')
             self._check_example_echo_client_result(
-                expected, stdoutdata, stderrdata)
+                    default_expectation, stdoutdata, stderrdata)
 
             # Process a big message for which extended payload length is used.
             # To handle extended payload length, ws_version attribute will be
@@ -731,6 +733,15 @@ class EndToEndTestWithEchoClient(EndToEndTestBase):
                         (big_message, big_message))
             self._check_example_echo_client_result(
                 expected, stdoutdata, stderrdata)
+
+            # Test the permessage-deflate extension.
+            args = [client_command,
+                    '-p', str(self._options.server_port),
+                    '--use_permessage_deflate']
+            client = self._run_python_command(args, stdout=subprocess.PIPE)
+            stdoutdata, stderrdata = client.communicate()
+            self._check_example_echo_client_result(
+                    default_expectation, stdoutdata, stderrdata)
         finally:
             self._kill_process(server.pid)
 

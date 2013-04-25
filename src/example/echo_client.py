@@ -66,6 +66,9 @@ import sys
 
 from mod_pywebsocket import common
 from mod_pywebsocket.extensions import DeflateFrameExtensionProcessor
+from mod_pywebsocket.extensions import PerMessageDeflateExtensionProcessor
+from mod_pywebsocket.extensions import _PerMessageDeflateFramer
+from mod_pywebsocket.extensions import _parse_window_bits
 from mod_pywebsocket.stream import Stream
 from mod_pywebsocket.stream import StreamHixie75
 from mod_pywebsocket.stream import StreamOptions
@@ -333,6 +336,54 @@ class ClientHandshakeBase(object):
             ch = _receive_bytes(self._socket, 1)
 
 
+def _get_permessage_deflate_framer(extension_response):
+    """Validate the response and return a framer object using the parameters in
+    the response. This method doesn't accept the s2c_.* parameters.
+    """
+
+    c2s_max_window_bits = None
+    c2s_no_context_takeover = None
+
+    c2s_max_window_bits_name = (
+            PerMessageDeflateExtensionProcessor.
+                    _C2S_MAX_WINDOW_BITS_PARAM)
+    c2s_no_context_takeover_name = (
+            PerMessageDeflateExtensionProcessor.
+                    _C2S_NO_CONTEXT_TAKEOVER_PARAM)
+
+    # We didn't send any s2c_.* parameter. Handle those parameters as invalid
+    # if found in the response.
+
+    for param_name, param_value in extension_response.get_parameters():
+        if param_name == c2s_max_window_bits_name:
+            if c2s_max_window_bits is not None:
+                raise ClientHandshakeError(
+                        'Multiple %s found' % c2s_max_window_bits_name)
+
+            parsed_value = _parse_window_bits(param_value)
+            if parsed_value is None:
+                raise ClientHandshakeError(
+                        'Bad %s: %r' %
+                        (c2s_max_window_bits_name, param_value))
+            c2s_max_window_bits = parsed_value
+        elif param_name == c2s_no_context_takeover_name:
+            if c2s_no_context_takeover is not None:
+                raise ClientHandshakeError(
+                        'Multiple %s found' % c2s_no_context_takeover_name)
+
+            if param_value is not None:
+                raise ClientHandshakeError(
+                        'Bad %s: Has value %r' %
+                        (c2s_no_context_takeover_name, param_value))
+            c2s_no_context_takeover = True
+
+    if c2s_no_context_takeover is None:
+        c2s_no_context_takeover = False
+
+    return _PerMessageDeflateFramer(c2s_max_window_bits,
+                                    c2s_no_context_takeover)
+
+
 class ClientHandshakeProcessor(ClientHandshakeBase):
     """WebSocket opening handshake processor for
     draft-ietf-hybi-thewebsocketprotocol-06 and later.
@@ -399,6 +450,11 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         if self._options.deflate_frame:
             extensions_to_request.append(
                 common.ExtensionParameter(common.DEFLATE_FRAME_EXTENSION))
+
+        if self._options.use_permessage_deflate:
+            extension = common.ExtensionParameter(
+                    common.PERMESSAGE_DEFLATE_EXTENSION)
+            extensions_to_request.append(extension)
 
         if len(extensions_to_request) != 0:
             fields.append(
@@ -493,12 +549,14 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 (common.SEC_WEBSOCKET_ACCEPT_HEADER, accept, expected_accept))
 
         deflate_frame_accepted = False
+        permessage_deflate_accepted = False
 
         extensions_header = fields.get(
             common.SEC_WEBSOCKET_EXTENSIONS_HEADER.lower())
         accepted_extensions = []
         if extensions_header is not None and len(extensions_header) != 0:
             accepted_extensions = common.parse_extensions(extensions_header[0])
+
         # TODO(bashi): Support the new style perframe compression extension.
         for extension in accepted_extensions:
             extension_name = extension.name()
@@ -509,6 +567,14 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
                 unused_extension_response = processor.get_extension_response()
                 self._options.deflate_frame = processor
                 continue
+            elif (extension_name == common.PERMESSAGE_DEFLATE_EXTENSION and
+                  self._options.use_permessage_deflate):
+                permessage_deflate_accepted = True
+
+                framer = _get_permessage_deflate_framer(extension)
+                framer.set_compress_outgoing_enabled(True)
+                self._options.use_permessage_deflate = framer
+                continue
 
             raise ClientHandshakeError(
                 'Unexpected extension %r' % extension_name)
@@ -517,6 +583,12 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
             raise ClientHandshakeError(
                 'Requested %s, but the server rejected it' %
                 common.DEFLATE_FRAME_EXTENSION)
+
+        if (self._options.use_permessage_deflate and
+            not permessage_deflate_accepted):
+            raise ClientHandshakeError(
+                    'Requested %s, but the server rejected it' %
+                    common.PERMESSAGE_DEFLATE_EXTENSION)
 
         # TODO(tyoshino): Handle Sec-WebSocket-Protocol
         # TODO(tyoshino): Handle Cookie, etc.
@@ -846,6 +918,10 @@ class EchoClient(object):
                     processor = self._options.deflate_frame
                     processor.setup_stream_options(stream_option)
 
+                if self._options.use_permessage_deflate is not False:
+                    framer = self._options.use_permessage_deflate
+                    framer.setup_stream_options(stream_option)
+
                 self._stream = Stream(request, stream_option)
             elif version == _PROTOCOL_VERSION_HYBI00:
                 self._stream = StreamHixie75(request, True)
@@ -957,6 +1033,12 @@ def main():
                       help='use deflate-frame extension. This value will be '
                       'ignored if used with protocol version that doesn\'t '
                       'support deflate-frame.')
+    parser.add_option('--use-permessage-deflate', '--use_permessage_deflate',
+                      dest='use_permessage_deflate',
+                      action='store_true', default=False,
+                      help='use the permessage-deflate extension. This value '
+                      'will be ignored if used with protocol version that '
+                      'doesn\'t support the extension feature.')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
                       choices=['debug', 'info', 'warn', 'error', 'critical'],

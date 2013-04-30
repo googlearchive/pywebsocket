@@ -191,6 +191,33 @@ Threading
 
 A WebSocket handler must be thread-safe if the server (Apache or
 standalone.py) is configured to use threads.
+
+
+Configuring WebSocket Extension Processors
+------------------------------------------
+
+See extensions.py for supported WebSocket extensions. Note that they are
+unstable and their APIs are subject to change substantially.
+
+A request object has these extension processing related attributes.
+
+- ws_requested_extensions:
+
+  A list of common.ExtensionParameter instances representing extension
+  parameters received from the client in the client's opening handshake.
+  You shouldn't modify it manually.
+
+- ws_extensions:
+
+  A list of common.ExtensionParameter instances representing extension
+  parameters to send back to the client in the server's opening handshake.
+  You shouldn't touch it directly. Instead, call methods on extension
+  processors.
+
+- ws_extension_processors:
+
+  A list of loaded extension processors. Find the processor for the
+  extension you want to configure from it, and call its methods.
 """
 
 

@@ -608,12 +608,18 @@ class ClientHandshakeProcessorHybi00(ClientHandshakeBase):
 
         self._logger = util.get_class_logger(self)
 
+        if (self._options.deflate_frame or
+            self._options.use_permessage_deflate):
+            logging.critical('HyBi 00 doesn\'t support extensions.')
+            sys.exit(1)
+
     def handshake(self):
         """Performs opening handshake on the specified socket.
 
         Raises:
             ClientHandshakeError: handshake failed.
         """
+
         # 4.1 5. send request line.
         self._socket.sendall(_build_method_line(self._options.resource))
         # 4.1 6. Let /fields/ be an empty list of strings.
@@ -1026,19 +1032,15 @@ def main():
     parser.add_option('--version-header', '--version_header',
                       dest='version_header',
                       type='int', default=-1,
-                      help='specify Sec-WebSocket-Version header value')
+                      help='Specify Sec-WebSocket-Version header value')
     parser.add_option('--deflate-frame', '--deflate_frame',
                       dest='deflate_frame',
                       action='store_true', default=False,
-                      help='use deflate-frame extension. This value will be '
-                      'ignored if used with protocol version that doesn\'t '
-                      'support deflate-frame.')
+                      help='Use the deflate-frame extension.')
     parser.add_option('--use-permessage-deflate', '--use_permessage_deflate',
                       dest='use_permessage_deflate',
                       action='store_true', default=False,
-                      help='use the permessage-deflate extension. This value '
-                      'will be ignored if used with protocol version that '
-                      'doesn\'t support the extension feature.')
+                      help='Use the permessage-deflate extension.')
     parser.add_option('--log-level', '--log_level', type='choice',
                       dest='log_level', default='warn',
                       choices=['debug', 'info', 'warn', 'error', 'critical'],

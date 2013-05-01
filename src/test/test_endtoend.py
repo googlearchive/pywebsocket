@@ -655,7 +655,6 @@ class EndToEndHyBiTest(EndToEndTestBase):
 
         options = self._options
         options.version = 99
-        self.server_stderr = subprocess.PIPE
         self._run_http_fallback_test(options, 400)
 
 

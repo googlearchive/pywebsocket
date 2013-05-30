@@ -43,8 +43,12 @@ import time
 
 sys.stdout.write('Content-type: text/event-stream\r\n\r\n')
 
+id = 0
+
 while True:
-  sys.stdout.write('data: Hello\r\n\r\n')
+  sys.stdout.write('data: Hello\r\nid: %d\r\n\r\n' % id)
   sys.stdout.flush()
+
+  id = id + 1
 
   time.sleep(1)

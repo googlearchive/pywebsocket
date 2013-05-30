@@ -44,18 +44,31 @@ Run the pywebsocket with the --cgi_path parameter.
 <script>
 var eventSource = null;
 
+function addToLog(data) {
+  logBox.value += data + '\n';
+  logBox.scrollTop = 1000000;
+}
+
 function init() {
   logBox = document.getElementById('log');
 
   eventSource  = new EventSource('/eventsource.cgi');
+  eventSource.onopen = function() {
+    addToLog('onopen (readyState = ' + eventSource.readyState + ')');
+  }
   eventSource.onmessage = function(event) {
-    logBox.value += event.data + '\n';
-    logBox.scrollTop = 1000000;
+    addToLog(event.data);
+  }
+  eventSource.onerror = function(event) {
+    addToLog('onerror (readyState = ' + eventSource.readyState + ')');
   }
 }
 </script>
 </head>
 <body onload="init()">
 <textarea id="log" rows="10" cols="40" readonly></textarea>
+<p style="font-size: small">
+  Make sure that pywebsocket is run with --cgi_path parameter.
+</p>
 </body>
 </html>

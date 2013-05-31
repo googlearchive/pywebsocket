@@ -56,7 +56,6 @@ var sockets = [];
 var numEstablishedSockets = 0;
 
 var addressBox = null;
-var logBox = null;
 
 var timerID = null;
 
@@ -64,11 +63,6 @@ var startTimeInMs = 0;
 
 var totalSize = 0;
 var totalReplied = 0;
-
-function addToLog(log) {
-  logBox.value += log + '\n'
-  logBox.scrollTop = 1000000;
-}
 
 function calculateAndLogResult(size, totalSize) {
   var speed = calculateSpeedInKB(totalSize, startTimeInMs);

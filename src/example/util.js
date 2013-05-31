@@ -31,6 +31,20 @@
 // Utilities for example applications.
 
 
+var logBox = null;
+var queuedLog = '';
+
+function queueLog(log) {
+  queuedLog += log + '\n';
+}
+
+function addToLog(log) {
+  logBox.value += queuedLog;
+  queuedLog = '';
+  logBox.value += log + '\n';
+  logBox.scrollTop = 1000000;
+}
+
 function getTimeStamp() {
   return Date.now();
 }

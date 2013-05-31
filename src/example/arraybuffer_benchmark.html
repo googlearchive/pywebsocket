@@ -49,21 +49,6 @@ var MULTIPLIERS = [5, 2];
 // (such as JIT) run.
 var REPEAT_FOR_WARMUP = 3;
 
-var logBox = null;
-
-var queuedLog = '';
-
-function addToLog(log) {
-  queuedLog += log + '\n';
-}
-
-function updateLogBox() {
-  logBox.value += queuedLog;
-  logBox.scrollTop = 1000000;
-
-  queuedLog = '';
-}
-
 function writeBenchmark(size, minTotal) {
   var totalSize = 0;
   while (totalSize < minTotal) {
@@ -83,7 +68,7 @@ function readBenchmark(size, minTotal) {
     var arrayBuffer = new ArrayBuffer(size);
 
     if (!verifyArrayBuffer(arrayBuffer, 0x00)) {
-      addToLog('Verification failed');
+      queueLog('Verification failed');
       return -1;
     }
 
@@ -109,7 +94,7 @@ function runBenchmark(benchmarkFunction,
       maxSpeed = Math.max(maxSpeed,
                           calculateSpeedInKB(totalSize, startTimeInMs));
     }
-    addToLog(formatResultInKiB(size, maxSpeed, PRINT_SIZE));
+    queueLog(formatResultInKiB(size, maxSpeed, PRINT_SIZE));
 
     size *= multipliers[multiplierIndex];
     multiplierIndex = (multiplierIndex + 1) % multipliers.length;
@@ -117,28 +102,25 @@ function runBenchmark(benchmarkFunction,
 }
 
 function runBenchmarks() {
-  addToLog('Message size in KiB, Speed in kB/s');
+  queueLog('Message size in KiB, Speed in kB/s');
 
-  addToLog('Write benchmark');
+  queueLog('Write benchmark');
   runBenchmark(
       writeBenchmark, START_SIZE, STOP_THRESHOLD, MIN_TOTAL, MULTIPLIERS, 0);
-  addToLog('Finished');
+  queueLog('Finished');
 
-  addToLog('Read benchmark');
+  queueLog('Read benchmark');
   runBenchmark(
       readBenchmark, START_SIZE, STOP_THRESHOLD, MIN_TOTAL, MULTIPLIERS, 0);
   addToLog('Finished');
-
-  updateLogBox();
 }
 
 function init() {
   logBox = document.getElementById('log');
 
-  addToLog(window.navigator.userAgent.toLowerCase());
+  queueLog(window.navigator.userAgent.toLowerCase());
 
   addToLog('Started...');
-  updateLogBox();
 
   setTimeout(runBenchmarks, 0);
 }

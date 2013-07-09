@@ -30,7 +30,11 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-"""Test for end-to-end."""
+"""End-to-end tests for pywebsocket. Tests standalone.py by default. You
+can also test mod_pywebsocket hosted on an Apache server by setting
+_use_external_server to True and modifying _external_server_port to point to
+the port on which the Apache server is running.
+"""
 
 
 import logging
@@ -193,7 +197,7 @@ class EndToEndTestBase(unittest.TestCase):
         return subprocess.Popen([sys.executable] + commandline, close_fds=True,
                                 stdout=stdout, stderr=stderr)
 
-    def _run_server(self, allow_draft75=False):
+    def _run_server(self):
         args = [self.standalone_command,
                 '-H', 'localhost',
                 '-V', 'localhost',
@@ -207,9 +211,6 @@ class EndToEndTestBase(unittest.TestCase):
         if log_level != logging.NOTSET:
             args.append('--log-level')
             args.append(logging.getLevelName(log_level).lower())
-
-        if allow_draft75:
-            args.append('--allow-draft75')
 
         return self._run_python_command(args,
                                         stderr=self.server_stderr)

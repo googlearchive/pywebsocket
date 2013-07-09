@@ -53,6 +53,7 @@ import random
 import re
 import socket
 import struct
+import time
 
 from mod_pywebsocket import common
 from mod_pywebsocket import util
@@ -986,6 +987,27 @@ class ClientOptions(object):
         self.extensions.append(_MUX_EXTENSION)
 
 
+def connect_socket_with_retry(host, port, timeout, use_tls,
+                              retry=10, sleep_sec=0.1):
+    retry_count = 0
+    while retry_count < retry:
+        try:
+            s = socket.socket()
+            s.settimeout(timeout)
+            s.connect((host, port))
+            if use_tls:
+                return _TLSSocket(s)
+            return s
+        except socket.error, e:
+            if e.errno != errno.ECONNREFUSED:
+                raise
+            else:
+                retry_count = retry_count + 1
+                time.sleep(sleep_sec)
+
+    return None
+
+
 class Client(object):
     """WebSocket client."""
 
@@ -999,13 +1021,11 @@ class Client(object):
         self._stream_class = stream_class
 
     def connect(self):
-        self._socket = socket.socket()
-        self._socket.settimeout(self._options.socket_timeout)
-
-        self._socket.connect((self._options.server_host,
-                              self._options.server_port))
-        if self._options.use_tls:
-            self._socket = _TLSSocket(self._socket)
+        self._socket = connect_socket_with_retry(
+                self._options.server_host,
+                self._options.server_port,
+                self._options.socket_timeout,
+                self._options.use_tls)
 
         self._handshake.handshake(self._socket)
 

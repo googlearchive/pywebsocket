@@ -489,13 +489,11 @@ class MuxClient(object):
                             channel_id)
 
     def connect(self):
-        self._socket = socket.socket()
-        self._socket.settimeout(self._options.socket_timeout)
-
-        self._socket.connect((self._options.server_host,
-                              self._options.server_port))
-        if self._options.use_tls:
-            self._socket = _TLSSocket(self._socket)
+        self._socket = client_for_testing.connect_socket_with_retry(
+                self._options.server_host,
+                self._options.server_port,
+                self._options.socket_timeout,
+                self._options.use_tls)
 
         self._handshake.handshake(self._socket)
         self._stream = client_for_testing.WebSocketStream(

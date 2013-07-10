@@ -714,6 +714,37 @@ class PerMessageDeflateTest(unittest.TestCase):
         expected += compressed_hello
         self.assertEqual(expected, request.connection.written_data())
 
+    def test_send_message_using_small_window(self):
+        common_part = 'abcdefghijklmnopqrstuvwxyz'
+        test_message = common_part + '-' * 30000 + common_part
+
+        extension = common.ExtensionParameter(
+                common.PERMESSAGE_DEFLATE_EXTENSION)
+        extension.add_parameter('s2c_max_window_bits', '8')
+        request = _create_request_from_rawdata(
+                '', permessage_deflate_request=extension)
+        msgutil.send_message(request, test_message)
+
+        expected_websocket_header_size = 2
+        expected_websocket_payload_size = 91
+
+        actual_frame = request.connection.written_data()
+        self.assertEqual(expected_websocket_header_size +
+                         expected_websocket_payload_size,
+                         len(actual_frame))
+        actual_header = actual_frame[0:expected_websocket_header_size]
+        actual_payload = actual_frame[expected_websocket_header_size:]
+
+        self.assertEqual(
+                '\xc1%c' % expected_websocket_payload_size, actual_header)
+        decompress = zlib.decompressobj(-8)
+        decompressed_message = decompress.decompress(
+                actual_payload + '\x00\x00\xff\xff')
+        decompressed_message += decompress.flush()
+        self.assertEqual(test_message, decompressed_message)
+        self.assertEqual(0, len(decompress.unused_data))
+        self.assertEqual(0, len(decompress.unconsumed_tail))
+
     def test_receive_message_deflate(self):
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)

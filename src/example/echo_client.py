@@ -454,6 +454,11 @@ class ClientHandshakeProcessor(ClientHandshakeBase):
         if self._options.use_permessage_deflate:
             extension = common.ExtensionParameter(
                     common.PERMESSAGE_DEFLATE_EXTENSION)
+            # Accept the c2s_max_window_bits extension parameter by default.
+            extension.add_parameter(
+                    PerMessageDeflateExtensionProcessor.
+                            _C2S_MAX_WINDOW_BITS_PARAM,
+                    None)
             extensions_to_request.append(extension)
 
         if len(extensions_to_request) != 0:

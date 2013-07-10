@@ -527,6 +527,9 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
         self._rfc1979_deflater = util._RFC1979Deflater(
             s2c_max_window_bits, s2c_no_context_takeover)
 
+        # Note that we prepare for incoming messages compressed with window
+        # bits upto 15 regardless of the c2s_max_window_bits value to be sent
+        # to the client.
         self._rfc1979_inflater = util._RFC1979Inflater()
 
         self._framer = _PerMessageDeflateFramer(

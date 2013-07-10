@@ -254,8 +254,9 @@ class _Deflater(object):
 
 class _Inflater(object):
 
-    def __init__(self):
+    def __init__(self, window_bits):
         self._logger = get_class_logger(self)
+        self._window_bits = window_bits
 
         self._unconsumed = ''
 
@@ -312,7 +313,7 @@ class _Inflater(object):
 
     def reset(self):
         self._logger.debug('Reset')
-        self._decompress = zlib.decompressobj(-zlib.MAX_WBITS)
+        self._decompress = zlib.decompressobj(-self._window_bits)
 
 
 # Compresses/decompresses given octets using the method introduced in RFC1979.
@@ -352,8 +353,8 @@ class _RFC1979Inflater(object):
     the algorithm described in the RFC1979 section 2.1.
     """
 
-    def __init__(self):
-        self._inflater = _Inflater()
+    def __init__(self, window_bits=zlib.MAX_WBITS):
+        self._inflater = _Inflater(window_bits)
 
     def filter(self, bytes):
         # Restore stripped LEN and NLEN field of a non-compressed block added
@@ -376,7 +377,7 @@ class DeflateSocket(object):
         self._logger = get_class_logger(self)
 
         self._deflater = _Deflater(zlib.MAX_WBITS)
-        self._inflater = _Inflater()
+        self._inflater = _Inflater(zlib.MAX_WBITS)
 
     def recv(self, size):
         """Receives data from the socket specified on the construction up

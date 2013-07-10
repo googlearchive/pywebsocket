@@ -130,6 +130,27 @@ class RepeatedXorMaskerTest(unittest.TestCase):
                 result)
 
 
+class InflaterDeflaterTest(unittest.TestCase):
+    """A unittest for _Inflater and _Deflater class."""
+
+    def test_inflate_deflate_default(self):
+        input = b'hello' + '-' * 30000 + b'hello'
+        inflater15 = util._Inflater(15)
+        deflater15 = util._Deflater(15)
+        inflater8 = util._Inflater(8)
+        deflater8 = util._Deflater(8)
+
+        compressed15 = deflater15.compress_and_finish(input)
+        compressed8 = deflater8.compress_and_finish(input)
+
+        inflater15.append(compressed15)
+        inflater8.append(compressed8)
+
+        self.assertNotEqual(compressed15, compressed8)
+        self.assertEqual(input, inflater15.decompress(-1))
+        self.assertEqual(input, inflater8.decompress(-1))
+
+
 if __name__ == '__main__':
     unittest.main()
 

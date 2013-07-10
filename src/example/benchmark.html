@@ -34,6 +34,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <title>WebSocket benchmark</title>
 <script src="util.js"></script>
 <script>
+// Namespace for holding globals.
+var benchmark = {};
+
 var PRINT_SIZE = true;
 
 // Initial size of messages.
@@ -59,15 +62,10 @@ var addressBox = null;
 
 var timerID = null;
 
-var startTimeInMs = 0;
+benchmark.startTimeInMs = 0;
 
 var totalSize = 0;
 var totalReplied = 0;
-
-function calculateAndLogResult(size, totalSize) {
-  var speed = calculateSpeedInKB(totalSize, startTimeInMs);
-  addToLog(formatResultInKiB(size, speed, PRINT_SIZE));
-}
 
 function destroySocket(socket) {
   socket.onopen = function() {};
@@ -82,25 +80,6 @@ function destroyAllSockets() {
     destroySocket(sockets[i]);
   }
   sockets = [];
-}
-
-function verifyAcknowledgement(message, size) {
-  if (typeof message != 'string') {
-    addToLog('Invalid ack type: ' + typeof event.data);
-    return false;
-  }
-  var parsedAck = parseInt(message);
-  if (isNaN(parsedAck)) {
-    addToLog('Invalid ack value: ' + event.data);
-    return false;
-  }
-  if (parsedAck != size) {
-    addToLog(
-        'Expected ack for ' + size + 'B but received one for ' + ack + 'B');
-    return false;
-  }
-
-  return true;
 }
 
 function buildSendBenchmarkFunction(
@@ -123,7 +102,7 @@ function buildSendBenchmarkFunction(
       return;
     }
 
-    calculateAndLogResult(size, totalSize);
+    calculateAndLogResult(size, benchmark.startTimeInMs, totalSize, PRINT_SIZE);
 
     timerID = setTimeout(
         buildSendBenchmarkFunction(
@@ -141,7 +120,7 @@ function buildSendBenchmarkFunction(
       socket.onmessage = onMessageHandler;
     }
 
-    startTimeInMs = getTimeStamp();
+    benchmark.startTimeInMs = getTimeStamp();
 
     totalReplied = 0;
 
@@ -190,7 +169,7 @@ function buildReceiveBenchmarkFunction(
       return;
     }
 
-    calculateAndLogResult(size, totalSize);
+    calculateAndLogResult(size, benchmark.startTimeInMs, totalSize, PRINT_SIZE);
 
     timerID = setTimeout(
         buildReceiveBenchmarkFunction(
@@ -209,7 +188,7 @@ function buildReceiveBenchmarkFunction(
       socket.onmessage = onMessageHandler;
     }
 
-    startTimeInMs = getTimeStamp();
+    benchmark.startTimeInMs = getTimeStamp();
 
     totalReplied = 0;
 

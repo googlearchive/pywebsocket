@@ -61,6 +61,11 @@ function calculateSpeedInKB(size, startTimeInMs) {
   return Math.round(size / (getTimeStamp() - startTimeInMs) * 1000) / 1000;
 }
 
+function calculateAndLogResult(size, startTimeInMs, totalSize, printSize) {
+  var speed = calculateSpeedInKB(totalSize, startTimeInMs);
+  addToLog(formatResultInKiB(size, speed, printSize));
+}
+
 function fillArrayBuffer(buffer, c) {
   var i;
 
@@ -100,6 +105,25 @@ function verifyArrayBuffer(buffer, expectedChar) {
     if (u8View[i] != expectedChar) {
       return false;
     }
+  }
+
+  return true;
+}
+
+function verifyAcknowledgement(message, size) {
+  if (typeof message != 'string') {
+    addToLog('Invalid ack type: ' + typeof message);
+    return false;
+  }
+  var parsedAck = parseInt(message);
+  if (isNaN(parsedAck)) {
+    addToLog('Invalid ack value: ' + message);
+    return false;
+  }
+  if (parsedAck != size) {
+    addToLog(
+        'Expected ack for ' + size + 'B but received one for ' + ack + 'B');
+    return false;
   }
 
   return true;

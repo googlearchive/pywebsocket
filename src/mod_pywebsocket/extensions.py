@@ -468,7 +468,7 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
         ExtensionProcessorInterface.__init__(self, request)
         self._logger = util.get_class_logger(self)
 
-        self._c2s_max_window_bits = None
+        self._preferred_c2s_max_window_bits = None
         self._c2s_no_context_takeover = False
 
         self._draft08 = draft08
@@ -510,16 +510,18 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
                                s2c_no_context_takeover)
             return None
 
-        c2s_max_window_bits = self._request.has_parameter(
+        # c2s_max_window_bits from a client indicates whether the client can
+        # accept c2s_max_window_bits from a server or not.
+        client_c2s_max_window_bits = self._request.has_parameter(
             self._C2S_MAX_WINDOW_BITS_PARAM)
         if (self._draft08 and
-            c2s_max_window_bits and
+            client_c2s_max_window_bits and
             self._request.get_parameter_value(
                 self._C2S_MAX_WINDOW_BITS_PARAM) is not None):
             self._logger.debug('%s parameter must not have a value in a '
                                'client\'s opening handshake: %r',
                                self._C2S_MAX_WINDOW_BITS_PARAM,
-                               c2s_max_window_bits)
+                               client_c2s_max_window_bits)
             return None
 
         self._rfc1979_deflater = util._RFC1979Deflater(
@@ -542,15 +544,15 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
             response.add_parameter(
                 self._S2C_NO_CONTEXT_TAKEOVER_PARAM, None)
 
-        if self._c2s_max_window_bits is not None:
-            if self._draft08 and not c2s_max_window_bits:
+        if self._preferred_c2s_max_window_bits is not None:
+            if self._draft08 and not client_c2s_max_window_bits:
                 self._logger.debug('Processor is configured to use %s but '
                                    'the client cannot accept it',
                                    self._C2S_MAX_WINDOW_BITS_PARAM)
                 return None
             response.add_parameter(
                 self._C2S_MAX_WINDOW_BITS_PARAM,
-                str(self._c2s_max_window_bits))
+                str(self._preferred_c2s_max_window_bits))
 
         if self._c2s_no_context_takeover:
             response.add_parameter(
@@ -563,7 +565,7 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
             (self._request.name(),
              s2c_max_window_bits,
              s2c_no_context_takeover,
-             self._c2s_max_window_bits,
+             self._preferred_c2s_max_window_bits,
              self._c2s_no_context_takeover))
 
         return response
@@ -586,7 +588,7 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
           accepts the request.
         """
 
-        self._c2s_max_window_bits = value
+        self._preferred_c2s_max_window_bits = value
 
     def set_c2s_no_context_takeover(self, value):
         """If this option is specified, this class adds the

@@ -41,6 +41,8 @@ _compression_extension_names = []
 class ExtensionProcessorInterface(object):
 
     def __init__(self, request):
+        self._logger = util.get_class_logger(self)
+
         self._request = request
         self._active = True
 
@@ -63,12 +65,14 @@ class ExtensionProcessorInterface(object):
         return None
 
     def get_extension_response(self):
-        if self._active:
-            response = self._get_extension_response_internal()
-            if response is None:
-                self._active = False
-            return response
-        return None
+        if not self._active:
+            self._logger.debug('Extension %s is deactivated', self.name())
+            return None
+
+        response = self._get_extension_response_internal()
+        if response is None:
+            self._active = False
+        return response
 
     def _setup_stream_options_internal(self, stream_options):
         pass

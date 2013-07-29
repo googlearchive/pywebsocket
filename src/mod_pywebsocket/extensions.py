@@ -33,6 +33,7 @@ from mod_pywebsocket import util
 from mod_pywebsocket.http_header_util import quote_if_necessary
 
 
+# The list of available server side extension processor classes.
 _available_processors = {}
 _compression_extension_names = []
 
@@ -886,6 +887,11 @@ _available_processors[common.MUX_EXTENSION] = MuxExtensionProcessor
 
 
 def get_extension_processor(extension_request):
+    """Given an ExtensionParameter representing an extension offer received
+    from a client, configures and returns an instance of the corresponding
+    extension processor class.
+    """
+
     processor_class = _available_processors.get(extension_request.name())
     if processor_class is None:
         return None

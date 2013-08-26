@@ -122,7 +122,8 @@ function verifyAcknowledgement(message, size) {
   }
   if (parsedAck != size) {
     addToLog(
-        'Expected ack for ' + size + 'B but received one for ' + ack + 'B');
+        'Expected ack for ' + size + 'B but received one for ' + parsedAck +
+        'B');
     return false;
   }
 

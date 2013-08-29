@@ -55,6 +55,8 @@ var xhrs = [];
 var addressBox = null;
 var logBox = null;
 
+var responseType = 'blob';
+
 var timerID = null;
 
 function destroyAllXHRs() {
@@ -130,6 +132,10 @@ function sendBenchmark(size, multiplierIndex, parameter) {
 
     fillArrayBuffer(buffer, 0x61);
 
+    if (responseType == 'blob') {
+      buffer = new Blob([buffer]);
+    }
+
     var xhr = xhrs[i];
     xhr.open('POST', addressBox.value + '_send');
     xhr.send(buffer);
@@ -161,14 +167,20 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
       return;
     }
 
-    var bytesReceived = this.response.byteLength;
+    var bytesReceived = -1;
+    if (this.responseType == 'arraybuffer') {
+      bytesReceived = this.response.byteLength;
+    } else if (this.responseType == 'blob') {
+      bytesReceived = this.response.size;
+    }
     if (bytesReceived != size) {
       addToLog('Expected ' + size + 'B but received ' + bytesReceived + 'B');
       destroyAllXHRs();
       return;
     }
 
-    if (!verifyArrayBuffer(this.response, 0x61)) {
+    if (this.responseType == 'arraybuffer' &&
+        !verifyArrayBuffer(this.response, 0x61)) {
       addToLog('Response verification failed');
       destroyAllXHRs();
       return;
@@ -209,7 +221,7 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
   for (var i = 0; i < xhrs.length; ++i) {
     var xhr = xhrs[i];
     xhr.open('POST', addressBox.value + '_receive');
-    xhr.responseType = 'arraybuffer';
+    xhr.responseType = responseType;
     xhr.send(size + ' none');
 
     totalSize += size;
@@ -265,6 +277,18 @@ function init() {
   <input type="button" value="send" onclick="startSendBenchmark()">
   <input type="button" value="receive" onclick="startReceiveBenchmark()">
   <input type="button" value="stop" onclick="stop()">
+
+  <br/>
+
+  Set data type
+  <input type="radio"
+         name="binarytype"
+         value="blob"
+         onclick="responseType = 'blob'" checked>blob
+  <input type="radio"
+         name="binarytype"
+         value="arraybuffer"
+         onclick="responseType = 'arraybuffer'">arraybuffer
 </div>
 
 <div id="log_div">

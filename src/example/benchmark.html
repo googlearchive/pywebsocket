@@ -39,21 +39,25 @@ var benchmark = {};
 
 var PRINT_SIZE = true;
 
-// Initial size of messages.
-var SEND_START_SIZE = 10 * 1024;
-// Stops benchmark when the size of message exceeds this threshold.
-var SEND_STOP_THRESHOLD = 100000 * 1024;
-// If the size of each message is small, send/receive multiple messages until
-// the sum of sizes reaches this threshold.
-var SEND_MIN_TOTAL = 100000 * 1024;
-var SEND_MULTIPLIERS = [5, 2];
-var SEND_NUM_SOCKETS = 1;
+var SEND_PARAMETER = {
+  numSockets: 1,
+  // Initial size of messages.
+  startSize: 10 * 1024,
+  // Stops benchmark when the size of message exceeds this threshold.
+  stopThreshold: 100000 * 1024,
+  // If the size of each message is small, send/receive multiple messages until
+  // the sum of sizes reaches this threshold.
+  minTotal: 100000 * 1024,
+  multipliers: [5, 2],
+};
 
-var RECEIVE_START_SIZE = 10 * 1024;
-var RECEIVE_STOP_THRESHOLD = 100000 * 1024;
-var RECEIVE_MIN_TOTAL = 100000 * 1024;
-var RECEIVE_MULTIPLIERS = [5, 2];
-var RECEIVE_NUM_SOCKETS = 1;
+var RECEIVE_PARAMETER = {
+  numSockets: 1,
+  startSize: 10 * 1024,
+  stopThreshold: 100000 * 1024,
+  minTotal: 100000 * 1024,
+  multipliers: [5, 2],
+};
 
 var sockets = [];
 var numEstablishedSockets = 0;
@@ -82,9 +86,8 @@ function destroyAllSockets() {
   sockets = [];
 }
 
-function buildSendBenchmarkFunction(
-    size, stopThreshold, minTotal, multipliers, multiplierIndex) {
-  if (size > stopThreshold) {
+function buildSendBenchmarkFunction(size, multiplierIndex, parameter) {
+  if (size > parameter.stopThreshold) {
     addToLog('Finished');
     destroyAllSockets();
     return function() {};
@@ -106,13 +109,11 @@ function buildSendBenchmarkFunction(
 
     timerID = setTimeout(
         buildSendBenchmarkFunction(
-            size * multipliers[multiplierIndex],
-            stopThreshold,
-            minTotal,
-            multipliers,
-            (multiplierIndex + 1) % multipliers.length),
+            size * parameter.multipliers[multiplierIndex],
+            (multiplierIndex + 1) % parameter.multipliers.length,
+            parameter),
         0);
-  }
+  };
 
   return function() {
     for (var i = 0; i < sockets.length; ++i) {
@@ -127,8 +128,7 @@ function buildSendBenchmarkFunction(
     totalSize = 0;
 
     var socketIndex = 0;
-    var buffer = null;
-    while (totalSize < minTotal) {
+    while (totalSize < parameter.minTotal) {
       var buffer = new ArrayBuffer(size);
 
       fillArrayBuffer(buffer, 0x61);
@@ -141,9 +141,8 @@ function buildSendBenchmarkFunction(
   };
 }
 
-function buildReceiveBenchmarkFunction(
-    size, stopThreshold, minTotal, multipliers, multiplierIndex) {
-  if (size > stopThreshold) {
+function buildReceiveBenchmarkFunction(size, multiplierIndex, parameter) {
+  if (size > parameter.stopThreshold) {
     addToLog('Finished');
     destroyAllSockets();
     return function() {};
@@ -158,7 +157,7 @@ function buildReceiveBenchmarkFunction(
     }
 
     if (!verifyArrayBuffer(event.data, 0x61)) {
-      addToLog('Verification failed');
+      addToLog('Response verification failed');
       destroyAllSockets();
       return;
     }
@@ -173,13 +172,11 @@ function buildReceiveBenchmarkFunction(
 
     timerID = setTimeout(
         buildReceiveBenchmarkFunction(
-            size * multipliers[multiplierIndex],
-            stopThreshold,
-            minTotal,
-            multipliers,
-            (multiplierIndex + 1) % multipliers.length),
+            size * parameter.multipliers[multiplierIndex],
+            (multiplierIndex + 1) % parameter.multipliers.length,
+            parameter),
         0);
-  }
+  };
 
   return function() {
     for (var i = 0; i < sockets.length; ++i) {
@@ -195,13 +192,13 @@ function buildReceiveBenchmarkFunction(
     totalSize = 0;
 
     var socketIndex = 0;
-    while (totalSize < minTotal) {
+    while (totalSize < parameter.minTotal) {
       sockets[socketIndex].send(size);
       socketIndex = (socketIndex + 1) % sockets.length;
 
       totalSize += size;
     }
-  }
+  };
 }
 
 function createSocket() {
@@ -254,13 +251,11 @@ function sendBenchmark() {
   addToLog('Message size in KiB, Speed in kB/s');
 
   var runner = buildSendBenchmarkFunction(
-      SEND_START_SIZE,
-      SEND_STOP_THRESHOLD,
-      SEND_MIN_TOTAL,
-      SEND_MULTIPLIERS,
-      0);
+      SEND_PARAMETER.startSize,
+      0,
+      SEND_PARAMETER);
 
-  startBenchmark(runner, SEND_NUM_SOCKETS);
+  startBenchmark(runner, SEND_PARAMETER.numSockets);
 }
 
 function receiveBenchmark() {
@@ -268,13 +263,11 @@ function receiveBenchmark() {
   addToLog('Message size in KiB, Speed in kB/s');
 
   var runner = buildReceiveBenchmarkFunction(
-      RECEIVE_START_SIZE,
-      RECEIVE_STOP_THRESHOLD,
-      RECEIVE_MIN_TOTAL,
-      RECEIVE_MULTIPLIERS,
-      0);
+      RECEIVE_PARAMETER.startSize,
+      0,
+      REICEVE_PARAMETER);
 
-  startBenchmark(runner, RECEIVE_NUM_SOCKETS);
+  startBenchmark(runner, RECEIVE_PARAMETER.numSockets);
 }
 
 function stop() {

@@ -34,6 +34,7 @@
 
 
 import os
+import random
 import sys
 import unittest
 
@@ -130,6 +131,21 @@ class RepeatedXorMaskerTest(unittest.TestCase):
                 result)
 
 
+def get_random_section(source, min_num_chunks):
+    chunks = []
+    bytes_chunked = 0
+
+    while bytes_chunked < len(source):
+        chunk_size = random.randint(
+            1,
+            min(len(source) / min_num_chunks, len(source) - bytes_chunked))
+        chunk = source[bytes_chunked:bytes_chunked + chunk_size]
+        chunks.append(chunk)
+        bytes_chunked += chunk_size
+
+    return chunks
+
+
 class InflaterDeflaterTest(unittest.TestCase):
     """A unittest for _Inflater and _Deflater class."""
 
@@ -149,6 +165,32 @@ class InflaterDeflaterTest(unittest.TestCase):
         self.assertNotEqual(compressed15, compressed8)
         self.assertEqual(input, inflater15.decompress(-1))
         self.assertEqual(input, inflater8.decompress(-1))
+
+    def test_random_section(self):
+        random.seed(a=0)
+        source = ''.join(
+            [chr(random.randint(0, 255)) for i in xrange(100 * 1024)])
+
+        chunked_input = get_random_section(source, 10)
+        print "Input chunk sizes: %r" % [len(c) for c in chunked_input]
+
+        deflater = util._Deflater(15)
+        compressed = []
+        for chunk in chunked_input:
+            compressed.append(deflater.compress(chunk))
+        compressed.append(deflater.compress_and_finish(''))
+
+        chunked_expectation = get_random_section(source, 10)
+        print ("Expectation chunk sizes: %r" %
+               [len(c) for c in chunked_expectation])
+
+        inflater = util._Inflater(15)
+        inflater.append(''.join(compressed))
+        for chunk in chunked_expectation:
+            decompressed = inflater.decompress(len(chunk))
+            self.assertEqual(chunk, decompressed)
+
+        self.assertEqual('', inflater.decompress(-1))
 
 
 if __name__ == '__main__':

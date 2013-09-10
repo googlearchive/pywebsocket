@@ -110,6 +110,18 @@ function verifyArrayBuffer(buffer, expectedChar) {
   return true;
 }
 
+function verifyBlob(blob, expectedChar, doneCallback) {
+  var reader = new FileReader(blob);
+  reader.onerror = function() {
+    doneCallback(blob.size, false);
+  }
+  reader.onloadend = function() {
+    var result = verifyArrayBuffer(reader.result, expectedChar);
+    doneCallback(blob.size, result);
+  }
+  reader.readAsArrayBuffer(blob);
+}
+
 function verifyAcknowledgement(message, size) {
   if (typeof message != 'string') {
     addToLog('Invalid ack type: ' + typeof message);

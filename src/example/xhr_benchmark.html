@@ -156,31 +156,8 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
   var totalSize = 0;
   var totalReplied = 0;
 
-  var onReadyStateChangeHandler = function () {
-    if (this.readyState != this.DONE) {
-      return;
-    }
-
-    if (this.status != 200) {
-      addToLog('Failed (status=' + this.status + ')');
-      destroyAllXHRs();
-      return;
-    }
-
-    var bytesReceived = -1;
-    if (this.responseType == 'arraybuffer') {
-      bytesReceived = this.response.byteLength;
-    } else if (this.responseType == 'blob') {
-      bytesReceived = this.response.size;
-    }
-    if (bytesReceived != size) {
-      addToLog('Expected ' + size + 'B but received ' + bytesReceived + 'B');
-      destroyAllXHRs();
-      return;
-    }
-
-    if (this.responseType == 'arraybuffer' &&
-        !verifyArrayBuffer(this.response, 0x61)) {
+  var checkResultAndContinue = function (bytesReceived, verificationResult) {
+    if (!verificationResult) {
       addToLog('Response verification failed');
       destroyAllXHRs();
       return;
@@ -208,6 +185,37 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
         size * parameter.multipliers[multiplierIndex],
         (multiplierIndex + 1) % parameter.multipliers.length,
         parameter);
+  }
+
+  var onReadyStateChangeHandler = function () {
+    if (this.readyState != this.DONE) {
+      return;
+    }
+
+    if (this.status != 200) {
+      addToLog('Failed (status=' + this.status + ')');
+      destroyAllXHRs();
+      return;
+    }
+
+    var bytesReceived = -1;
+    if (this.responseType == 'arraybuffer') {
+      bytesReceived = this.response.byteLength;
+    } else if (this.responseType == 'blob') {
+      bytesReceived = this.response.size;
+    }
+    if (bytesReceived != size) {
+      addToLog('Expected ' + size + 'B but received ' + bytesReceived + 'B');
+      destroyAllXHRs();
+      return;
+    }
+
+    if (this.responseType == 'arraybuffer') {
+      checkResultAndContinue(bytesReceived,
+                             verifyArrayBuffer(this.response, 0x61));
+    } else if (this.responseType == 'blob') {
+      verifyBlob(this.response, 0x61, checkResultAndContinue);
+    }
   };
 
   for (var i = 0; i < parameter.numXHRs; ++i) {

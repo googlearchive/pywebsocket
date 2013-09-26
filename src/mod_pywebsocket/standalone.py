@@ -583,8 +583,9 @@ class WebSocketServer(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
                     self._logger.debug('%r', e)
                     raise socket.error(1, '%r' % e)
                 cert = accepted_socket.get_peer_certificate()
-                self._logger.debug('Client cert subject: %r',
-                                   cert.get_subject().get_components())
+                if cert is not None:
+                    self._logger.debug('Client cert subject: %r',
+                                       cert.get_subject().get_components())
                 accepted_socket = _StandaloneSSLConnection(accepted_socket)
             else:
                 raise ValueError('No TLS support module is available')

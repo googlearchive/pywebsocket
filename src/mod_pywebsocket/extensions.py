@@ -455,10 +455,10 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
     http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-08
     """
 
-    _S2C_MAX_WINDOW_BITS_PARAM = 's2c_max_window_bits'
-    _S2C_NO_CONTEXT_TAKEOVER_PARAM = 's2c_no_context_takeover'
-    _C2S_MAX_WINDOW_BITS_PARAM = 'c2s_max_window_bits'
-    _C2S_NO_CONTEXT_TAKEOVER_PARAM = 'c2s_no_context_takeover'
+    _SERVER_MAX_WINDOW_BITS_PARAM = 'server_max_window_bits'
+    _SERVER_NO_CONTEXT_TAKEOVER_PARAM = 'server_no_context_takeover'
+    _CLIENT_MAX_WINDOW_BITS_PARAM = 'client_max_window_bits'
+    _CLIENT_NO_CONTEXT_TAKEOVER_PARAM = 'client_no_context_takeover'
 
     def __init__(self, request, draft08=True):
         """Construct PerMessageDeflateExtensionProcessor
@@ -473,8 +473,8 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
         ExtensionProcessorInterface.__init__(self, request)
         self._logger = util.get_class_logger(self)
 
-        self._preferred_c2s_max_window_bits = None
-        self._c2s_no_context_takeover = False
+        self._preferred_client_max_window_bits = None
+        self._client_no_context_takeover = False
 
         self._draft08 = draft08
 
@@ -484,129 +484,133 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
     def _get_extension_response_internal(self):
         if self._draft08:
             for name in self._request.get_parameter_names():
-                if name not in [self._S2C_MAX_WINDOW_BITS_PARAM,
-                                self._S2C_NO_CONTEXT_TAKEOVER_PARAM,
-                                self._C2S_MAX_WINDOW_BITS_PARAM]:
+                if name not in [self._SERVER_MAX_WINDOW_BITS_PARAM,
+                                self._SERVER_NO_CONTEXT_TAKEOVER_PARAM,
+                                self._CLIENT_MAX_WINDOW_BITS_PARAM]:
                     self._logger.debug('Unknown parameter: %r', name)
                     return None
         else:
             # Any unknown parameter will be just ignored.
             pass
 
-        s2c_max_window_bits = None
-        if self._request.has_parameter(self._S2C_MAX_WINDOW_BITS_PARAM):
-            s2c_max_window_bits = self._request.get_parameter_value(
-                    self._S2C_MAX_WINDOW_BITS_PARAM)
+        server_max_window_bits = None
+        if self._request.has_parameter(self._SERVER_MAX_WINDOW_BITS_PARAM):
+            server_max_window_bits = self._request.get_parameter_value(
+                    self._SERVER_MAX_WINDOW_BITS_PARAM)
             try:
-                s2c_max_window_bits = _parse_window_bits(s2c_max_window_bits)
+                server_max_window_bits = _parse_window_bits(
+                    server_max_window_bits)
             except ValueError, e:
                 self._logger.debug('Bad %s parameter: %r',
-                                   self._S2C_MAX_WINDOW_BITS_PARAM,
+                                   self._SERVER_MAX_WINDOW_BITS_PARAM,
                                    e)
                 return None
 
-        s2c_no_context_takeover = self._request.has_parameter(
-            self._S2C_NO_CONTEXT_TAKEOVER_PARAM)
-        if (s2c_no_context_takeover and
+        server_no_context_takeover = self._request.has_parameter(
+            self._SERVER_NO_CONTEXT_TAKEOVER_PARAM)
+        if (server_no_context_takeover and
             self._request.get_parameter_value(
-                self._S2C_NO_CONTEXT_TAKEOVER_PARAM) is not None):
+                self._SERVER_NO_CONTEXT_TAKEOVER_PARAM) is not None):
             self._logger.debug('%s parameter must not have a value: %r',
-                               self._S2C_NO_CONTEXT_TAKEOVER_PARAM,
-                               s2c_no_context_takeover)
+                               self._SERVER_NO_CONTEXT_TAKEOVER_PARAM,
+                               server_no_context_takeover)
             return None
 
-        # c2s_max_window_bits from a client indicates whether the client can
-        # accept c2s_max_window_bits from a server or not.
-        client_c2s_max_window_bits = self._request.has_parameter(
-            self._C2S_MAX_WINDOW_BITS_PARAM)
+        # client_max_window_bits from a client indicates whether the client can
+        # accept client_max_window_bits from a server or not.
+        client_client_max_window_bits = self._request.has_parameter(
+            self._CLIENT_MAX_WINDOW_BITS_PARAM)
         if (self._draft08 and
-            client_c2s_max_window_bits and
+            client_client_max_window_bits and
             self._request.get_parameter_value(
-                self._C2S_MAX_WINDOW_BITS_PARAM) is not None):
+                self._CLIENT_MAX_WINDOW_BITS_PARAM) is not None):
             self._logger.debug('%s parameter must not have a value in a '
                                'client\'s opening handshake: %r',
-                               self._C2S_MAX_WINDOW_BITS_PARAM,
-                               client_c2s_max_window_bits)
+                               self._CLIENT_MAX_WINDOW_BITS_PARAM,
+                               client_client_max_window_bits)
             return None
 
         self._rfc1979_deflater = util._RFC1979Deflater(
-            s2c_max_window_bits, s2c_no_context_takeover)
+            server_max_window_bits, server_no_context_takeover)
 
         # Note that we prepare for incoming messages compressed with window
-        # bits upto 15 regardless of the c2s_max_window_bits value to be sent
-        # to the client.
+        # bits upto 15 regardless of the client_max_window_bits value to be
+        # sent to the client.
         self._rfc1979_inflater = util._RFC1979Inflater()
 
         self._framer = _PerMessageDeflateFramer(
-            s2c_max_window_bits, s2c_no_context_takeover)
+            server_max_window_bits, server_no_context_takeover)
         self._framer.set_bfinal(False)
         self._framer.set_compress_outgoing_enabled(True)
 
         response = common.ExtensionParameter(self._request.name())
 
-        if s2c_max_window_bits is not None:
+        if server_max_window_bits is not None:
             response.add_parameter(
-                self._S2C_MAX_WINDOW_BITS_PARAM, str(s2c_max_window_bits))
+                self._SERVER_MAX_WINDOW_BITS_PARAM,
+                str(server_max_window_bits))
 
-        if s2c_no_context_takeover:
+        if server_no_context_takeover:
             response.add_parameter(
-                self._S2C_NO_CONTEXT_TAKEOVER_PARAM, None)
+                self._SERVER_NO_CONTEXT_TAKEOVER_PARAM, None)
 
-        if self._preferred_c2s_max_window_bits is not None:
-            if self._draft08 and not client_c2s_max_window_bits:
+        if self._preferred_client_max_window_bits is not None:
+            if self._draft08 and not client_client_max_window_bits:
                 self._logger.debug('Processor is configured to use %s but '
                                    'the client cannot accept it',
-                                   self._C2S_MAX_WINDOW_BITS_PARAM)
+                                   self._CLIENT_MAX_WINDOW_BITS_PARAM)
                 return None
             response.add_parameter(
-                self._C2S_MAX_WINDOW_BITS_PARAM,
-                str(self._preferred_c2s_max_window_bits))
+                self._CLIENT_MAX_WINDOW_BITS_PARAM,
+                str(self._preferred_client_max_window_bits))
 
-        if self._c2s_no_context_takeover:
+        if self._client_no_context_takeover:
             response.add_parameter(
-                self._C2S_NO_CONTEXT_TAKEOVER_PARAM, None)
+                self._CLIENT_NO_CONTEXT_TAKEOVER_PARAM, None)
 
         self._logger.debug(
             'Enable %s extension ('
-            'request: s2c_max_window_bits=%s; s2c_no_context_takeover=%r, '
-            'response: c2s_max_window_bits=%s; c2s_no_context_takeover=%r)' %
+            'request: server_max_window_bits=%s; '
+            'server_no_context_takeover=%r, '
+            'response: client_max_window_bits=%s; '
+            'client_no_context_takeover=%r)' %
             (self._request.name(),
-             s2c_max_window_bits,
-             s2c_no_context_takeover,
-             self._preferred_c2s_max_window_bits,
-             self._c2s_no_context_takeover))
+             server_max_window_bits,
+             server_no_context_takeover,
+             self._preferred_client_max_window_bits,
+             self._client_no_context_takeover))
 
         return response
 
     def _setup_stream_options_internal(self, stream_options):
         self._framer.setup_stream_options(stream_options)
 
-    def set_c2s_max_window_bits(self, value):
-        """If this option is specified, this class adds the c2s_max_window_bits
-        extension parameter to the handshake response, but doesn't reduce the
-        LZ77 sliding window size of its inflater. I.e., you can use this for
-        testing client implementation but cannot reduce memory usage of this
-        class.
+    def set_client_max_window_bits(self, value):
+        """If this option is specified, this class adds the
+        client_max_window_bits extension parameter to the handshake response,
+        but doesn't reduce the LZ77 sliding window size of its inflater.
+        I.e., you can use this for testing client implementation but cannot
+        reduce memory usage of this class.
 
         If this method has been called with True and an offer without the
-        c2s_max_window_bits extension parameter is received,
+        client_max_window_bits extension parameter is received,
         - (When processing the permessage-deflate extension) this processor
           declines the request.
         - (When processing the permessage-compress extension) this processor
           accepts the request.
         """
 
-        self._preferred_c2s_max_window_bits = value
+        self._preferred_client_max_window_bits = value
 
-    def set_c2s_no_context_takeover(self, value):
+    def set_client_no_context_takeover(self, value):
         """If this option is specified, this class adds the
-        c2s_no_context_takeover extension parameter to the handshake response,
-        but doesn't reset inflater for each message. I.e., you can use this for
-        testing client implementation but cannot reduce memory usage of this
-        class.
+        client_no_context_takeover extension parameter to the handshake
+        response, but doesn't reset inflater for each message. I.e., you can
+        use this for testing client implementation but cannot reduce memory
+        usage of this class.
         """
 
-        self._c2s_no_context_takeover = value
+        self._client_no_context_takeover = value
 
     def set_bfinal(self, value):
         self._framer.set_bfinal(value)

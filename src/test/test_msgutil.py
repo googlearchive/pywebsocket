@@ -720,7 +720,7 @@ class PerMessageDeflateTest(unittest.TestCase):
 
         extension = common.ExtensionParameter(
                 common.PERMESSAGE_DEFLATE_EXTENSION)
-        extension.add_parameter('s2c_max_window_bits', '8')
+        extension.add_parameter('server_max_window_bits', '8')
         request = _create_request_from_rawdata(
                 '', permessage_deflate_request=extension)
         msgutil.send_message(request, test_message)
@@ -783,14 +783,15 @@ class PerMessageCompressTest(unittest.TestCase):
             common.PERMESSAGE_COMPRESSION_EXTENSION)
         extension.add_parameter('method', 'deflate')
         processor = PerMessageCompressExtensionProcessor(extension)
+
         def _compression_processor_hook(compression_processor):
-            compression_processor.set_c2s_max_window_bits(8)
-            compression_processor.set_c2s_no_context_takeover(True)
+            compression_processor.set_client_max_window_bits(8)
+            compression_processor.set_client_no_context_takeover(True)
         processor.set_compression_processor_hook(
             _compression_processor_hook)
         response = processor.get_extension_response()
         self.assertEqual(
-            'deflate; c2s_max_window_bits=8; c2s_no_context_takeover',
+            'deflate; client_max_window_bits=8; client_no_context_takeover',
             response.get_parameter_value('method'))
 
     def test_send_message_deflate_empty(self):

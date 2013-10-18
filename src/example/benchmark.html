@@ -42,7 +42,7 @@ var PRINT_SIZE = true;
 var SEND_PARAMETER = {
   numSockets: 1,
   // Initial size of messages.
-  startSize: 10 * 1024,
+  startSize: 100000 * 1024,
   // Stops benchmark when the size of message exceeds this threshold.
   stopThreshold: 100000 * 1024,
   // If the size of each message is small, send/receive multiple messages until
@@ -149,6 +149,7 @@ function buildReceiveBenchmarkFunction(size, multiplierIndex, parameter) {
   }
 
   var onMessageHandler = function(event) {
+    alert();
     var bytesReceived = event.data.byteLength;
     if (bytesReceived != size) {
       addToLog('Expected ' + size + 'B but received ' + bytesReceived + 'B');
@@ -265,7 +266,7 @@ function receiveBenchmark() {
   var runner = buildReceiveBenchmarkFunction(
       RECEIVE_PARAMETER.startSize,
       0,
-      REICEVE_PARAMETER);
+      RECEIVE_PARAMETER);
 
   startBenchmark(runner, RECEIVE_PARAMETER.numSockets);
 }

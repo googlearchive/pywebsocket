@@ -67,7 +67,7 @@ setup(author='Yuzo Fujishima',
       url='http://code.google.com/p/pywebsocket/',
       # See the source of distutils.version, distutils.versionpredicate and
       # distutils.dist to understand how to name version numbers.
-      version='0.7.9',
+      version='0.8',
       )
 
 

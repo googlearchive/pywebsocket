@@ -330,7 +330,7 @@ _compression_extension_names.append(common.X_WEBKIT_DEFLATE_FRAME_EXTENSION)
 def _parse_compression_method(data):
     """Parses the value of "method" extension parameter."""
 
-    return common.parse_extensions(data, allow_quoted_string=True)
+    return common.parse_extensions(data)
 
 
 def _create_accepted_method_desc(method_name, method_params):

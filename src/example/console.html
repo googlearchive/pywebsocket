@@ -137,8 +137,6 @@ function connect() {
     } else {
       socket = new WebSocket(url);
     }
-  } else if ('MozWebSocket' in window) {
-    socket = new MozWebSocket(url);
   } else {
     return;
   }
@@ -236,9 +234,7 @@ function init() {
 
   addressBox.value = defaultAddress;
 
-  if ('MozWebSocket' in window) {
-    addToLog('Use MozWebSocket');
-  } else if (!('WebSocket' in window)) {
+  if (!('WebSocket' in window)) {
     addToLog('WebSocket is not available');
   }
 }

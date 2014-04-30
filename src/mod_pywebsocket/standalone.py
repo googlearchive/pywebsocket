@@ -36,6 +36,7 @@ Use this file to launch pywebsocket without Apache HTTP Server.
 
 
 BASIC USAGE
+===========
 
 Go to the src directory and run
 
@@ -61,10 +62,13 @@ For trouble shooting, adding "--log_level debug" might help you.
 
 
 TRY DEMO
+========
 
-Go to the src directory and run
+Go to the src directory and run standalone.py with -d option to set the
+document root to the directory containing example HTMLs and handlers like this:
 
-  $ python standalone.py -d example
+  $ cd src
+  $ PYTHONPATH=. python mod_pywebsocket/standalone.py -d example
 
 to launch pywebsocket with the sample handler and html on port 80. Open
 http://localhost/console.html, click the connect button, type something into
@@ -72,24 +76,48 @@ the text box next to the send button and click the send button. If everything
 is working, you'll see the message you typed echoed by the server.
 
 
-SUPPORTING TLS
+USING TLS
+=========
 
-To support TLS, run standalone.py with -t, -k, and -c options.
+To run the standalone server with TLS support, run it with -t, -k, and -c
+options. When TLS is enabled, the standalone server accepts only TLS connection.
 
 Note that when ssl module is used and the key/cert location is incorrect,
 TLS connection silently fails while pyOpenSSL fails on startup.
 
+Example:
 
-SUPPORTING CLIENT AUTHENTICATION
+  $ PYTHONPATH=. python mod_pywebsocket/standalone.py \
+        -d example \
+        -p 10443 \
+        -t \
+        -c ../test/cert/cert.pem \
+        -k ../test/cert/key.pem \
 
-To support client authentication with TLS, run standalone.py with -t, -k, -c,
-and --tls-client-auth, and --tls-client-ca options.
+Note that when passing a relative path to -c and -k option, it will be resolved
+using the document root directory as the base.
 
-E.g., $./standalone.py -d ../example -p 10443 -t -c ../test/cert/cert.pem -k
-../test/cert/key.pem --tls-client-auth --tls-client-ca=../test/cert/cacert.pem
+
+USING CLIENT AUTHENTICATION
+===========================
+
+To run the standalone server with TLS client authentication support, run it with
+--tls-client-auth and --tls-client-ca options in addition to ones required for
+TLS support.
+
+Example:
+
+  $ PYTHONPATH=. python mod_pywebsocket/standalone.py -d example -p 10443 -t \
+        -c ../test/cert/cert.pem -k ../test/cert/key.pem \
+        --tls-client-auth \
+        --tls-client-ca=../test/cert/cacert.pem
+
+Note that when passing a relative path to --tls-client-ca option, it will be
+resolved using the document root directory as the base.
 
 
 CONFIGURATION FILE
+==================
 
 You can also write a configuration file and use it by specifying the path to
 the configuration file by --config option. Please write a configuration file
@@ -113,12 +141,14 @@ configuration file.
 
 
 THREADING
+=========
 
 This server is derived from SocketServer.ThreadingMixIn. Hence a thread is
 used for each request.
 
 
 SECURITY WARNING
+================
 
 This uses CGIHTTPServer and CGIHTTPServer is not secure.
 It may execute arbitrary Python code or external programs. It should not be

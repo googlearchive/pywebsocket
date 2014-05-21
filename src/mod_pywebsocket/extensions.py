@@ -690,7 +690,7 @@ class _PerMessageDeflateFramer(object):
             original_payload_size)
 
         message = self._rfc1979_deflater.filter(
-            message, flush=end, bfinal=self._bfinal)
+            message, end=end, bfinal=self._bfinal)
 
         filtered_payload_size = len(message)
         self._outgoing_average_ratio_calculator.add_result_bytes(

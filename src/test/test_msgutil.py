@@ -740,7 +740,7 @@ class PerMessageDeflateTest(unittest.TestCase):
         expected += compressed_world
         self.assertEqual(expected, request.connection.written_data())
 
-    def test_send_message_fragmented_empty_first_Frame(self):
+    def test_send_message_fragmented_empty_first_frame(self):
         extension = common.ExtensionParameter(
                 common.PERMESSAGE_DEFLATE_EXTENSION)
         request = _create_request_from_rawdata(
@@ -762,7 +762,7 @@ class PerMessageDeflateTest(unittest.TestCase):
         print '%r' % expected
         self.assertEqual(expected, request.connection.written_data())
 
-    def test_send_message_fragmented_empty_last_Frame(self):
+    def test_send_message_fragmented_empty_last_frame(self):
         extension = common.ExtensionParameter(
                 common.PERMESSAGE_DEFLATE_EXTENSION)
         request = _create_request_from_rawdata(

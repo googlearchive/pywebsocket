@@ -814,6 +814,33 @@ class PerMessageDeflateTest(unittest.TestCase):
         self.assertEqual(0, len(decompress.unused_data))
         self.assertEqual(0, len(decompress.unconsumed_tail))
 
+    def test_send_message_no_context_takeover_parameter(self):
+        extension = common.ExtensionParameter(
+                common.PERMESSAGE_DEFLATE_EXTENSION)
+        extension.add_parameter('server_no_context_takeover', None)
+        request = _create_request_from_rawdata(
+                '', permessage_deflate_request=extension)
+        for i in xrange(3):
+            msgutil.send_message(request, 'Hello', end=False)
+            msgutil.send_message(request, 'Hello', end=True)
+
+        compress = zlib.compressobj(
+                zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        first_hello = compress.compress('Hello')
+        first_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        expected = '\x41%c' % len(first_hello)
+        expected += first_hello
+        second_hello = compress.compress('Hello')
+        second_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        second_hello = second_hello[:-4]
+        expected += '\x80%c' % len(second_hello)
+        expected += second_hello
+
+        self.assertEqual(
+                expected + expected + expected,
+                request.connection.written_data())
+
     def test_receive_message_deflate(self):
         compress = zlib.compressobj(
             zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)

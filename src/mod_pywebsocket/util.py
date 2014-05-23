@@ -332,7 +332,7 @@ class _RFC1979Deflater(object):
         self._no_context_takeover = no_context_takeover
 
     def filter(self, bytes, end=True, bfinal=False):
-        if self._deflater is None or (self._no_context_takeover and end):
+        if self._deflater is None:
             self._deflater = _Deflater(self._window_bits)
 
         if bfinal:
@@ -347,6 +347,10 @@ class _RFC1979Deflater(object):
             # Strip last 4 octets which is LEN and NLEN field of a
             # non-compressed block added for Z_SYNC_FLUSH.
             result = result[:-4]
+
+        if self._no_context_takeover and end:
+            self._deflater = None
+
         return result
 
 

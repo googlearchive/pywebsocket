@@ -102,7 +102,6 @@ SEC_WEBSOCKET_LOCATION_HEADER = 'Sec-WebSocket-Location'
 
 # Extensions
 DEFLATE_FRAME_EXTENSION = 'deflate-frame'
-PERFRAME_COMPRESSION_EXTENSION = 'perframe-compress'
 PERMESSAGE_COMPRESSION_EXTENSION = 'permessage-compress'
 PERMESSAGE_DEFLATE_EXTENSION = 'permessage-deflate'
 X_WEBKIT_DEFLATE_FRAME_EXTENSION = 'x-webkit-deflate-frame'

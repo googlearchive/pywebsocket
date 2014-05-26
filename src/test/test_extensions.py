@@ -223,14 +223,6 @@ class DeflateFrameExtensionProcessorParsingTest(unittest.TestCase):
         self.assertEqual(0, len(response.get_parameters()))
 
 
-class PerFrameCompressExtensionProcessorTest(unittest.TestCase):
-    def test_registry(self):
-        processor = extensions.get_extension_processor(
-                common.ExtensionParameter('perframe-compress'))
-        self.assertIsInstance(processor,
-                              extensions.PerFrameCompressExtensionProcessor)
-
-
 class PerMessageDeflateExtensionProcessorParsingTest(unittest.TestCase):
     """A unittest for checking that PerMessageDeflateExtensionProcessor parses
     given extension parameter correctly.

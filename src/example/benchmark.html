@@ -248,7 +248,7 @@ function startBenchmark(runner, numSockets) {
 
 function sendBenchmark() {
   addToLog('Send benchmark');
-  addToLog('Message size in KiB, Speed in kB/s');
+  addToLog('Message size in KiB, Time/message in ms, Speed in kB/s');
 
   var runner = buildSendBenchmarkFunction(
       SEND_PARAMETER.startSize,
@@ -260,7 +260,7 @@ function sendBenchmark() {
 
 function receiveBenchmark() {
   addToLog('Receive benchmark');
-  addToLog('Message size in KiB, Speed in kB/s');
+  addToLog('Message size in KiB, Time/message in ms, Speed in kB/s');
 
   var runner = buildReceiveBenchmarkFunction(
       RECEIVE_PARAMETER.startSize,

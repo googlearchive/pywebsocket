@@ -49,21 +49,23 @@ function getTimeStamp() {
   return Date.now();
 }
 
-function formatResultInKiB(size, speed, printSize) {
+function formatResultInKiB(size, timePerMessageInMs, speed, printSize) {
   if (printSize) {
-    return (size / 1024) + '\t' + speed;
+    return (size / 1024) + '\t' + timePerMessageInMs + '\t' + speed;
   } else {
     return speed.toString();
   }
 }
 
-function calculateSpeedInKB(size, startTimeInMs) {
-  return Math.round(size / (getTimeStamp() - startTimeInMs) * 1000) / 1000;
+function calculateSpeedInKB(size, timeSpentInMs) {
+  return Math.round(size / timeSpentInMs * 1000) / 1000;
 }
 
 function calculateAndLogResult(size, startTimeInMs, totalSize, printSize) {
-  var speed = calculateSpeedInKB(totalSize, startTimeInMs);
-  addToLog(formatResultInKiB(size, speed, printSize));
+  var timeSpentInMs = getTimeStamp() - startTimeInMs;
+  var speed = calculateSpeedInKB(totalSize, timeSpentInMs);
+  var timePerMessageInMs = timeSpentInMs / (totalSize / size);
+  addToLog(formatResultInKiB(size, timePerMessageInMs, speed, printSize));
 }
 
 function fillArrayBuffer(buffer, c) {

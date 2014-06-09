@@ -128,17 +128,37 @@ function sendBenchmark(size, multiplierIndex, parameter) {
   startTimeInMs = getTimeStamp();
 
   for (var i = 0; i < xhrs.length; ++i) {
-    var buffer = new ArrayBuffer(size);
+    var data = null;
+    if (responseType == 'arraybuffer' || responseType == 'blob') {
+      data = new ArrayBuffer(size);
 
-    fillArrayBuffer(buffer, 0x61);
+      fillArrayBuffer(data, 0x61);
 
-    if (responseType == 'blob') {
-      buffer = new Blob([buffer]);
+      if (responseType == 'blob') {
+        data = new Blob([data]);
+      }
+    } else {
+      data = '';
+      var expChunk = 'a';
+      var remain = size;
+      while (true) {
+        if (remain % 2) {
+          data += expChunk;
+          remain = (remain - 1) / 2;
+        } else {
+          remain /= 2;
+        }
+
+        if (remain == 0)
+          break;
+
+        expChunk = expChunk + expChunk;
+      }
     }
 
     var xhr = xhrs[i];
     xhr.open('POST', addressBox.value + '_send');
-    xhr.send(buffer);
+    xhr.send(data);
 
     totalSize += size;
   }
@@ -203,6 +223,8 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
       bytesReceived = this.response.byteLength;
     } else if (this.responseType == 'blob') {
       bytesReceived = this.response.size;
+    } else {
+      bytesReceived = this.response.length;
     }
     if (bytesReceived != size) {
       addToLog('Expected ' + size + 'B but received ' + bytesReceived + 'B');
@@ -215,6 +237,15 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
                              verifyArrayBuffer(this.response, 0x61));
     } else if (this.responseType == 'blob') {
       verifyBlob(this.response, 0x61, checkResultAndContinue);
+    } else {
+      var result = true;
+      for (var i = 0; i < this.response.length; ++i) {
+        if (this.response[i] != 'a') {
+          result = false;
+          break;
+        }
+      }
+      checkResultAndContinue(bytesReceived, result);
     }
   };
 
@@ -290,11 +321,15 @@ function init() {
 
   Set data type
   <input type="radio"
-         name="binarytype"
+         name="responsetyperadio"
+         value="text"
+         onclick="responseType = 'text'" checked>text
+  <input type="radio"
+         name="responsetyperadio"
          value="blob"
          onclick="responseType = 'blob'" checked>blob
   <input type="radio"
-         name="binarytype"
+         name="responsetyperadio"
          value="arraybuffer"
          onclick="responseType = 'arraybuffer'">arraybuffer
 </div>

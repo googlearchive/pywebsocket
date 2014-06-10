@@ -794,6 +794,33 @@ class PerMessageDeflateTest(unittest.TestCase):
         self.assertEqual('\xc1\x03\x62\x00\x00',
                          request.connection.written_data())
 
+    def test_send_two_messages(self):
+        extension = common.ExtensionParameter(
+                common.PERMESSAGE_DEFLATE_EXTENSION)
+        request = _create_request_from_rawdata(
+                '', permessage_deflate_request=extension)
+        msgutil.send_message(request, 'Hello')
+        msgutil.send_message(request, 'World')
+
+        compress = zlib.compressobj(
+                zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
+
+        expected = ''
+
+        compressed_hello = compress.compress('Hello')
+        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_hello = compressed_hello[:-4]
+        expected += '\xc1%c' % len(compressed_hello)
+        expected += compressed_hello
+
+        compressed_world = compress.compress('World')
+        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
+        compressed_world = compressed_world[:-4]
+        expected += '\xc1%c' % len(compressed_world)
+        expected += compressed_world
+
+        self.assertEqual(expected, request.connection.written_data())
+
     def test_send_message_fragmented(self):
         extension = common.ExtensionParameter(
                 common.PERMESSAGE_DEFLATE_EXTENSION)
@@ -969,33 +996,6 @@ class PerMessageCompressTest(unittest.TestCase):
         self.assertEqual(
             'deflate; client_max_window_bits=8; client_no_context_takeover',
             response.get_parameter_value('method'))
-
-    def test_send_message_deflate(self):
-        compress = zlib.compressobj(
-            zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -zlib.MAX_WBITS)
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        request = _create_request_from_rawdata(
-                      '', permessage_compression_request=extension)
-        msgutil.send_message(request, 'Hello')
-        msgutil.send_message(request, 'World')
-
-        expected = ''
-
-        compressed_hello = compress.compress('Hello')
-        compressed_hello += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_hello = compressed_hello[:-4]
-        expected += '\xc1%c' % len(compressed_hello)
-        expected += compressed_hello
-
-        compressed_world = compress.compress('World')
-        compressed_world += compress.flush(zlib.Z_SYNC_FLUSH)
-        compressed_world = compressed_world[:-4]
-        expected += '\xc1%c' % len(compressed_world)
-        expected += compressed_world
-
-        self.assertEqual(expected, request.connection.written_data())
 
     def test_send_message_deflate_fragmented_bfinal(self):
         extension = common.ExtensionParameter(

@@ -37,8 +37,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Namespace for holding globals.
 var benchmark = {};
 
-var PRINT_SIZE = true;
-
 var SEND_PARAMETER = {
   numSockets: 1,
   // Initial size of messages.
@@ -86,7 +84,7 @@ function destroyAllSockets() {
   sockets = [];
 }
 
-function buildSendBenchmarkFunction(size, multiplierIndex, parameter) {
+function buildSendBenchmarkFunction(size, multiplierIndex, parameter, config) {
   if (size > parameter.stopThreshold) {
     addToLog('Finished');
     destroyAllSockets();
@@ -105,13 +103,15 @@ function buildSendBenchmarkFunction(size, multiplierIndex, parameter) {
       return;
     }
 
-    calculateAndLogResult(size, benchmark.startTimeInMs, totalSize, PRINT_SIZE);
+    calculateAndLogResult(
+        size, benchmark.startTimeInMs, totalSize, config.printSize);
 
     timerID = setTimeout(
         buildSendBenchmarkFunction(
             size * parameter.multipliers[multiplierIndex],
             (multiplierIndex + 1) % parameter.multipliers.length,
-            parameter),
+            parameter,
+            config),
         0);
   };
 
@@ -141,7 +141,8 @@ function buildSendBenchmarkFunction(size, multiplierIndex, parameter) {
   };
 }
 
-function buildReceiveBenchmarkFunction(size, multiplierIndex, parameter) {
+function buildReceiveBenchmarkFunction(
+    size, multiplierIndex, parameter, config) {
   if (size > parameter.stopThreshold) {
     addToLog('Finished');
     destroyAllSockets();
@@ -168,13 +169,15 @@ function buildReceiveBenchmarkFunction(size, multiplierIndex, parameter) {
       return;
     }
 
-    calculateAndLogResult(size, benchmark.startTimeInMs, totalSize, PRINT_SIZE);
+    calculateAndLogResult(
+        size, benchmark.startTimeInMs, totalSize, config.printSize);
 
     timerID = setTimeout(
         buildReceiveBenchmarkFunction(
             size * parameter.multipliers[multiplierIndex],
             (multiplierIndex + 1) % parameter.multipliers.length,
-            parameter),
+            parameter,
+            config),
         0);
   };
 
@@ -246,26 +249,44 @@ function startBenchmark(runner, numSockets) {
   }
 }
 
+function buildLegendString(config) {
+  var legend = ''
+  if (config.printSize)
+    legend = 'Message size in KiB, Time/message in ms, ';
+  legend += 'Speed in kB/s';
+  return legend;
+}
+
 function sendBenchmark() {
+  var config = {
+    printSize: document.getElementById('printsize').checked
+  };
+
   addToLog('Send benchmark');
-  addToLog('Message size in KiB, Time/message in ms, Speed in kB/s');
+  addToLog(buildLegendString(config));
 
   var runner = buildSendBenchmarkFunction(
       SEND_PARAMETER.startSize,
       0,
-      SEND_PARAMETER);
+      SEND_PARAMETER,
+      config);
 
   startBenchmark(runner, SEND_PARAMETER.numSockets);
 }
 
 function receiveBenchmark() {
+  var config = {
+    printSize: document.getElementById('printsize').checked
+  };
+
   addToLog('Receive benchmark');
-  addToLog('Message size in KiB, Time/message in ms, Speed in kB/s');
+  addToLog(buildLegendString(config));
 
   var runner = buildReceiveBenchmarkFunction(
       RECEIVE_PARAMETER.startSize,
       0,
-      RECEIVE_PARAMETER);
+      RECEIVE_PARAMETER,
+      config);
 
   startBenchmark(runner, RECEIVE_PARAMETER.numSockets);
 }
@@ -299,6 +320,11 @@ function init() {
   <input type="button" value="send" onclick="sendBenchmark()">
   <input type="button" value="receive" onclick="receiveBenchmark()">
   <input type="button" value="stop" onclick="stop()">
+
+  <br/>
+
+  <input type="checkbox" id="printsize" checked>
+      Print size and time per message
 </div>
 
 <div id="log_div">

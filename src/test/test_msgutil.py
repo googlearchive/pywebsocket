@@ -1097,35 +1097,7 @@ class PerMessageDeflateTest(unittest.TestCase):
 
         self.assertEqual(None, msgutil.receive_message(request))
 
-
-class PerMessageCompressTest(unittest.TestCase):
-    """Tests for checking permessage-compression extension."""
-
-    def test_deflate_response_parameters(self):
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        processor = PerMessageCompressExtensionProcessor(extension)
-        response = processor.get_extension_response()
-        self.assertEqual('deflate',
-                         response.get_parameter_value('method'))
-
-        extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
-        processor = PerMessageCompressExtensionProcessor(extension)
-
-        def _compression_processor_hook(compression_processor):
-            compression_processor.set_client_max_window_bits(8)
-            compression_processor.set_client_no_context_takeover(True)
-        processor.set_compression_processor_hook(
-            _compression_processor_hook)
-        response = processor.get_extension_response()
-        self.assertEqual(
-            'deflate; client_max_window_bits=8; client_no_context_takeover',
-            response.get_parameter_value('method'))
-
-    def test_receive_message_deflate_mixed_btype(self):
+    def test_receive_message_mixed_btype(self):
         """Test that a message compressed using lots of DEFLATE blocks with
         various flush mode is correctly received.
         """
@@ -1192,13 +1164,40 @@ class PerMessageCompressTest(unittest.TestCase):
         data += '\x88\x8a' + _mask_hybi(struct.pack('!H', 1000) + 'Good bye')
 
         extension = common.ExtensionParameter(
-            common.PERMESSAGE_COMPRESSION_EXTENSION)
-        extension.add_parameter('method', 'deflate')
+            common.PERMESSAGE_DEFLATE_EXTENSION)
         request = _create_request_from_rawdata(
-            data, permessage_compression_request=extension)
+            data, permessage_deflate_request=extension)
         self.assertEqual(payload, msgutil.receive_message(request))
 
         self.assertEqual(None, msgutil.receive_message(request))
+
+
+class PerMessageCompressTest(unittest.TestCase):
+    """Tests for checking permessage-compression extension."""
+
+    def test_deflate_response_parameters(self):
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        processor = PerMessageCompressExtensionProcessor(extension)
+        response = processor.get_extension_response()
+        self.assertEqual('deflate',
+                         response.get_parameter_value('method'))
+
+        extension = common.ExtensionParameter(
+            common.PERMESSAGE_COMPRESSION_EXTENSION)
+        extension.add_parameter('method', 'deflate')
+        processor = PerMessageCompressExtensionProcessor(extension)
+
+        def _compression_processor_hook(compression_processor):
+            compression_processor.set_client_max_window_bits(8)
+            compression_processor.set_client_no_context_takeover(True)
+        processor.set_compression_processor_hook(
+            _compression_processor_hook)
+        response = processor.get_extension_response()
+        self.assertEqual(
+            'deflate; client_max_window_bits=8; client_no_context_takeover',
+            response.get_parameter_value('method'))
 
 
 class MessageTestHixie75(unittest.TestCase):

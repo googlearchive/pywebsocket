@@ -57,9 +57,8 @@ def web_socket_transfer_data(request):
                         command)
             size = int(commands[1])
 
-            # Respond with a binary data of the specified number of bytes.
-            # TODO(tyoshino): Adjust size also when the size decreases.
-            if len(data) < size:
+            # Reuse data if possible.
+            if len(data) != size:
                 data = 'a' * size
             request.ws_stream.send_message(data, binary=True)
         elif commands[0] == 'send':

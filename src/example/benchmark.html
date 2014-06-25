@@ -133,6 +133,12 @@ function buildSendBenchmarkFunction(size, multiplierIndex, parameter, config) {
 
       fillArrayBuffer(buffer, 0x61);
 
+      var command = ['send']
+      if (config.verifyData)
+        command.push('1')
+      else
+        command.push('0')
+      sockets[socketIndex].send(command.join(' '));
       sockets[socketIndex].send(buffer);
       socketIndex = (socketIndex + 1) % sockets.length;
 
@@ -157,7 +163,7 @@ function buildReceiveBenchmarkFunction(
       return;
     }
 
-    if (!verifyArrayBuffer(event.data, 0x61)) {
+    if (config.verifyData && !verifyArrayBuffer(event.data, 0x61)) {
       addToLog('Response verification failed');
       destroyAllSockets();
       return;
@@ -196,7 +202,7 @@ function buildReceiveBenchmarkFunction(
 
     var socketIndex = 0;
     while (totalSize < parameter.minTotal) {
-      sockets[socketIndex].send(size);
+      sockets[socketIndex].send('receive ' + size);
       socketIndex = (socketIndex + 1) % sockets.length;
 
       totalSize += size;
@@ -259,7 +265,8 @@ function buildLegendString(config) {
 
 function sendBenchmark() {
   var config = {
-    printSize: document.getElementById('printsize').checked
+    printSize: document.getElementById('printsize').checked,
+    verifyData: document.getElementById('verifydata').checked
   };
 
   addToLog('Send benchmark');
@@ -276,7 +283,8 @@ function sendBenchmark() {
 
 function receiveBenchmark() {
   var config = {
-    printSize: document.getElementById('printsize').checked
+    printSize: document.getElementById('printsize').checked,
+    verifyData: document.getElementById('verifydata').checked
   };
 
   addToLog('Receive benchmark');
@@ -325,6 +333,8 @@ function init() {
 
   <input type="checkbox" id="printsize" checked>
       Print size and time per message
+  <input type="checkbox" id="verifydata" checked>
+      Verify data
 </div>
 
 <div id="log_div">

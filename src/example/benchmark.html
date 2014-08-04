@@ -40,7 +40,7 @@ var benchmark = {};
 var SEND_PARAMETER = {
   numSockets: 1,
   // Initial size of messages.
-  startSize: 100000 * 1024,
+  startSize: 10 * 1024,
   // Stops benchmark when the size of message exceeds this threshold.
   stopThreshold: 100000 * 1024,
   // If the size of each message is small, send/receive multiple messages until

@@ -132,11 +132,8 @@ function sendBenchmarkStep(size, multiplierIndex, parameter, config) {
 
     fillArrayBuffer(buffer, 0x61);
 
-    var command = ['send']
-    if (config.verifyData)
-    command.push('1')
-    else
-    command.push('0')
+    var command = ['send'];
+    command.push(config.verifyData ? '1' : '0');
     sockets[socketIndex].send(command.join(' '));
     sockets[socketIndex].send(buffer);
     socketIndex = (socketIndex + 1) % sockets.length;

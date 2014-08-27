@@ -29,10 +29,9 @@ class XHRBenchmarkHandler(object):
             if bytes_to_receive_in_this_loop > RECEIVE_BLOCK_SIZE:
                 bytes_to_receive_in_this_loop = RECEIVE_BLOCK_SIZE
             received_data = self.rfile.read(bytes_to_receive_in_this_loop)
-            for c in received_data:
-                if c != 'a':
-                    self._logger.debug('Request body verification failed')
-                    return
+            if received_data != ('a' * bytes_to_receive_in_this_loop):
+                self._logger.debug('Request body verification failed')
+                return
             bytes_to_receive -= len(received_data)
         if bytes_to_receive < 0:
             self._logger.debug('Received %d more bytes than expected' %

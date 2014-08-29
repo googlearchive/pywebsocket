@@ -38,7 +38,6 @@ var PRINT_SIZE = true;
 
 var SEND_PARAMETER = {
   numXHRs: 1,
-  numIterations: 10,
   startSize: 10 * 1024,
   stopThreshold: 100000 * 1024,
   multipliers: [5, 2],
@@ -46,7 +45,6 @@ var SEND_PARAMETER = {
 
 var RECEIVE_PARAMETER = {
   numXHRs: 1,
-  numIterations: 10,
   startSize: 10 * 1024,
   stopThreshold: 100000 * 1024,
   multipliers: [5, 2],
@@ -58,7 +56,6 @@ var addressBox = null;
 var logBox = null;
 
 var responseType = 'blob';
-var batch = '';
 
 var timerID = null;
 
@@ -68,7 +65,6 @@ function destroyAllXHRs() {
     xhrs[i].abort();
   }
   xhrs = [];
-//  gc();
 }
 
 function repeatString(str, count) {
@@ -91,27 +87,11 @@ function repeatString(str, count) {
   return data;
 }
 
-function sendBenchmark(size, multiplierIndex, numIterations, parameter) {
+function sendBenchmark(size, multiplierIndex, parameter) {
   timerID = null;
 
   if (size > parameter.stopThreshold) {
-    if (numIterations > 1) {
-      destroyAllXHRs();
-      timerID = setTimeout(
-          sendBenchmark,
-          0,
-          SEND_PARAMETER.startSize,
-          0,
-          numIterations - 1,
-          parameter);
-      return;
-    }
-
-    reportResults();
     addToLog('Finished');
-    destroyAllXHRs();
-    if (batch != '')
-      startNextBenchmark();
     return;
   }
 
@@ -156,7 +136,6 @@ function sendBenchmark(size, multiplierIndex, numIterations, parameter) {
         0,
         size * parameter.multipliers[multiplierIndex],
         (multiplierIndex + 1) % parameter.multipliers.length,
-        numIterations,
         parameter);
   };
 
@@ -185,33 +164,16 @@ function sendBenchmark(size, multiplierIndex, numIterations, parameter) {
     var xhr = xhrs[i];
     xhr.open('POST', addressBox.value + '_send');
     xhr.send(data);
-    data = '';
 
     totalSize += size;
   }
 }
 
-function receiveBenchmark(size, multiplierIndex, numIterations, parameter) {
+function receiveBenchmark(size, multiplierIndex, parameter) {
   timerID = null;
 
   if (size > parameter.stopThreshold) {
-    if (numIterations > 1) {
-      destroyAllXHRs();
-      timerID = setTimeout(
-          receiveBenchmark,
-          0,
-          RECEIVE_PARAMETER.startSize,
-          0,
-          numIterations - 1,
-          parameter);
-      return;
-    }
-
-    reportResults();
     addToLog('Finished');
-    destroyAllXHRs();
-    if (batch != '')
-      startNextBenchmark();
     return;
   }
 
@@ -247,7 +209,6 @@ function receiveBenchmark(size, multiplierIndex, numIterations, parameter) {
         0,
         size * parameter.multipliers[multiplierIndex],
         (multiplierIndex + 1) % parameter.multipliers.length,
-        numIterations,
         parameter);
   }
 
@@ -307,67 +268,27 @@ function receiveBenchmark(size, multiplierIndex, numIterations, parameter) {
 }
 
 function startSendBenchmark() {
-  addToLog('Send benchmark (' + responseType + ', numXHRs=' +
-      SEND_PARAMETER.numXHRs + ', numIterations=' +
-      SEND_PARAMETER.numIterations + ')');
-  addToSummary('Send benchmark (' + responseType + ', numXHRs=' +
-      SEND_PARAMETER.numXHRs + ', numIterations=' +
-      SEND_PARAMETER.numIterations + ')');
+  addToLog('Send benchmark');
   addToLog('Message size in KiB, Speed in kB/s');
-  clearResults();
 
   timerID = setTimeout(
       sendBenchmark,
       0,
       SEND_PARAMETER.startSize,
       0,
-      SEND_PARAMETER.numIterations,
       SEND_PARAMETER);
 }
 
 function startReceiveBenchmark() {
-  addToLog('Receive benchmark (' + responseType + ', numXHRs=' +
-      RECEIVE_PARAMETER.numXHRs + ', numIterations=' +
-      RECEIVE_PARAMETER.numIterations + ')');
-  addToSummary('Receive benchmark (' + responseType + ', numXHRs=' +
-      RECEIVE_PARAMETER.numXHRs + ', numIterations=' +
-      RECEIVE_PARAMETER.numIterations + ')');
+  addToLog('Receive benchmark');
   addToLog('Message size in KiB, Speed in kB/s');
-  clearResults();
 
   timerID = setTimeout(
       receiveBenchmark,
       0,
       RECEIVE_PARAMETER.startSize,
       0,
-      RECEIVE_PARAMETER.numIterations,
       RECEIVE_PARAMETER);
-}
-
-function startNextBenchmark() {
-  if (responseType == 'text')
-    responseType = 'blob';
-  else if (responseType == 'blob')
-    responseType = 'arraybuffer';
-  else if (responseType == 'arraybuffer') {
-    responseType = 'text';
-    if (batch == 'send')
-      batch = 'receive';
-    else {
-      batch = '';
-      return;
-    }
-  }
-  if (batch == 'send')
-    startSendBenchmark();
-  else
-    startReceiveBenchmark();
-}
-
-function startBatchBenchmark() {
-  batch = 'send';
-  responseType = 'text';
-  startSendBenchmark();
 }
 
 function stop() {
@@ -375,19 +296,16 @@ function stop() {
   clearTimeout(timerID);
   timerID = null;
   addToLog('Stopped');
-  batch = '';
 }
 
 function init() {
   addressBox = document.getElementById('address');
   logBox = document.getElementById('log');
-  summaryBox = document.getElementById('summary');
 
   // Special address of pywebsocket for XHR benchmark.
   addressBox.value = '/073be001e10950692ccbf3a2ad21c245';
 
   addToLog(window.navigator.userAgent.toLowerCase());
-  addToSummary(window.navigator.userAgent.toLowerCase());
 }
 </script>
 </head>
@@ -397,7 +315,6 @@ function init() {
   url prefix <input type="text" id="address" size="40">
   <input type="button" value="send" onclick="startSendBenchmark()">
   <input type="button" value="receive" onclick="startReceiveBenchmark()">
-  <input type="button" value="batch" onclick="startBatchBenchmark()">
   <input type="button" value="stop" onclick="stop()">
 
   <br/>
@@ -418,12 +335,8 @@ function init() {
 </div>
 
 <div id="log_div">
-  Raw Log
   <textarea
       id="log" rows="20" style="width: 100%" readonly></textarea>
-  Summary
-  <textarea
-      id="summary" rows="20" style="width: 100%" readonly></textarea>
 </div>
 
 Note: Effect of RTT and time spent for ArrayBuffer creation are not eliminated.

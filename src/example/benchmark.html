@@ -37,26 +37,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 // Namespace for holding globals.
 var benchmark = {};
 
-var SEND_PARAMETER = {
-  numSockets: 1,
-  // Initial size of messages.
-  startSize: 10 * 1024,
-  // Stops benchmark when the size of message exceeds this threshold.
-  stopThreshold: 100000 * 1024,
-  // If the size of each message is small, send/receive multiple messages until
-  // the sum of sizes reaches this threshold.
-  minTotal: 100000 * 1024,
-  multipliers: [5, 2],
-};
-
-var RECEIVE_PARAMETER = {
-  numSockets: 1,
-  startSize: 10 * 1024,
-  stopThreshold: 100000 * 1024,
-  minTotal: 100000 * 1024,
-  multipliers: [5, 2],
-};
-
 var sockets = [];
 var numEstablishedSockets = 0;
 
@@ -84,8 +64,8 @@ function destroyAllSockets() {
   sockets = [];
 }
 
-function sendBenchmarkStep(size, multiplierIndex, parameter, config) {
-  if (size > parameter.stopThreshold) {
+function sendBenchmarkStep(size, multiplierIndex, config) {
+  if (size > config.stopThreshold) {
     addToLog('Finished');
     destroyAllSockets();
     return;
@@ -109,9 +89,8 @@ function sendBenchmarkStep(size, multiplierIndex, parameter, config) {
     timerID = setTimeout(
         sendBenchmarkStep,
         0,
-        size * parameter.multipliers[multiplierIndex],
-        (multiplierIndex + 1) % parameter.multipliers.length,
-        parameter,
+        size * config.multipliers[multiplierIndex],
+        (multiplierIndex + 1) % config.multipliers.length,
         config);
   };
 
@@ -127,7 +106,7 @@ function sendBenchmarkStep(size, multiplierIndex, parameter, config) {
   totalSize = 0;
 
   var socketIndex = 0;
-  while (totalSize < parameter.minTotal) {
+  while (totalSize < config.minTotal) {
     var buffer = new ArrayBuffer(size);
 
     fillArrayBuffer(buffer, 0x61);
@@ -142,8 +121,8 @@ function sendBenchmarkStep(size, multiplierIndex, parameter, config) {
   }
 }
 
-function receiveBenchmarkStep(size, multiplierIndex, parameter, config) {
-  if (size > parameter.stopThreshold) {
+function receiveBenchmarkStep(size, multiplierIndex, config) {
+  if (size > config.stopThreshold) {
     addToLog('Finished');
     destroyAllSockets();
     return;
@@ -175,9 +154,8 @@ function receiveBenchmarkStep(size, multiplierIndex, parameter, config) {
     timerID = setTimeout(
         receiveBenchmarkStep,
         0,
-        size * parameter.multipliers[multiplierIndex],
-        (multiplierIndex + 1) % parameter.multipliers.length,
-        parameter,
+        size * config.multipliers[multiplierIndex],
+        (multiplierIndex + 1) % config.multipliers.length,
         config);
   };
 
@@ -194,7 +172,7 @@ function receiveBenchmarkStep(size, multiplierIndex, parameter, config) {
   totalSize = 0;
 
   var socketIndex = 0;
-  while (totalSize < parameter.minTotal) {
+  while (totalSize < config.minTotal) {
     sockets[socketIndex].send('receive ' + size);
     socketIndex = (socketIndex + 1) % sockets.length;
 
@@ -255,42 +233,63 @@ function buildLegendString(config) {
   return legend;
 }
 
-function sendBenchmark() {
-  var config = {
-    printSize: document.getElementById('printsize').checked,
-    verifyData: document.getElementById('verifydata').checked
+function getBoolFromCheckBox(id) {
+  return document.getElementById(id).checked;
+}
+
+function getIntFromInput(id) {
+  return parseInt(document.getElementById(id).value);
+}
+
+function getIntArrayFromInput(id) {
+  var strArray = document.getElementById(id).value.split(',');
+  return strArray.map(function(str) { return parseInt(str, 10); });
+}
+
+function getConfig() {
+  return {
+    printSize: getBoolFromCheckBox('printsize'),
+    numSockets: getIntFromInput('numsockets'),
+    // Initial size of messages.
+    startSize: getIntFromInput('startsize'),
+    // Stops benchmark when the size of message exceeds this threshold.
+    stopThreshold: getIntFromInput('stopthreshold'),
+    // If the size of each message is small, send/receive multiple messages
+    // until the sum of sizes reaches this threshold.
+    minTotal: getIntFromInput('mintotal'),
+    multipliers: getIntArrayFromInput('multipliers'),
+    verifyData: getBoolFromCheckBox('verifydata')
   };
+}
+
+function sendBenchmark() {
+  var config = getConfig();
 
   addToLog('Send benchmark');
   addToLog(buildLegendString(config));
 
   var runner = sendBenchmarkStep.bind(
       null,
-      SEND_PARAMETER.startSize,
+      config.startSize,
       0,
-      SEND_PARAMETER,
       config);
 
-  startBenchmark(runner, SEND_PARAMETER.numSockets);
+  startBenchmark(runner, config.numSockets);
 }
 
 function receiveBenchmark() {
-  var config = {
-    printSize: document.getElementById('printsize').checked,
-    verifyData: document.getElementById('verifydata').checked
-  };
+  var config = getConfig();
 
   addToLog('Receive benchmark');
   addToLog(buildLegendString(config));
 
   var runner = receiveBenchmarkStep.bind(
       null,
-      RECEIVE_PARAMETER.startSize,
+      config.startSize,
       0,
-      RECEIVE_PARAMETER,
       config);
 
-  startBenchmark(runner, RECEIVE_PARAMETER.numSockets);
+  startBenchmark(runner, config.numSockets);
 }
 
 function stop() {
@@ -326,9 +325,38 @@ function init() {
   <br/>
 
   <input type="checkbox" id="printsize" checked>
-      Print size and time per message
+  <label for="printsize">Print size and time per message</label>
   <input type="checkbox" id="verifydata" checked>
-      Verify data
+  <label for="verifydata">Verify data</label>
+
+  <br/>
+
+  Parameters:
+
+  <br/>
+
+  <table>
+    <tr>
+      <td>Num sockets</td>
+      <td><input type="text" id="numsockets" value="1"></td>
+    </tr>
+    <tr>
+      <td>Start size</td>
+      <td><input type="text" id="startsize" value="10240"></td>
+    </tr>
+    <tr>
+      <td>Stop threshold</td>
+      <td><input type="text" id="stopthreshold" value="102400000"></td>
+    </tr>
+    <tr>
+      <td>Minimum total</td>
+      <td><input type="text" id="mintotal" value="102400000"></td>
+    </tr>
+    <tr>
+      <td>Multipliers</td>
+      <td><input type="text" id="multipliers" value="5, 2"></td>
+    </tr>
+  </table>
 </div>
 
 <div id="log_div">

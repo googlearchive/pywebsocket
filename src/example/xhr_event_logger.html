@@ -1,0 +1,64 @@
+<!--
+Copyright 2014 Google Inc. All rights reserved.
+
+Use of this source code is governed by a BSD-style
+license that can be found in the COPYING file or at
+https://developers.google.com/open-source/licenses/bsd
+-->
+
+<html>
+<head>
+<title>XHR event logger</title>
+<script src="util.js"></script>
+<script>
+var events = [];
+
+function run() {
+  events = [];
+  var xhr = new XMLHttpRequest();
+
+  function log(e) {
+    var type = e.type;
+    if (type === 'readystatechange') {
+      type += e.target.readyState;
+    }
+
+    if (events.length != 0 && type === events[events.length - 1].type) {
+      events[events.length - 1].count = events[events.length - 1].count + 1;
+    } else {
+      events.push({type: type, count: 1});
+    }
+  };
+
+  xhr.onreadystatechange = log;
+  xhr.onloadstart = log;
+  xhr.onprogress = log;
+  xhr.onabort = log;
+  xhr.onerror = log;
+  xhr.onload = log;
+  xhr.ontimeout = log;
+  xhr.onloadend = log;
+
+  xhr.open('POST', '/073be001e10950692ccbf3a2ad21c245_receive');
+  var size = getIntFromInput('size');
+  xhr.send(size + ' chunked');
+}
+
+function print() {
+  var result = '';
+  for (var i = 0; i < events.length; ++i) {
+    var event = events[i];
+    result += event.type + ' * ' + event.count + '\n';
+  }
+  document.getElementById('log').value = result;
+}
+</script>
+
+<body>
+  <textarea id="log" rows="10" cols="40" readonly></textarea>
+  <br/>
+  Size: <input type="text" id="size" value="65536">
+  <input type="button" onclick="run()" value="Run XHR">
+  <input type="button" onclick="print()" value="Print log">
+</body>
+</html>

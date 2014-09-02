@@ -143,3 +143,7 @@ function verifyAcknowledgement(message, size) {
 
   return true;
 }
+
+function getIntFromInput(id) {
+  return parseInt(document.getElementById(id).value);
+}

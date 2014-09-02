@@ -237,10 +237,6 @@ function getBoolFromCheckBox(id) {
   return document.getElementById(id).checked;
 }
 
-function getIntFromInput(id) {
-  return parseInt(document.getElementById(id).value);
-}
-
 function getIntArrayFromInput(id) {
   var strArray = document.getElementById(id).value.split(',');
   return strArray.map(function(str) { return parseInt(str, 10); });

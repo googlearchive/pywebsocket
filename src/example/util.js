@@ -157,6 +157,7 @@ function verifyArrayBuffer(buffer, expectedChar) {
 function verifyBlob(blob, expectedChar, doneCallback) {
   var reader = new FileReader(blob);
   reader.onerror = function() {
+    addToLog('FileReader Error: ' + reader.error.message);
     doneCallback(blob.size, false);
   }
   reader.onloadend = function() {

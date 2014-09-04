@@ -34,28 +34,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <title>XMLHttpRequest benchmark</title>
 <script src="util.js"></script>
 <script>
-var PRINT_SIZE = true;
-
-var SEND_PARAMETER = {
-  numXHRs: 1,
-  startSize: 10 * 1024,
-  stopThreshold: 100000 * 1024,
-  multipliers: [5, 2],
-};
-
-var RECEIVE_PARAMETER = {
-  numXHRs: 1,
-  startSize: 10 * 1024,
-  stopThreshold: 100000 * 1024,
-  multipliers: [5, 2],
-};
+// Namespace for holding globals.
+var benchmark = {};
+benchmark.startTimeInMs = 0;
 
 var xhrs = [];
 
 var addressBox = null;
-var logBox = null;
-
-var responseType = 'blob';
 
 var timerID = null;
 
@@ -65,6 +50,7 @@ function destroyAllXHRs() {
     xhrs[i].abort();
   }
   xhrs = [];
+  // gc() might be needed for Chrome/Blob
 }
 
 function repeatString(str, count) {
@@ -87,15 +73,10 @@ function repeatString(str, count) {
   return data;
 }
 
-function sendBenchmark(size, multiplierIndex, parameter) {
+function sendBenchmarkStep(size, config) {
   timerID = null;
 
-  if (size > parameter.stopThreshold) {
-    addToLog('Finished');
-    return;
-  }
-
-  var startTimeInMs = null;
+  benchmark.startTimeInMs = null;
   var totalSize = 0;
   var totalReplied = 0;
 
@@ -110,7 +91,7 @@ function sendBenchmark(size, multiplierIndex, parameter) {
       return;
     }
 
-    if (!verifyAcknowledgement(this.response, size)) {
+    if (config.verifyData && !verifyAcknowledgement(this.response, size)) {
       destroyAllXHRs();
       return;
     }
@@ -121,40 +102,37 @@ function sendBenchmark(size, multiplierIndex, parameter) {
       return;
     }
 
-    if (startTimeInMs == null) {
+    if (benchmark.startTimeInMs == null) {
       addToLog('startTimeInMs not set');
       destroyAllXHRs();
       return;
     }
 
-    calculateAndLogResult(size, startTimeInMs, totalSize, PRINT_SIZE);
+    calculateAndLogResult(size, benchmark.startTimeInMs, totalSize,
+        config.printSize);
 
     destroyAllXHRs();
 
-    timerID = setTimeout(
-        sendBenchmark,
-        0,
-        size * parameter.multipliers[multiplierIndex],
-        (multiplierIndex + 1) % parameter.multipliers.length,
-        parameter);
+    runNextTask();
   };
 
-  for (var i = 0; i < parameter.numXHRs; ++i) {
+  for (var i = 0; i < config.numXHRs; ++i) {
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = onReadyStateChangeHandler;
     xhrs.push(xhr);
   }
 
-  startTimeInMs = getTimeStamp();
+  benchmark.startTimeInMs = getTimeStamp();
 
   for (var i = 0; i < xhrs.length; ++i) {
     var data = null;
-    if (responseType == 'arraybuffer' || responseType == 'blob') {
+    if (config.responseType == 'arraybuffer' ||
+        config.responseType == 'blob') {
       data = new ArrayBuffer(size);
 
       fillArrayBuffer(data, 0x61);
 
-      if (responseType == 'blob') {
+      if (config.responseType == 'blob') {
         data = new Blob([data]);
       }
     } else {
@@ -169,15 +147,10 @@ function sendBenchmark(size, multiplierIndex, parameter) {
   }
 }
 
-function receiveBenchmark(size, multiplierIndex, parameter) {
+function receiveBenchmarkStep(size, config) {
   timerID = null;
 
-  if (size > parameter.stopThreshold) {
-    addToLog('Finished');
-    return;
-  }
-
-  var startTimeInMs = null;
+  benchmark.startTimeInMs = null;
   var totalSize = 0;
   var totalReplied = 0;
 
@@ -194,22 +167,18 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
       return;
     }
 
-    if (startTimeInMs == null) {
+    if (benchmark.startTimeInMs == null) {
       addToLog('startTimeInMs not set');
       destroyAllXHRs();
       return;
     }
 
-    calculateAndLogResult(size, startTimeInMs, totalSize, PRINT_SIZE);
+    calculateAndLogResult(size, benchmark.startTimeInMs, totalSize,
+        config.printSize);
 
     destroyAllXHRs();
 
-    timerID = setTimeout(
-        receiveBenchmark,
-        0,
-        size * parameter.multipliers[multiplierIndex],
-        (multiplierIndex + 1) % parameter.multipliers.length,
-        parameter);
+    runNextTask();
   }
 
   var onReadyStateChangeHandler = function () {
@@ -239,57 +208,180 @@ function receiveBenchmark(size, multiplierIndex, parameter) {
 
     if (this.responseType == 'arraybuffer') {
       checkResultAndContinue(bytesReceived,
-                             verifyArrayBuffer(this.response, 0x61));
+          !config.verifyData || verifyArrayBuffer(this.response, 0x61));
     } else if (this.responseType == 'blob') {
-      verifyBlob(this.response, 0x61, checkResultAndContinue);
+      if (config.verifyData)
+        verifyBlob(this.response, 0x61, checkResultAndContinue);
+      else
+        checkResultAndContinue(bytesReceived, true);
     } else {
       checkResultAndContinue(
           bytesReceived,
-          this.response == repeatString('a', this.response.length));
+          !config.verifyData ||
+              this.response == repeatString('a', this.response.length));
     }
   };
 
-  for (var i = 0; i < parameter.numXHRs; ++i) {
+  for (var i = 0; i < config.numXHRs; ++i) {
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = onReadyStateChangeHandler;
     xhrs.push(xhr);
   }
 
-  startTimeInMs = getTimeStamp();
+  benchmark.startTimeInMs = getTimeStamp();
 
   for (var i = 0; i < xhrs.length; ++i) {
     var xhr = xhrs[i];
     xhr.open('POST', addressBox.value + '_receive');
-    xhr.responseType = responseType;
+    xhr.responseType = config.responseType;
     xhr.send(size + ' none');
 
     totalSize += size;
   }
 }
 
-function startSendBenchmark() {
+function getConfig(responseType) {
+  return {
+    printSize: getBoolFromCheckBox('printsize'),
+    responseType: responseType,
+    numXHRs: getIntFromInput('numXHRs'),
+    // Initial size of messages.
+    numIterations: getIntFromInput('numiterations'),
+    startSize: getIntFromInput('startsize'),
+    // Stops benchmark when the size of message exceeds this threshold.
+    stopThreshold: getIntFromInput('stopthreshold'),
+    // If the size of each message is small, send/receive multiple messages
+    // until the sum of sizes reaches this threshold.
+    // minTotal: getIntFromInput('mintotal'),
+    // minTotal is not yet implemented on XHR benchmark
+    multipliers: getIntArrayFromInput('multipliers'),
+    verifyData: getBoolFromCheckBox('verifydata')
+  };
+}
+
+function startBenchmark(config) {
+  clearTimeout(timerID);
+  destroyAllXHRs();
+
+  runNextTask();
+}
+
+function getStringFromRadioBox(name) {
+  return document.getElementById('benchmark_form')[name].value;
+}
+
+// TODO(hiroshige): the following code is the same as benchmark.html
+// and some of them should be merged into e.g. util.js
+
+var tasks = [];
+
+function runNextTask() {
+  var task = tasks.shift();
+  if (task == undefined) {
+    addToLog('Finished');
+    destroyAllXHRs();
+    return;
+  }
+  timerID = setTimeout(task, 0);
+}
+
+function buildLegendString(config) {
+  var legend = ''
+  if (config.printSize)
+    legend = 'Message size in KiB, Time/message in ms, ';
+  legend += 'Speed in kB/s';
+  return legend;
+}
+
+function getBoolFromCheckBox(id) {
+  return document.getElementById(id).checked;
+}
+
+function getIntArrayFromInput(id) {
+  var strArray = document.getElementById(id).value.split(',');
+  return strArray.map(function(str) { return parseInt(str, 10); });
+}
+
+function addTasks(config, stepFunc) {
+  for (var i = 0; i < config.numIterations; ++i) {
+    var multiplierIndex = 0;
+    for (var size = config.startSize;
+         size <= config.stopThreshold;
+         ++multiplierIndex) {
+      var runner = stepFunc.bind(
+          null,
+          size,
+          config);
+      tasks.push(runner);
+      size *= config.multipliers[
+          multiplierIndex % config.multipliers.length];
+    }
+  }
+}
+
+function addResultReportingTask(config, title) {
+  tasks.push(function(){
+      addToSummary(title);
+      reportAverageData();
+      clearAverageData();
+      runNextTask();
+  });
+}
+
+// --------------------------------
+
+function sendBenchmark() {
+  var responseType = getStringFromRadioBox('responsetyperadio');
+  var config = getConfig(responseType);
+
   addToLog('Send benchmark');
-  addToLog('Message size in KiB, Speed in kB/s');
+  addToLog(buildLegendString(config));
 
-  timerID = setTimeout(
-      sendBenchmark,
-      0,
-      SEND_PARAMETER.startSize,
-      0,
-      SEND_PARAMETER);
+  tasks = [];
+  clearAverageData();
+  addTasks(config, sendBenchmarkStep);
+  addResultReportingTask(config, 'Send Benchmark');
+  startBenchmark(config);
 }
 
-function startReceiveBenchmark() {
+function receiveBenchmark() {
+  var responseType = getStringFromRadioBox('responsetyperadio');
+  var config = getConfig(responseType);
+
   addToLog('Receive benchmark');
-  addToLog('Message size in KiB, Speed in kB/s');
+  addToLog(buildLegendString(config));
 
-  timerID = setTimeout(
-      receiveBenchmark,
-      0,
-      RECEIVE_PARAMETER.startSize,
-      0,
-      RECEIVE_PARAMETER);
+  tasks = [];
+  clearAverageData();
+  addTasks(config, receiveBenchmarkStep);
+  addResultReportingTask(config, 'Receive Benchmark');
+  startBenchmark(config);
 }
+
+function batchBenchmark() {
+  addToLog('Batch benchmark');
+
+  tasks = [];
+  clearAverageData();
+
+  var responseTypes = ['text', 'blob', 'arraybuffer'];
+  var stepFuncs = [sendBenchmarkStep, receiveBenchmarkStep];
+  var names = ['Send', 'Receive'];
+  for (var i = 0; i < stepFuncs.length; ++i) {
+    for (var j = 0; j < responseTypes.length; ++j) {
+      var responseType = responseTypes[j];
+      var config = getConfig(responseType);
+      addTasks(config, stepFuncs[i]);
+      addResultReportingTask(config,
+          names[i] + ' benchmark (' + config.responseType + ', numXHRs=' +
+          config.numXHRs + ', numIterations=' +
+          config.numIterations + ')');
+    }
+  }
+
+  startBenchmark(config);
+}
+
 
 function stop() {
   destroyAllXHRs();
@@ -302,6 +394,8 @@ function init() {
   addressBox = document.getElementById('address');
   logBox = document.getElementById('log');
 
+  summaryBox = document.getElementById('summary');
+
   // Special address of pywebsocket for XHR benchmark.
   addressBox.value = '/073be001e10950692ccbf3a2ad21c245';
 
@@ -311,32 +405,79 @@ function init() {
 </head>
 <body onload="init()">
 
-<div id="benchmark_div">
+<form id="benchmark_form">
   url prefix <input type="text" id="address" size="40">
-  <input type="button" value="send" onclick="startSendBenchmark()">
-  <input type="button" value="receive" onclick="startReceiveBenchmark()">
+  <input type="button" value="send" onclick="sendBenchmark()">
+  <input type="button" value="receive" onclick="receiveBenchmark()">
+  <input type="button" value="batch" onclick="batchBenchmark()">
   <input type="button" value="stop" onclick="stop()">
 
   <br/>
 
+  <input type="checkbox" id="printsize" checked>
+  <label for="printsize">Print size and time per message</label>
+  <input type="checkbox" id="verifydata" checked>
+  <label for="verifydata">Verify data</label>
+
+  <br/>
+
+  Parameters:
+
+  <br/>
+
+  <table>
+    <tr>
+      <td>Num XHRs</td>
+      <td><input type="text" id="numXHRs" value="1"></td>
+    </tr>
+    <tr>
+      <td>Number of Iterations</td>
+      <td><input type="text" id="numiterations" value="1"></td>
+    </tr>
+    <tr>
+      <td>Start size</td>
+      <td><input type="text" id="startsize" value="10240"></td>
+    </tr>
+    <tr>
+      <td>Stop threshold</td>
+      <td><input type="text" id="stopthreshold" value="102400000"></td>
+    </tr>
+    <tr>
+      <td>Minimum total</td>
+      <td><input type="text" id="mintotal" value="102400000"></td>
+    </tr>
+    <tr>
+      <td>Multipliers</td>
+      <td><input type="text" id="multipliers" value="5, 2"></td>
+    </tr>
+  </table>
+
   Set data type
   <input type="radio"
          name="responsetyperadio"
+         id="responsetyperadiotext"
          value="text"
-         onclick="responseType = 'text'" checked>text
+         checked><label for="responsetyperadiotext">text</label>
   <input type="radio"
          name="responsetyperadio"
+         id="responsetyperadioblob"
          value="blob"
-         onclick="responseType = 'blob'" checked>blob
+         ><label for="responsetyperadioblob">blob</label>
   <input type="radio"
          name="responsetyperadio"
+         id="responsetyperadioarraybuffer"
          value="arraybuffer"
-         onclick="responseType = 'arraybuffer'">arraybuffer
-</div>
+         ><label for="responsetyperadioarraybuffer">arraybuffer</label>
+</form>
 
 <div id="log_div">
   <textarea
       id="log" rows="20" style="width: 100%" readonly></textarea>
+</div>
+<div id="summary_div">
+  Summary
+  <textarea
+      id="summary" rows="20" style="width: 100%" readonly></textarea>
 </div>
 
 Note: Effect of RTT and time spent for ArrayBuffer creation are not eliminated.

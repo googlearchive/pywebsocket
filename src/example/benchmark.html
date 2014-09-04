@@ -35,7 +35,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <script src="util.js"></script>
 <script>
 // Namespace for holding globals.
-var benchmark = {};
+var benchmark = {startTimeInMs: 0};
 
 var sockets = [];
 var numEstablishedSockets = 0;
@@ -43,8 +43,6 @@ var numEstablishedSockets = 0;
 var addressBox = null;
 
 var timerID = null;
-
-benchmark.startTimeInMs = 0;
 
 var totalSize = 0;
 var totalReplied = 0;

@@ -44,9 +44,6 @@ var addressBox = null;
 
 var timerID = null;
 
-var totalSize = 0;
-var totalReplied = 0;
-
 function destroySocket(socket) {
   socket.onopen = function() {};
   socket.onmessage = function() {};
@@ -63,6 +60,9 @@ function destroyAllSockets() {
 }
 
 function sendBenchmarkStep(size, config) {
+  var totalSize = 0;
+  var totalReplied = 0;
+
   var onMessageHandler = function(event) {
     if (!verifyAcknowledgement(event.data, size)) {
       destroyAllSockets();
@@ -88,7 +88,6 @@ function sendBenchmarkStep(size, config) {
 
   var dataArray = [];
 
-  totalSize = 0;
   while (totalSize < config.minTotal) {
     var buffer = new ArrayBuffer(size);
 
@@ -99,8 +98,6 @@ function sendBenchmarkStep(size, config) {
   }
 
   benchmark.startTimeInMs = getTimeStamp();
-
-  totalReplied = 0;
 
   totalSize = 0;
 
@@ -119,6 +116,9 @@ function sendBenchmarkStep(size, config) {
 }
 
 function receiveBenchmarkStep(size, config) {
+  var totalSize = 0;
+  var totalReplied = 0;
+
   var onMessageHandler = function(event) {
     var bytesReceived = event.data.byteLength;
     if (bytesReceived != size) {
@@ -152,10 +152,6 @@ function receiveBenchmarkStep(size, config) {
   }
 
   benchmark.startTimeInMs = getTimeStamp();
-
-  totalReplied = 0;
-
-  totalSize = 0;
 
   var socketIndex = 0;
   while (totalSize < config.minTotal) {

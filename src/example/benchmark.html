@@ -64,13 +64,7 @@ function destroyAllSockets() {
   sockets = [];
 }
 
-function sendBenchmarkStep(size, multiplierIndex, config) {
-  if (size > config.stopThreshold) {
-    addToLog('Finished');
-    destroyAllSockets();
-    return;
-  }
-
+function sendBenchmarkStep(size, config) {
   var onMessageHandler = function(event) {
     if (!verifyAcknowledgement(event.data, size)) {
       destroyAllSockets();
@@ -86,12 +80,7 @@ function sendBenchmarkStep(size, multiplierIndex, config) {
     calculateAndLogResult(
         size, benchmark.startTimeInMs, totalSize, config.printSize);
 
-    timerID = setTimeout(
-        sendBenchmarkStep,
-        0,
-        size * config.multipliers[multiplierIndex],
-        (multiplierIndex + 1) % config.multipliers.length,
-        config);
+    runNextTask();
   };
 
   for (var i = 0; i < sockets.length; ++i) {
@@ -121,13 +110,7 @@ function sendBenchmarkStep(size, multiplierIndex, config) {
   }
 }
 
-function receiveBenchmarkStep(size, multiplierIndex, config) {
-  if (size > config.stopThreshold) {
-    addToLog('Finished');
-    destroyAllSockets();
-    return;
-  }
-
+function receiveBenchmarkStep(size, config) {
   var onMessageHandler = function(event) {
     var bytesReceived = event.data.byteLength;
     if (bytesReceived != size) {
@@ -151,12 +134,7 @@ function receiveBenchmarkStep(size, multiplierIndex, config) {
     calculateAndLogResult(
         size, benchmark.startTimeInMs, totalSize, config.printSize);
 
-    timerID = setTimeout(
-        receiveBenchmarkStep,
-        0,
-        size * config.multipliers[multiplierIndex],
-        (multiplierIndex + 1) % config.multipliers.length,
-        config);
+    runNextTask();
   };
 
   for (var i = 0; i < sockets.length; ++i) {
@@ -204,13 +182,15 @@ function createSocket() {
   return socket;
 }
 
-function startBenchmark(runner, numSockets) {
+var tasks = [];
+
+function startBenchmark(config) {
   clearTimeout(timerID);
   destroyAllSockets();
 
   numEstablishedSockets = 0;
 
-  for (var i = 0; i < numSockets; ++i) {
+  for (var i = 0; i < config.numSockets; ++i) {
     var socket = createSocket();
     socket.onopen = function() {
       addToLog('Opened');
@@ -218,11 +198,21 @@ function startBenchmark(runner, numSockets) {
       ++numEstablishedSockets;
 
       if (numEstablishedSockets == sockets.length) {
-        setTimeout(runner, 0);
+        runNextTask();
       }
     };
     sockets.push(socket);
   }
+}
+
+function runNextTask() {
+  var runner = tasks.shift();
+  if (runner == undefined) {
+    addToLog('Finished');
+    destroyAllSockets();
+    return;
+  }
+  timerID = setTimeout(runner, 0);
 }
 
 function buildLegendString(config) {
@@ -247,6 +237,7 @@ function getConfig() {
     printSize: getBoolFromCheckBox('printsize'),
     numSockets: getIntFromInput('numsockets'),
     // Initial size of messages.
+    numIterations: getIntFromInput('numiterations'),
     startSize: getIntFromInput('startsize'),
     // Stops benchmark when the size of message exceeds this threshold.
     stopThreshold: getIntFromInput('stopthreshold'),
@@ -258,19 +249,43 @@ function getConfig() {
   };
 }
 
+function addTasks(config, stepFunc) {
+  for (var i = 0; i < config.numIterations; ++i) {
+    var multiplierIndex = 0;
+    for (var size = config.startSize;
+         size <= config.stopThreshold;
+         ++multiplierIndex) {
+      var runner = stepFunc.bind(
+          null,
+          size,
+          config);
+      tasks.push(runner);
+      size *= config.multipliers[
+          multiplierIndex % config.multipliers.length];
+    }
+  }
+}
+
+function addResultReportingTask(config, title) {
+  tasks.push(function(){
+      addToSummary(title);
+      reportAverageData();
+      clearAverageData();
+      runNextTask();
+  });
+}
+
 function sendBenchmark() {
   var config = getConfig();
 
   addToLog('Send benchmark');
   addToLog(buildLegendString(config));
 
-  var runner = sendBenchmarkStep.bind(
-      null,
-      config.startSize,
-      0,
-      config);
-
-  startBenchmark(runner, config.numSockets);
+  tasks = [];
+  clearAverageData();
+  addTasks(config, sendBenchmarkStep);
+  addResultReportingTask(config, 'Send Benchmark');
+  startBenchmark(config);
 }
 
 function receiveBenchmark() {
@@ -279,13 +294,26 @@ function receiveBenchmark() {
   addToLog('Receive benchmark');
   addToLog(buildLegendString(config));
 
-  var runner = receiveBenchmarkStep.bind(
-      null,
-      config.startSize,
-      0,
-      config);
+  tasks = [];
+  clearAverageData();
+  addTasks(config, receiveBenchmarkStep);
+  addResultReportingTask(config, 'Receive Benchmark');
+  startBenchmark(config);
+}
 
-  startBenchmark(runner, config.numSockets);
+function batchBenchmark() {
+  var config = getConfig();
+
+  addToLog('Batch benchmark');
+  addToLog(buildLegendString(config));
+
+  tasks = [];
+  clearAverageData();
+  addTasks(config, sendBenchmarkStep);
+  addResultReportingTask(config, 'Send Benchmark');
+  addTasks(config, receiveBenchmarkStep);
+  addResultReportingTask(config, 'Receive Benchmark');
+  startBenchmark(config);
 }
 
 function stop() {
@@ -297,12 +325,15 @@ function init() {
   addressBox = document.getElementById('address');
   logBox = document.getElementById('log');
 
+  summaryBox = document.getElementById('summary');
+
   var scheme = window.location.protocol == 'https:' ? 'wss://' : 'ws://';
   var defaultAddress = scheme + window.location.host + '/benchmark_helper';
 
   addressBox.value = defaultAddress;
 
   addToLog(window.navigator.userAgent.toLowerCase());
+  addToSummary(window.navigator.userAgent.toLowerCase());
 
   if (!('WebSocket' in window)) {
     addToLog('WebSocket is not available');
@@ -316,6 +347,7 @@ function init() {
   url <input type="text" id="address" size="40">
   <input type="button" value="send" onclick="sendBenchmark()">
   <input type="button" value="receive" onclick="receiveBenchmark()">
+  <input type="button" value="batch" onclick="batchBenchmark()">
   <input type="button" value="stop" onclick="stop()">
 
   <br/>
@@ -335,6 +367,10 @@ function init() {
     <tr>
       <td>Num sockets</td>
       <td><input type="text" id="numsockets" value="1"></td>
+    </tr>
+    <tr>
+      <td>Number of Iterations</td>
+      <td><input type="text" id="numiterations" value="1"></td>
     </tr>
     <tr>
       <td>Start size</td>
@@ -358,6 +394,11 @@ function init() {
 <div id="log_div">
   <textarea
       id="log" rows="20" style="width: 100%" readonly></textarea>
+</div>
+<div id="summary_div">
+  Summary
+  <textarea
+      id="summary" rows="20" style="width: 100%" readonly></textarea>
 </div>
 
 Note: Effect of RTT and time spent for ArrayBuffer creation are not eliminated.

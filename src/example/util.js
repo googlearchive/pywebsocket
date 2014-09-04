@@ -34,6 +34,10 @@
 var logBox = null;
 var queuedLog = '';
 
+var summaryBox = null;
+
+var results = {};
+
 function queueLog(log) {
   queuedLog += log + '\n';
 }
@@ -45,15 +49,47 @@ function addToLog(log) {
   logBox.scrollTop = 1000000;
 }
 
+function addToSummary(log) {
+  summaryBox.value += log + '\n';
+  summaryBox.scrollTop = 1000000;
+}
+
 function getTimeStamp() {
   return Date.now();
 }
 
-function formatResultInKiB(size, timePerMessageInMs, speed, printSize) {
+function formatResultInKiB(size, timePerMessageInMs, stddevTimePerMessageInMs,
+    speed, printSize) {
   if (printSize) {
-    return (size / 1024) + '\t' + timePerMessageInMs + '\t' + speed;
+    return (size / 1024) +
+        '\t' + timePerMessageInMs.toFixed(3) +
+        (stddevTimePerMessageInMs == -1 ?
+            '' :
+            '\t' + stddevTimePerMessageInMs.toFixed(3)) +
+        '\t' + speed.toFixed(3);
   } else {
     return speed.toString();
+  }
+}
+
+function clearAverageData() {
+  results = {};
+}
+
+function reportAverageData() {
+  addToSummary('Size[KiB]\tAverage time[ms]\tStddev time[ms]\tSpeed[KB/s]');
+  for (var size in results) {
+    var averageTimePerMessageInMs = results[size].sum_t / results[size].n;
+    var speed = calculateSpeedInKB(size, averageTimePerMessageInMs);
+    // Calculate sample standard deviation
+    var stddevTimePerMessageInMs = Math.sqrt(
+        (results[size].sum_t2 / results[size].n -
+            averageTimePerMessageInMs * averageTimePerMessageInMs) *
+        results[size].n /
+        (results[size].n - 1));
+    addToSummary(formatResultInKiB(
+        size, averageTimePerMessageInMs, stddevTimePerMessageInMs, speed,
+        true));
   }
 }
 
@@ -65,7 +101,13 @@ function calculateAndLogResult(size, startTimeInMs, totalSize, printSize) {
   var timeSpentInMs = getTimeStamp() - startTimeInMs;
   var speed = calculateSpeedInKB(totalSize, timeSpentInMs);
   var timePerMessageInMs = timeSpentInMs / (totalSize / size);
-  addToLog(formatResultInKiB(size, timePerMessageInMs, speed, printSize));
+  if (!results[size]) {
+    results[size] = {n: 0, sum_t: 0, sum_t2: 0};
+  }
+  results[size].n ++;
+  results[size].sum_t += timePerMessageInMs;
+  results[size].sum_t2 += timePerMessageInMs * timePerMessageInMs;
+  addToLog(formatResultInKiB(size, timePerMessageInMs, -1, speed, printSize));
 }
 
 function fillArrayBuffer(buffer, c) {

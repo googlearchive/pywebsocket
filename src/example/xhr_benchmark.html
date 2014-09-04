@@ -122,7 +122,7 @@ function sendBenchmarkStep(size, config) {
     xhrs.push(xhr);
   }
 
-  benchmark.startTimeInMs = getTimeStamp();
+  var dataArray = [];
 
   for (var i = 0; i < xhrs.length; ++i) {
     var data = null;
@@ -139,6 +139,14 @@ function sendBenchmarkStep(size, config) {
       data = repeatString('a', size);
     }
 
+    dataArray.push(data);
+  }
+
+
+  benchmark.startTimeInMs = getTimeStamp();
+
+  for (var i = 0; i < xhrs.length; ++i) {
+    var data = dataArray[i];
     var xhr = xhrs[i];
     xhr.open('POST', addressBox.value + '_send');
     xhr.send(data);
@@ -480,7 +488,7 @@ function init() {
       id="summary" rows="20" style="width: 100%" readonly></textarea>
 </div>
 
-Note: Effect of RTT and time spent for ArrayBuffer creation are not eliminated.
+Note: Effect of RTT and time spent for ArrayBuffer creation in receive benchmarks are not eliminated.
 
 </body>
 </html>

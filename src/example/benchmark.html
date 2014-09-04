@@ -88,6 +88,18 @@ function sendBenchmarkStep(size, config) {
     socket.onmessage = onMessageHandler;
   }
 
+  var dataArray = [];
+
+  totalSize = 0;
+  while (totalSize < config.minTotal) {
+    var buffer = new ArrayBuffer(size);
+
+    fillArrayBuffer(buffer, 0x61);
+
+    dataArray.push(buffer);
+    totalSize += size;
+  }
+
   benchmark.startTimeInMs = getTimeStamp();
 
   totalReplied = 0;
@@ -95,18 +107,16 @@ function sendBenchmarkStep(size, config) {
   totalSize = 0;
 
   var socketIndex = 0;
+  var dataIndex = 0;
   while (totalSize < config.minTotal) {
-    var buffer = new ArrayBuffer(size);
-
-    fillArrayBuffer(buffer, 0x61);
-
     var command = ['send'];
     command.push(config.verifyData ? '1' : '0');
     sockets[socketIndex].send(command.join(' '));
-    sockets[socketIndex].send(buffer);
+    sockets[socketIndex].send(dataArray[dataIndex]);
     socketIndex = (socketIndex + 1) % sockets.length;
 
     totalSize += size;
+    ++dataIndex;
   }
 }
 
@@ -401,7 +411,7 @@ function init() {
       id="summary" rows="20" style="width: 100%" readonly></textarea>
 </div>
 
-Note: Effect of RTT and time spent for ArrayBuffer creation are not eliminated.
+Note: Effect of RTT is not eliminated.
 
 </body>
 </html>

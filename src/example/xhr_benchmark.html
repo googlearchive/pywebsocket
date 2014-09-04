@@ -316,11 +316,11 @@ function addTasks(config, stepFunc) {
     for (var size = config.startSize;
          size <= config.stopThreshold;
          ++multiplierIndex) {
-      var runner = stepFunc.bind(
+      var task = stepFunc.bind(
           null,
           size,
           config);
-      tasks.push(runner);
+      tasks.push(task);
       size *= config.multipliers[
           multiplierIndex % config.multipliers.length];
     }

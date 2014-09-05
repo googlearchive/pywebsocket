@@ -275,7 +275,11 @@ function startBenchmark(config) {
 }
 
 function getStringFromRadioBox(name) {
-  return document.getElementById('benchmark_form')[name].value;
+  var list = document.getElementById('benchmark_form')[name];
+  for (var i = 0; i < list.length; ++i)
+    if (list.item(i).checked)
+      return list.item(i).value;
+  return undefined;
 }
 
 // TODO(hiroshige): the following code is the same as benchmark.html

@@ -267,6 +267,14 @@ function getConfig(responseType) {
   };
 }
 
+function getConfigString(config) {
+  return '(' + config.responseType +
+    ', numXHRs=' + config.numXHRs +
+    ', numIterations=' + config.numIterations +
+    ', verifyData=' + config.verifyData +
+    ')';
+}
+
 function startBenchmark(config) {
   clearTimeout(timerID);
   destroyAllXHRs();
@@ -352,7 +360,7 @@ function sendBenchmark() {
   tasks = [];
   clearAverageData();
   addTasks(config, sendBenchmarkStep);
-  addResultReportingTask(config, 'Send Benchmark');
+  addResultReportingTask(config, 'Send Benchmark ' + getConfigString(config));
   startBenchmark(config);
 }
 
@@ -366,7 +374,8 @@ function receiveBenchmark() {
   tasks = [];
   clearAverageData();
   addTasks(config, receiveBenchmarkStep);
-  addResultReportingTask(config, 'Receive Benchmark');
+  addResultReportingTask(config,
+      'Receive Benchmark ' + getConfigString(config));
   startBenchmark(config);
 }
 
@@ -385,9 +394,7 @@ function batchBenchmark() {
       var config = getConfig(responseType);
       addTasks(config, stepFuncs[i]);
       addResultReportingTask(config,
-          names[i] + ' benchmark (' + config.responseType + ', numXHRs=' +
-          config.numXHRs + ', numIterations=' +
-          config.numIterations + ')');
+          names[i] + ' benchmark ' + getConfigString(config));
     }
   }
 

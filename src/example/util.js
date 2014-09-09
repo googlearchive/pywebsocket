@@ -190,3 +190,7 @@ function verifyAcknowledgement(message, size) {
 function getIntFromInput(id) {
   return parseInt(document.getElementById(id).value);
 }
+
+function getBoolFromCheckBox(id) {
+  return document.getElementById(id).checked;
+}

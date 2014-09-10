@@ -99,13 +99,13 @@ function sendBenchmarkStep(size, config) {
 
   for (var i = 0; i < xhrs.length; ++i) {
     var data = null;
-    if (config.responseType == 'arraybuffer' ||
-        config.responseType == 'blob') {
+    if (config.dataType == 'arraybuffer' ||
+        config.dataType == 'blob') {
       data = new ArrayBuffer(size);
 
       fillArrayBuffer(data, 0x61);
 
-      if (config.responseType == 'blob') {
+      if (config.dataType == 'blob') {
         data = new Blob([data]);
       }
     } else {
@@ -214,7 +214,7 @@ function receiveBenchmarkStep(size, config) {
   for (var i = 0; i < xhrs.length; ++i) {
     var xhr = xhrs[i];
     xhr.open('POST', config.prefixUrl + '_receive');
-    xhr.responseType = config.responseType;
+    xhr.responseType = config.dataType;
     xhr.send(size + ' none');
 
     totalSize += size;
@@ -223,7 +223,7 @@ function receiveBenchmarkStep(size, config) {
 
 
 function getConfigString(config) {
-  return '(' + config.responseType +
+  return '(' + config.dataType +
     ', ' + (typeof importScripts !== "undefined" ? 'Worker' : 'Main') +
     ', numXHRs=' + config.numXHRs +
     ', numIterations=' + config.numIterations +
@@ -318,13 +318,13 @@ function batchBenchmark(originalConfig) {
   tasks = [];
   clearAverageData();
 
-  var responseTypes = ['text', 'blob', 'arraybuffer'];
+  var dataTypes = ['text', 'blob', 'arraybuffer'];
   var stepFuncs = [sendBenchmarkStep, receiveBenchmarkStep];
   var names = ['Send', 'Receive'];
   for (var i = 0; i < stepFuncs.length; ++i) {
-    for (var j = 0; j < responseTypes.length; ++j) {
+    for (var j = 0; j < dataTypes.length; ++j) {
       var config = cloneConfig(originalConfig);
-      config.responseType = responseTypes[j];
+      config.dataType = dataTypes[j];
       addTasks(config, stepFuncs[i]);
       addResultReportingTask(config,
           names[i] + ' benchmark ' + getConfigString(config));

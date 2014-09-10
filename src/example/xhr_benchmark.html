@@ -62,7 +62,7 @@ worker.onmessage = onMessage;
 
 function onSendBenchmark() {
   var config = getConfig();
-  config.responseType = getStringFromRadioBox('responsetyperadio');
+  config.dataType = getStringFromRadioBox('datatyperadio');
 
   if (getBoolFromCheckBox('worker')) {
     worker.postMessage({type: 'sendBenchmark', config: config});
@@ -75,7 +75,7 @@ function onSendBenchmark() {
 
 function onReceiveBenchmark() {
   var config = getConfig();
-  config.responseType = getStringFromRadioBox('responsetyperadio');
+  config.dataType = getStringFromRadioBox('datatyperadio');
 
   if (getBoolFromCheckBox('worker')) {
     worker.postMessage({type: 'receiveBenchmark', config: config});
@@ -177,20 +177,20 @@ function init() {
 
   Set data type
   <input type="radio"
-         name="responsetyperadio"
-         id="responsetyperadiotext"
+         name="datatyperadio"
+         id="datatyperadiotext"
          value="text"
-         checked><label for="responsetyperadiotext">text</label>
+         checked><label for="datatyperadiotext">text</label>
   <input type="radio"
-         name="responsetyperadio"
-         id="responsetyperadioblob"
+         name="datatyperadio"
+         id="datatyperadioblob"
          value="blob"
-         ><label for="responsetyperadioblob">blob</label>
+         ><label for="datatyperadioblob">blob</label>
   <input type="radio"
-         name="responsetyperadio"
-         id="responsetyperadioarraybuffer"
+         name="datatyperadio"
+         id="datatyperadioarraybuffer"
          value="arraybuffer"
-         ><label for="responsetyperadioarraybuffer">arraybuffer</label>
+         ><label for="datatyperadioarraybuffer">arraybuffer</label>
 </form>
 
 <div id="log_div">

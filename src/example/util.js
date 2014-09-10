@@ -28,31 +28,9 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-// Utilities for example applications.
-
-
-var logBox = null;
-var queuedLog = '';
-
-var summaryBox = null;
+// Utilities for example applications (for both main and worker thread).
 
 var results = {};
-
-function queueLog(log) {
-  queuedLog += log + '\n';
-}
-
-function addToLog(log) {
-  logBox.value += queuedLog;
-  queuedLog = '';
-  logBox.value += log + '\n';
-  logBox.scrollTop = 1000000;
-}
-
-function addToSummary(log) {
-  summaryBox.value += log + '\n';
-  summaryBox.scrollTop = 1000000;
-}
 
 function getTimeStamp() {
   return Date.now();
@@ -76,8 +54,9 @@ function clearAverageData() {
   results = {};
 }
 
-function reportAverageData() {
-  addToSummary('Size[KiB]\tAverage time[ms]\tStddev time[ms]\tSpeed[KB/s]');
+function reportAverageData(config) {
+  config.addToSummary(
+      'Size[KiB]\tAverage time[ms]\tStddev time[ms]\tSpeed[KB/s]');
   for (var size in results) {
     var averageTimePerMessageInMs = results[size].sum_t / results[size].n;
     var speed = calculateSpeedInKB(size, averageTimePerMessageInMs);
@@ -87,7 +66,7 @@ function reportAverageData() {
             averageTimePerMessageInMs * averageTimePerMessageInMs) *
         results[size].n /
         (results[size].n - 1));
-    addToSummary(formatResultInKiB(
+    config.addToSummary(formatResultInKiB(
         size, averageTimePerMessageInMs, stddevTimePerMessageInMs, speed,
         true));
   }
@@ -97,7 +76,7 @@ function calculateSpeedInKB(size, timeSpentInMs) {
   return Math.round(size / timeSpentInMs * 1000) / 1000;
 }
 
-function calculateAndLogResult(size, startTimeInMs, totalSize, printSize) {
+function calculateAndLogResult(config, size, startTimeInMs, totalSize) {
   var timeSpentInMs = getTimeStamp() - startTimeInMs;
   var speed = calculateSpeedInKB(totalSize, timeSpentInMs);
   var timePerMessageInMs = timeSpentInMs / (totalSize / size);
@@ -107,7 +86,8 @@ function calculateAndLogResult(size, startTimeInMs, totalSize, printSize) {
   results[size].n ++;
   results[size].sum_t += timePerMessageInMs;
   results[size].sum_t2 += timePerMessageInMs * timePerMessageInMs;
-  addToLog(formatResultInKiB(size, timePerMessageInMs, -1, speed, printSize));
+  config.addToLog(formatResultInKiB(size, timePerMessageInMs, -1, speed,
+      config.printSize));
 }
 
 function fillArrayBuffer(buffer, c) {
@@ -154,10 +134,10 @@ function verifyArrayBuffer(buffer, expectedChar) {
   return true;
 }
 
-function verifyBlob(blob, expectedChar, doneCallback) {
+function verifyBlob(config, blob, expectedChar, doneCallback) {
   var reader = new FileReader(blob);
   reader.onerror = function() {
-    addToLog('FileReader Error: ' + reader.error.message);
+    config.addToLog('FileReader Error: ' + reader.error.message);
     doneCallback(blob.size, false);
   }
   reader.onloadend = function() {
@@ -167,18 +147,18 @@ function verifyBlob(blob, expectedChar, doneCallback) {
   reader.readAsArrayBuffer(blob);
 }
 
-function verifyAcknowledgement(message, size) {
+function verifyAcknowledgement(config, message, size) {
   if (typeof message != 'string') {
-    addToLog('Invalid ack type: ' + typeof message);
+    config.addToLog('Invalid ack type: ' + typeof message);
     return false;
   }
   var parsedAck = parseInt(message);
   if (isNaN(parsedAck)) {
-    addToLog('Invalid ack value: ' + message);
+    config.addToLog('Invalid ack value: ' + message);
     return false;
   }
   if (parsedAck != size) {
-    addToLog(
+    config.addToLog(
         'Expected ack for ' + size + 'B but received one for ' + parsedAck +
         'B');
     return false;
@@ -187,10 +167,10 @@ function verifyAcknowledgement(message, size) {
   return true;
 }
 
-function getIntFromInput(id) {
-  return parseInt(document.getElementById(id).value);
-}
-
-function getBoolFromCheckBox(id) {
-  return document.getElementById(id).checked;
+function cloneConfig(obj) {
+  var newObj = {};
+  for (key in obj) {
+    newObj[key] = obj[key];
+  }
+  return newObj;
 }

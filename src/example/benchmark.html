@@ -32,208 +32,15 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 <html>
 <head>
 <title>WebSocket benchmark</title>
+<script src="util_main.js"></script>
 <script src="util.js"></script>
+<script src="benchmark.js"></script>
 <script>
-// Namespace for holding globals.
-var benchmark = {startTimeInMs: 0};
-
-var sockets = [];
-var numEstablishedSockets = 0;
-
 var addressBox = null;
-
-var timerID = null;
-
-function destroySocket(socket) {
-  socket.onopen = function() {};
-  socket.onmessage = function() {};
-  socket.onerror = function() {};
-  socket.onclose = function() {};
-  socket.close();
-}
-
-function destroyAllSockets() {
-  for (var i = 0; i < sockets.length; ++i) {
-    destroySocket(sockets[i]);
-  }
-  sockets = [];
-}
-
-function sendBenchmarkStep(size, config) {
-  var totalSize = 0;
-  var totalReplied = 0;
-
-  var onMessageHandler = function(event) {
-    if (!verifyAcknowledgement(event.data, size)) {
-      destroyAllSockets();
-      return;
-    }
-
-    totalReplied += size;
-
-    if (totalReplied < totalSize) {
-      return;
-    }
-
-    calculateAndLogResult(
-        size, benchmark.startTimeInMs, totalSize, config.printSize);
-
-    runNextTask();
-  };
-
-  for (var i = 0; i < sockets.length; ++i) {
-    var socket = sockets[i];
-    socket.onmessage = onMessageHandler;
-  }
-
-  var dataArray = [];
-
-  while (totalSize < config.minTotal) {
-    var buffer = new ArrayBuffer(size);
-
-    fillArrayBuffer(buffer, 0x61);
-
-    dataArray.push(buffer);
-    totalSize += size;
-  }
-
-  benchmark.startTimeInMs = getTimeStamp();
-
-  totalSize = 0;
-
-  var socketIndex = 0;
-  var dataIndex = 0;
-  while (totalSize < config.minTotal) {
-    var command = ['send'];
-    command.push(config.verifyData ? '1' : '0');
-    sockets[socketIndex].send(command.join(' '));
-    sockets[socketIndex].send(dataArray[dataIndex]);
-    socketIndex = (socketIndex + 1) % sockets.length;
-
-    totalSize += size;
-    ++dataIndex;
-  }
-}
-
-function receiveBenchmarkStep(size, config) {
-  var totalSize = 0;
-  var totalReplied = 0;
-
-  var onMessageHandler = function(event) {
-    var bytesReceived = event.data.byteLength;
-    if (bytesReceived != size) {
-      addToLog('Expected ' + size + 'B but received ' + bytesReceived + 'B');
-      destroyAllSockets();
-      return;
-    }
-
-    if (config.verifyData && !verifyArrayBuffer(event.data, 0x61)) {
-      addToLog('Response verification failed');
-      destroyAllSockets();
-      return;
-    }
-
-    totalReplied += bytesReceived;
-
-    if (totalReplied < totalSize) {
-      return;
-    }
-
-    calculateAndLogResult(
-        size, benchmark.startTimeInMs, totalSize, config.printSize);
-
-    runNextTask();
-  };
-
-  for (var i = 0; i < sockets.length; ++i) {
-    var socket = sockets[i];
-    socket.binaryType = 'arraybuffer';
-    socket.onmessage = onMessageHandler;
-  }
-
-  benchmark.startTimeInMs = getTimeStamp();
-
-  var socketIndex = 0;
-  while (totalSize < config.minTotal) {
-    sockets[socketIndex].send('receive ' + size);
-    socketIndex = (socketIndex + 1) % sockets.length;
-
-    totalSize += size;
-  }
-}
-
-function createSocket() {
-  // TODO(tyoshino): Add TCP warm up.
-
-  if (!('WebSocket' in window)) {
-    return;
-  }
-
-  var url = addressBox.value;
-
-  addToLog('Connect ' + url);
-
-  var socket = new WebSocket(url);
-  socket.onmessage = function(event) {
-    addToLog('Unexpected message received. Aborting.');
-  };
-  socket.onerror = function() {
-    addToLog('Error');
-  };
-  socket.onclose = function(event) {
-    addToLog('Closed');
-  };
-  return socket;
-}
-
-var tasks = [];
-
-function startBenchmark(config) {
-  clearTimeout(timerID);
-  destroyAllSockets();
-
-  numEstablishedSockets = 0;
-
-  for (var i = 0; i < config.numSockets; ++i) {
-    var socket = createSocket();
-    socket.onopen = function() {
-      addToLog('Opened');
-
-      ++numEstablishedSockets;
-
-      if (numEstablishedSockets == sockets.length) {
-        runNextTask();
-      }
-    };
-    sockets.push(socket);
-  }
-}
-
-function runNextTask() {
-  var task = tasks.shift();
-  if (task == undefined) {
-    addToLog('Finished');
-    destroyAllSockets();
-    return;
-  }
-  timerID = setTimeout(task, 0);
-}
-
-function buildLegendString(config) {
-  var legend = ''
-  if (config.printSize)
-    legend = 'Message size in KiB, Time/message in ms, ';
-  legend += 'Speed in kB/s';
-  return legend;
-}
-
-function getIntArrayFromInput(id) {
-  var strArray = document.getElementById(id).value.split(',');
-  return strArray.map(function(str) { return parseInt(str, 10); });
-}
 
 function getConfig() {
   return {
+    prefixUrl: addressBox.value,
     printSize: getBoolFromCheckBox('printsize'),
     numSockets: getIntFromInput('numsockets'),
     // Initial size of messages.
@@ -249,89 +56,56 @@ function getConfig() {
   };
 }
 
-function getConfigString(config) {
-  return '(WebSocket' +
-    ', numSockets=' + config.numSockets +
-    ', numIterations=' + config.numIterations +
-    ', verifyData=' + config.verifyData +
-    ', minTotal=' + config.minTotal +
-    ')';
-}
+var worker = new Worker('benchmark.js');
+worker.onmessage = onMessage;
 
-function addTasks(config, stepFunc) {
-  for (var i = 0; i < config.numIterations; ++i) {
-    var multiplierIndex = 0;
-    for (var size = config.startSize;
-         size <= config.stopThreshold;
-         ++multiplierIndex) {
-      var task = stepFunc.bind(
-          null,
-          size,
-          config);
-      tasks.push(task);
-      size *= config.multipliers[
-          multiplierIndex % config.multipliers.length];
-    }
+function onSendBenchmark() {
+  var config = getConfig();
+
+  if (getBoolFromCheckBox('worker')) {
+    worker.postMessage({type: 'sendBenchmark', config: config});
+  } else {
+    config.addToLog = addToLog;
+    config.addToSummary = addToSummary;
+    sendBenchmark(config);
   }
 }
 
-function addResultReportingTask(config, title) {
-  tasks.push(function(){
-      addToSummary(title);
-      reportAverageData();
-      clearAverageData();
-      runNextTask();
-  });
-}
-
-function sendBenchmark() {
+function onReceiveBenchmark() {
   var config = getConfig();
 
-  addToLog('Send benchmark');
-  addToLog(buildLegendString(config));
-
-  tasks = [];
-  clearAverageData();
-  addTasks(config, sendBenchmarkStep);
-  addResultReportingTask(config, 'Send Benchmark ' + getConfigString(config));
-  startBenchmark(config);
+  if (getBoolFromCheckBox('worker')) {
+    worker.postMessage({type: 'receiveBenchmark', config: config});
+  } else {
+    config.addToLog = addToLog;
+    config.addToSummary = addToSummary;
+    receiveBenchmark(config);
+  }
 }
 
-function receiveBenchmark() {
+function onBatchBenchmark() {
   var config = getConfig();
 
-  addToLog('Receive benchmark');
-  addToLog(buildLegendString(config));
-
-  tasks = [];
-  clearAverageData();
-  addTasks(config, receiveBenchmarkStep);
-  addResultReportingTask(config,
-      'Receive Benchmark ' + getConfigString(config));
-  startBenchmark(config);
+  if (getBoolFromCheckBox('worker')) {
+    worker.postMessage({type: 'batchBenchmark', config: config});
+  } else {
+    config.addToLog = addToLog;
+    config.addToSummary = addToSummary;
+    batchBenchmark(config);
+  }
 }
 
-function batchBenchmark() {
+function onStop() {
   var config = getConfig();
 
-  addToLog('Batch benchmark');
-  addToLog(buildLegendString(config));
-
-  tasks = [];
-  clearAverageData();
-  addTasks(config, sendBenchmarkStep);
-  addResultReportingTask(config, 'Send Benchmark ' + getConfigString(config));
-  addTasks(config, receiveBenchmarkStep);
-  addResultReportingTask(config, 'Receive Benchmark ' +
-      getConfigString(config));
-  startBenchmark(config);
+  if (getBoolFromCheckBox('worker')) {
+    worker.postMessage({type: 'stop', config: config});
+  } else {
+    config.addToLog = addToLog;
+    config.addToSummary = addToSummary;
+    stop(config);
+  }
 }
-
-function stop() {
-  addToLog('Stopped');
-  destroyAllSockets();
-}
-
 function init() {
   addressBox = document.getElementById('address');
   logBox = document.getElementById('log');
@@ -356,10 +130,10 @@ function init() {
 
 <div id="benchmark_div">
   url <input type="text" id="address" size="40">
-  <input type="button" value="send" onclick="sendBenchmark()">
-  <input type="button" value="receive" onclick="receiveBenchmark()">
-  <input type="button" value="batch" onclick="batchBenchmark()">
-  <input type="button" value="stop" onclick="stop()">
+  <input type="button" value="send" onclick="onSendBenchmark()">
+  <input type="button" value="receive" onclick="onReceiveBenchmark()">
+  <input type="button" value="batch" onclick="onBatchBenchmark()">
+  <input type="button" value="stop" onclick="onStop()">
 
   <br/>
 
@@ -367,6 +141,8 @@ function init() {
   <label for="printsize">Print size and time per message</label>
   <input type="checkbox" id="verifydata" checked>
   <label for="verifydata">Verify data</label>
+  <input type="checkbox" id="worker">
+  <label for="worker">Run on worker</label>
 
   <br/>
 

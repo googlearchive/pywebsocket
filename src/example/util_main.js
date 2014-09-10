@@ -27,6 +27,12 @@ function addToSummary(log) {
   summaryBox.scrollTop = 1000000;
 }
 
+// value: execution time in milliseconds.
+// config.measureValue is intended to be used in Performance Tests.
+// Do nothing here in non-PerformanceTest.
+function measureValue(value) {
+}
+
 function getIntFromInput(id) {
   return parseInt(document.getElementById(id).value);
 }
@@ -52,4 +58,6 @@ function onMessage(message) {
     addToLog(message.data.data);
   else if (message.data.type === 'addToSummary')
     addToSummary(message.data.data);
+  else if (message.data.type === 'measureValue')
+    measureValue(message.data.data);
 }

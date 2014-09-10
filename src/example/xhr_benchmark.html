@@ -69,6 +69,7 @@ function onSendBenchmark() {
   } else {
     config.addToLog = addToLog;
     config.addToSummary = addToSummary;
+    config.measureValue = measureValue;
     sendBenchmark(config);
   }
 }
@@ -82,6 +83,7 @@ function onReceiveBenchmark() {
   } else {
     config.addToLog = addToLog;
     config.addToSummary = addToSummary;
+    config.measureValue = measureValue;
     receiveBenchmark(config);
   }
 }
@@ -94,6 +96,7 @@ function onBatchBenchmark() {
   } else {
     config.addToLog = addToLog;
     config.addToSummary = addToSummary;
+    config.measureValue = measureValue;
     batchBenchmark(config);
   }
 }
@@ -106,6 +109,7 @@ function onStop() {
   } else {
     config.addToLog = addToLog;
     config.addToSummary = addToSummary;
+    config.measureValue = measureValue;
     stop(config);
   }
 }

@@ -83,6 +83,7 @@ function calculateAndLogResult(config, size, startTimeInMs, totalSize) {
   if (!results[size]) {
     results[size] = {n: 0, sum_t: 0, sum_t2: 0};
   }
+  config.measureValue(timePerMessageInMs);
   results[size].n ++;
   results[size].sum_t += timePerMessageInMs;
   results[size].sum_t2 += timePerMessageInMs * timePerMessageInMs;

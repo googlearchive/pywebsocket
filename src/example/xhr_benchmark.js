@@ -346,6 +346,7 @@ onmessage = function (message) {
   var config = message.data.config;
   config.addToLog = workerAddToLog;
   config.addToSummary = workerAddToSummary;
+  config.measureValue = workerMeasureValue;
   if (message.data.type === 'sendBenchmark')
     sendBenchmark(config);
   else if (message.data.type === 'receiveBenchmark')

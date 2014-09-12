@@ -71,7 +71,8 @@ function run() {
   xhr.ontimeout = log;
   xhr.onloadend = log;
 
-  xhr.open('POST', '/073be001e10950692ccbf3a2ad21c245_receive');
+  xhr.open('POST', '/073be001e10950692ccbf3a2ad21c245_receive',
+           getBoolFromCheckBox('async'));
   var size = getIntFromInput('size');
   var chunkedMode = 'none';
   if (getBoolFromCheckBox('chunkedresponse')) {
@@ -101,6 +102,8 @@ function print() {
   <input type="checkbox" id="dumpprogressevent">
   <label for="dumpprogressevent">
     Dump lengthComputable/loaded/total</label><br/>
+  <input type="checkbox" id="async" checked>
+  <label for="async">Async</label><br/>
   <input type="button" onclick="run()" value="Run XHR">
   <input type="button" onclick="print()" value="Print log">
 </body>

@@ -19,7 +19,7 @@ var timerID = null;
 
 function destroyAllXHRs() {
   for (var i = 0; i < xhrs.length; ++i) {
-    xhrs[i].onreadystatechange = function() {};
+    xhrs[i].onreadystatechange = null;
     xhrs[i].abort();
   }
   xhrs = [];

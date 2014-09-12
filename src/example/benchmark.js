@@ -18,10 +18,10 @@ var numEstablishedSockets = 0;
 var timerID = null;
 
 function destroySocket(socket) {
-  socket.onopen = function() {};
-  socket.onmessage = function() {};
-  socket.onerror = function() {};
-  socket.onclose = function() {};
+  socket.onopen = null;
+  socket.onmessage = null;
+  socket.onerror = null;
+  socket.onclose = null;
   socket.close();
 }
 

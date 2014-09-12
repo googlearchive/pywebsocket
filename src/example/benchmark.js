@@ -33,6 +33,8 @@ function destroyAllSockets() {
 }
 
 function sendBenchmarkStep(size, config) {
+  timerID = null;
+
   var totalSize = 0;
   var totalReplied = 0;
 
@@ -88,6 +90,8 @@ function sendBenchmarkStep(size, config) {
 }
 
 function receiveBenchmarkStep(size, config) {
+  timerID = null;
+
   var totalSize = 0;
   var totalReplied = 0;
 
@@ -268,6 +272,8 @@ function batchBenchmark(config) {
 }
 
 function stop(config) {
+  clearTimeout(timerID);
+  timerID = null;
   config.addToLog('Stopped');
   destroyAllSockets();
 }

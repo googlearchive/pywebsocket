@@ -722,7 +722,7 @@ class WebSocketRequestHandler(CGIHTTPServer.CGIHTTPRequestHandler):
                                  'Basic realm="Pywebsocket"')
                 self.end_headers()
                 self._logger.info('Request basic authentication')
-                return True
+                return False
 
         host, port, resource = http_header_util.parse_uri(self.path)
 

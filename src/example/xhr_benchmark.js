@@ -280,6 +280,7 @@ function addTasks(config, stepFunc) {
 
 function addResultReportingTask(config, title) {
   tasks.push(function(){
+      timerID = null;
       config.addToSummary(title);
       reportAverageData(config);
       clearAverageData();

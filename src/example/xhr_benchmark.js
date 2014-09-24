@@ -4,7 +4,9 @@
 // license that can be found in the COPYING file or at
 // https://developers.google.com/open-source/licenses/bsd
 
-if (typeof importScripts !== "undefined") {
+var isWorker = typeof importScripts !== "undefined";
+
+if (isWorker) {
   // Running on a worker
   importScripts('util.js', 'util_worker.js');
 }
@@ -117,14 +119,13 @@ function sendBenchmarkStep(size, config) {
 
 
   benchmark.startTimeInMs = getTimeStamp();
+  totalSize = size * xhrs.length;
 
   for (var i = 0; i < xhrs.length; ++i) {
     var data = dataArray[i];
     var xhr = xhrs[i];
-    xhr.open('POST', config.prefixUrl + '_send');
+    xhr.open('POST', config.prefixUrl + '_send', config.async);
     xhr.send(data);
-
-    totalSize += size;
   }
 }
 
@@ -210,24 +211,24 @@ function receiveBenchmarkStep(size, config) {
   }
 
   benchmark.startTimeInMs = getTimeStamp();
+  totalSize = size * xhrs.length;
 
   for (var i = 0; i < xhrs.length; ++i) {
     var xhr = xhrs[i];
-    xhr.open('POST', config.prefixUrl + '_receive');
+    xhr.open('POST', config.prefixUrl + '_receive', config.async);
     xhr.responseType = config.dataType;
     xhr.send(size + ' none');
-
-    totalSize += size;
   }
 }
 
 
 function getConfigString(config) {
   return '(' + config.dataType +
-    ', ' + (typeof importScripts !== "undefined" ? 'Worker' : 'Main') +
+    ', verifyData=' + config.verifyData +
+    ', ' + (isWorker ? 'Worker' : 'Main') +
+    ', ' + (config.async ? 'Async' : 'Sync') +
     ', numXHRs=' + config.numXHRs +
     ', numIterations=' + config.numIterations +
-    ', verifyData=' + config.verifyData +
     ')';
 }
 
@@ -322,13 +323,23 @@ function batchBenchmark(originalConfig) {
   var dataTypes = ['text', 'blob', 'arraybuffer'];
   var stepFuncs = [sendBenchmarkStep, receiveBenchmarkStep];
   var names = ['Send', 'Receive'];
+  var async = [true, false];
   for (var i = 0; i < stepFuncs.length; ++i) {
     for (var j = 0; j < dataTypes.length; ++j) {
-      var config = cloneConfig(originalConfig);
-      config.dataType = dataTypes[j];
-      addTasks(config, stepFuncs[i]);
-      addResultReportingTask(config,
-          names[i] + ' benchmark ' + getConfigString(config));
+      for (var k = 0; k < async.length; ++k) {
+        var config = cloneConfig(originalConfig);
+        config.dataType = dataTypes[j];
+        config.async = async[k];
+
+        // Receive && Non-Worker && Sync is not supported by the spec
+        if (stepFuncs[i] === receiveBenchmarkStep && !isWorker &&
+            !config.async)
+          continue;
+
+        addTasks(config, stepFuncs[i]);
+        addResultReportingTask(config,
+            names[i] + ' benchmark ' + getConfigString(config));
+      }
     }
   }
 

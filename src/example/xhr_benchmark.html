@@ -43,6 +43,7 @@ function getConfig() {
     prefixUrl: addressBox.value,
     printSize: getBoolFromCheckBox('printsize'),
     numXHRs: getIntFromInput('numXHRs'),
+    async: getBoolFromCheckBox('async'),
     // Initial size of messages.
     numIterations: getIntFromInput('numiterations'),
     startSize: getIntFromInput('startsize'),
@@ -145,6 +146,9 @@ function init() {
   <label for="verifydata">Verify data</label>
   <input type="checkbox" id="worker">
   <label for="worker">Run on worker</label>
+  <input type="checkbox" id="async" checked>
+  <label for="async">Async</label><br>
+  (Receive &amp;&amp; Non-Worker &amp;&amp; Sync is not supported by spec)
 
   <br/>
 

@@ -45,6 +45,7 @@ function getConfig() {
     numSockets: getIntFromInput('numsockets'),
     // Initial size of messages.
     numIterations: getIntFromInput('numiterations'),
+    numWarmUpIterations: getIntFromInput('numwarmupiterations'),
     startSize: getIntFromInput('startsize'),
     // Stops benchmark when the size of message exceeds this threshold.
     stopThreshold: getIntFromInput('stopthreshold'),
@@ -160,8 +161,12 @@ function init() {
       <td><input type="text" id="numsockets" value="1"></td>
     </tr>
     <tr>
-      <td>Number of Iterations</td>
+      <td>Number of iterations</td>
       <td><input type="text" id="numiterations" value="1"></td>
+    </tr>
+    <tr>
+      <td>Number of warm-up iterations</td>
+      <td><input type="text" id="numwarmupiterations" value="0"></td>
     </tr>
     <tr>
       <td>Start size</td>

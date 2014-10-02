@@ -205,11 +205,17 @@ function getConfigString(config) {
     ', numIterations=' + config.numIterations +
     ', verifyData=' + config.verifyData +
     ', minTotal=' + config.minTotal +
+    ', numWarmUpIterations=' + config.numWarmUpIterations +
     ')';
 }
 
 function addTasks(config, stepFunc) {
-  for (var i = 0; i < config.numIterations; ++i) {
+  for (var i = 0;
+      i < config.numWarmUpIterations + config.numIterations; ++i) {
+    // Ignore the first |config.numWarmUpIterations| iterations.
+    if (i == config.numWarmUpIterations)
+      addResultClearingTask(config);
+
     var multiplierIndex = 0;
     for (var size = config.startSize;
          size <= config.stopThreshold;
@@ -230,6 +236,14 @@ function addResultReportingTask(config, title) {
       timerID = null;
       config.addToSummary(title);
       reportAverageData(config);
+      clearAverageData();
+      runNextTask(config);
+  });
+}
+
+function addResultClearingTask(config) {
+  tasks.push(function(){
+      timerID = null;
       clearAverageData();
       runNextTask(config);
   });

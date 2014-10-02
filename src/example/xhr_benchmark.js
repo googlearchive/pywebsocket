@@ -234,6 +234,7 @@ function getConfigString(config) {
     ', ' + (config.async ? 'Async' : 'Sync') +
     ', numXHRs=' + config.numXHRs +
     ', numIterations=' + config.numIterations +
+    ', numWarmUpIterations=' + config.numWarmUpIterations +
     ')';
 }
 
@@ -268,7 +269,12 @@ function buildLegendString(config) {
 }
 
 function addTasks(config, stepFunc) {
-  for (var i = 0; i < config.numIterations; ++i) {
+  for (var i = 0;
+      i < config.numWarmUpIterations + config.numIterations; ++i) {
+    // Ignore the first |config.numWarmUpIterations| iterations.
+    if (i == config.numWarmUpIterations)
+      addResultClearingTask(config);
+
     var multiplierIndex = 0;
     for (var size = config.startSize;
          size <= config.stopThreshold;
@@ -289,6 +295,14 @@ function addResultReportingTask(config, title) {
       timerID = null;
       config.addToSummary(title);
       reportAverageData(config);
+      clearAverageData();
+      runNextTask(config);
+  });
+}
+
+function addResultClearingTask(config) {
+  tasks.push(function(){
+      timerID = null;
       clearAverageData();
       runNextTask(config);
   });

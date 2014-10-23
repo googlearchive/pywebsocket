@@ -76,17 +76,20 @@ function calculateSpeedInKB(size, timeSpentInMs) {
   return Math.round(size / timeSpentInMs * 1000) / 1000;
 }
 
-function calculateAndLogResult(config, size, startTimeInMs, totalSize) {
+function calculateAndLogResult(config, size, startTimeInMs, totalSize,
+    isWarmUp) {
   var timeSpentInMs = getTimeStamp() - startTimeInMs;
   var speed = calculateSpeedInKB(totalSize, timeSpentInMs);
   var timePerMessageInMs = timeSpentInMs / (totalSize / size);
-  if (!results[size]) {
-    results[size] = {n: 0, sum_t: 0, sum_t2: 0};
+  if (!isWarmUp) {
+    config.measureValue(timePerMessageInMs);
+    if (!results[size]) {
+      results[size] = {n: 0, sum_t: 0, sum_t2: 0};
+    }
+    results[size].n ++;
+    results[size].sum_t += timePerMessageInMs;
+    results[size].sum_t2 += timePerMessageInMs * timePerMessageInMs;
   }
-  config.measureValue(timePerMessageInMs);
-  results[size].n ++;
-  results[size].sum_t += timePerMessageInMs;
-  results[size].sum_t2 += timePerMessageInMs * timePerMessageInMs;
   config.addToLog(formatResultInKiB(size, timePerMessageInMs, -1, speed,
       config.printSize));
 }

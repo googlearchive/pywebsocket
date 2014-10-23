@@ -53,7 +53,7 @@ function repeatString(str, count) {
   return data;
 }
 
-function sendBenchmarkStep(size, config) {
+function sendBenchmarkStep(size, config, isWarmUp) {
   timerID = null;
 
   benchmark.startTimeInMs = null;
@@ -89,7 +89,8 @@ function sendBenchmarkStep(size, config) {
       return;
     }
 
-    calculateAndLogResult(config, size, benchmark.startTimeInMs, totalSize);
+    calculateAndLogResult(config, size, benchmark.startTimeInMs, totalSize,
+        isWarmUp);
 
     destroyAllXHRs();
 
@@ -134,7 +135,7 @@ function sendBenchmarkStep(size, config) {
   }
 }
 
-function receiveBenchmarkStep(size, config) {
+function receiveBenchmarkStep(size, config, isWarmUp) {
   timerID = null;
 
   benchmark.startTimeInMs = null;
@@ -160,7 +161,8 @@ function receiveBenchmarkStep(size, config) {
       return;
     }
 
-    calculateAndLogResult(config, size, benchmark.startTimeInMs, totalSize);
+    calculateAndLogResult(config, size, benchmark.startTimeInMs, totalSize,
+        isWarmUp);
 
     destroyAllXHRs();
 
@@ -271,10 +273,6 @@ function buildLegendString(config) {
 function addTasks(config, stepFunc) {
   for (var i = 0;
       i < config.numWarmUpIterations + config.numIterations; ++i) {
-    // Ignore the first |config.numWarmUpIterations| iterations.
-    if (i == config.numWarmUpIterations)
-      addResultClearingTask(config);
-
     var multiplierIndex = 0;
     for (var size = config.startSize;
          size <= config.stopThreshold;
@@ -282,7 +280,8 @@ function addTasks(config, stepFunc) {
       var task = stepFunc.bind(
           null,
           size,
-          config);
+          config,
+          i < config.numWarmUpIterations);
       tasks.push(task);
       size *= config.multipliers[
           multiplierIndex % config.multipliers.length];
@@ -295,14 +294,6 @@ function addResultReportingTask(config, title) {
       timerID = null;
       config.addToSummary(title);
       reportAverageData(config);
-      clearAverageData();
-      runNextTask(config);
-  });
-}
-
-function addResultClearingTask(config) {
-  tasks.push(function(){
-      timerID = null;
       clearAverageData();
       runNextTask(config);
   });

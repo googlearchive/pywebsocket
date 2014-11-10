@@ -89,6 +89,11 @@ function sendBenchmarkStep(size, config, isWarmUp) {
       return;
     }
 
+    // Check and warn if proxy is enabled.
+    if (this.getResponseHeader('Via') !== null) {
+      config.addToLog('WARNING: proxy seems enabled.');
+    }
+
     calculateAndLogResult(config, size, benchmark.startTimeInMs, totalSize,
         isWarmUp);
 
@@ -178,6 +183,11 @@ function receiveBenchmarkStep(size, config, isWarmUp) {
       config.addToLog('Failed (status=' + this.status + ')');
       destroyAllXHRs();
       return;
+    }
+
+    // Check and warn if proxy is enabled.
+    if (this.getResponseHeader('Via') !== null) {
+      config.addToLog('WARNING: proxy seems enabled.');
     }
 
     var bytesReceived = -1;

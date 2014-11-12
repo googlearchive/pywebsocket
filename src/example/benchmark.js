@@ -41,6 +41,7 @@ function sendBenchmarkStep(size, config, isWarmUp) {
   var onMessageHandler = function(event) {
     if (!verifyAcknowledgement(config, event.data, size)) {
       destroyAllSockets();
+      config.notifyAbort();
       return;
     }
 
@@ -102,12 +103,14 @@ function receiveBenchmarkStep(size, config, isWarmUp) {
       config.addToLog('Expected ' + size + 'B but received ' +
           bytesReceived + 'B');
       destroyAllSockets();
+      config.notifyAbort();
       return;
     }
 
     if (config.verifyData && !verifyArrayBuffer(event.data, 0x61)) {
       config.addToLog('Response verification failed');
       destroyAllSockets();
+      config.notifyAbort();
       return;
     }
 
@@ -155,6 +158,7 @@ function createSocket(config) {
   };
   socket.onclose = function(event) {
     config.addToLog('Closed');
+    config.notifyAbort();
   };
   return socket;
 }
@@ -289,6 +293,7 @@ onmessage = function (message) {
   config.addToLog = workerAddToLog;
   config.addToSummary = workerAddToSummary;
   config.measureValue = workerMeasureValue;
+  config.notifyAbort = workerNotifyAbort;
   if (message.data.type === 'sendBenchmark')
     sendBenchmark(config);
   else if (message.data.type === 'receiveBenchmark')

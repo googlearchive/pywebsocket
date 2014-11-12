@@ -68,12 +68,14 @@ function sendBenchmarkStep(size, config, isWarmUp) {
     if (this.status != 200) {
       config.addToLog('Failed (status=' + this.status + ')');
       destroyAllXHRs();
+      config.notifyAbort();
       return;
     }
 
     if (config.verifyData &&
         !verifyAcknowledgement(config, this.response, size)) {
       destroyAllXHRs();
+      config.notifyAbort();
       return;
     }
 
@@ -86,6 +88,7 @@ function sendBenchmarkStep(size, config, isWarmUp) {
     if (benchmark.startTimeInMs == null) {
       config.addToLog('startTimeInMs not set');
       destroyAllXHRs();
+      config.notifyAbort();
       return;
     }
 
@@ -151,6 +154,7 @@ function receiveBenchmarkStep(size, config, isWarmUp) {
     if (!verificationResult) {
       config.addToLog('Response verification failed');
       destroyAllXHRs();
+      config.notifyAbort();
       return;
     }
 
@@ -163,6 +167,7 @@ function receiveBenchmarkStep(size, config, isWarmUp) {
     if (benchmark.startTimeInMs == null) {
       config.addToLog('startTimeInMs not set');
       destroyAllXHRs();
+      config.notifyAbort();
       return;
     }
 
@@ -182,6 +187,7 @@ function receiveBenchmarkStep(size, config, isWarmUp) {
     if (this.status != 200) {
       config.addToLog('Failed (status=' + this.status + ')');
       destroyAllXHRs();
+      config.notifyAbort();
       return;
     }
 
@@ -202,6 +208,7 @@ function receiveBenchmarkStep(size, config, isWarmUp) {
       config.addToLog('Expected ' + size +
           'B but received ' + bytesReceived + 'B');
       destroyAllXHRs();
+      config.notifyAbort();
       return;
     }
 
@@ -379,6 +386,7 @@ onmessage = function (message) {
   config.addToLog = workerAddToLog;
   config.addToSummary = workerAddToSummary;
   config.measureValue = workerMeasureValue;
+  config.notifyAbort = workerNotifyAbort;
   if (message.data.type === 'sendBenchmark')
     sendBenchmark(config);
   else if (message.data.type === 'receiveBenchmark')

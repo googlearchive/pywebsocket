@@ -17,3 +17,7 @@ function workerAddToSummary(text) {
 function workerMeasureValue(value) {
   postMessage({type: 'measureValue', data: value});
 }
+
+function workerNotifyAbort() {
+  postMessage({type: 'notifyAbort'});
+}

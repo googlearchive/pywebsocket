@@ -33,6 +33,12 @@ function addToSummary(log) {
 function measureValue(value) {
 }
 
+// config.notifyAbort is called when the benchmark failed and aborted, and
+// intended to be used in Performance Tests.
+// Do nothing here in non-PerformanceTest.
+function notifyAbort() {
+}
+
 function getIntFromInput(id) {
   return parseInt(document.getElementById(id).value);
 }
@@ -60,4 +66,6 @@ function onMessage(message) {
     addToSummary(message.data.data);
   else if (message.data.type === 'measureValue')
     measureValue(message.data.data);
+  else if (message.data.type === 'notifyAbort')
+    notifyAbort();
 }

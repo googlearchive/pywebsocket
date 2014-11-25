@@ -758,16 +758,12 @@ class PerMessageDeflateTest(unittest.TestCase):
 
         msgutil.send_message(request, '')
 
-        # Payload in binary: 0b00000010 0b00000000
+        # Payload in binary: 0b00000000
         # From LSB,
         # - 1 bit of BFINAL (0)
-        # - 2 bits of BTYPE (01 that means fixed Huffman)
-        # - 7 bits of the first code (0000000 that is the code for the
-        #   end-of-block)
-        # - 1 bit of BFINAL (0)
         # - 2 bits of BTYPE (no compression)
-        # - 3 bits of padding
-        self.assertEqual('\xc1\x02\x02\x00',
+        # - 5 bits of padding
+        self.assertEqual('\xc1\x01\x00',
                          request.connection.written_data())
 
     def test_send_message_with_null_character(self):

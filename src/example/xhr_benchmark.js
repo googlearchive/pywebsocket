@@ -239,9 +239,21 @@ function receiveBenchmarkStep(size, config, isWarmUp) {
 
   for (var i = 0; i < xhrs.length; ++i) {
     var xhr = xhrs[i];
-    xhr.open('POST', config.prefixUrl + '_receive', config.async);
-    xhr.responseType = config.dataType;
-    xhr.send(size + ' none');
+    if (config.methodAndCache === 'GET-NOCACHE') {
+      xhr.open('GET', config.prefixUrl + '_receive_getnocache?' + size,
+          config.async);
+      xhr.responseType = config.dataType;
+      xhr.send();
+    } else if (config.methodAndCache === 'GET-CACHE') {
+      xhr.open('GET', config.prefixUrl + '_receive_getcache?' + size,
+          config.async);
+      xhr.responseType = config.dataType;
+      xhr.send();
+    } else {
+      xhr.open('POST', config.prefixUrl + '_receive', config.async);
+      xhr.responseType = config.dataType;
+      xhr.send(size + ' none');
+    }
   }
 }
 

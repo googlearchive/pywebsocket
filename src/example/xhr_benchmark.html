@@ -55,7 +55,8 @@ function getConfig() {
     // minTotal: getIntFromInput('mintotal'),
     // minTotal is not yet implemented on XHR benchmark
     multipliers: getIntArrayFromInput('multipliers'),
-    verifyData: getBoolFromCheckBox('verifydata')
+    verifyData: getBoolFromCheckBox('verifydata'),
+    methodAndCache: getStringFromRadioBox('methodandcache')
   };
 }
 
@@ -208,6 +209,26 @@ function init() {
          id="datatyperadioarraybuffer"
          value="arraybuffer"
          ><label for="datatyperadioarraybuffer">arraybuffer</label>
+
+  <br>
+  Set HTTP method and cache control
+  <input type="radio"
+         name="methodandcache"
+         id="methodandcachePOST"
+         value="POST"
+         checked><label for="methodandcachePOST">POST (No Cache)</label>
+  <input type="radio"
+         name="methodandcache"
+         id="methodandcacheGETNOCACHE"
+         value="GET-NOCACHE"
+         ><label for="methodandcacheGETNOCACHE">GET (No Cache)</label>
+  <input type="radio"
+         name="methodandcache"
+         id="methodandcacheGETCACHE"
+         value="GET-CACHE"
+         ><label for="methodandcacheGETCACHE">GET (Cache)</label>
+  <br>
+  <span style="font-size: 80%">(Cache control: receive only. Cache is valid for 10 seconds. This config controls Cache-control HTTP response header. Browsers might not cache data e.g. when it is large)</span>
 </form>
 
 <div id="log_div">

@@ -339,15 +339,8 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
     _CLIENT_MAX_WINDOW_BITS_PARAM = 'client_max_window_bits'
     _CLIENT_NO_CONTEXT_TAKEOVER_PARAM = 'client_no_context_takeover'
 
-    def __init__(self, request, draft08=True):
-        """Construct PerMessageDeflateExtensionProcessor
-
-        Args:
-            draft08: Follow the constraints on the parameters that were not
-                specified for permessage-compress but are specified for
-                permessage-deflate as on
-                draft-ietf-hybi-permessage-compression-08.
-        """
+    def __init__(self, request):
+        """Construct PerMessageDeflateExtensionProcessor."""
 
         ExtensionProcessorInterface.__init__(self, request)
         self._logger = util.get_class_logger(self)
@@ -355,24 +348,18 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
         self._preferred_client_max_window_bits = None
         self._client_no_context_takeover = False
 
-        self._draft08 = draft08
-
     def name(self):
         # This method returns "deflate" (not "permessage-deflate") for
         # compatibility.
         return 'deflate'
 
     def _get_extension_response_internal(self):
-        if self._draft08:
-            for name in self._request.get_parameter_names():
-                if name not in [self._SERVER_MAX_WINDOW_BITS_PARAM,
-                                self._SERVER_NO_CONTEXT_TAKEOVER_PARAM,
-                                self._CLIENT_MAX_WINDOW_BITS_PARAM]:
-                    self._logger.debug('Unknown parameter: %r', name)
-                    return None
-        else:
-            # Any unknown parameter will be just ignored.
-            pass
+        for name in self._request.get_parameter_names():
+            if name not in [self._SERVER_MAX_WINDOW_BITS_PARAM,
+                            self._SERVER_NO_CONTEXT_TAKEOVER_PARAM,
+                            self._CLIENT_MAX_WINDOW_BITS_PARAM]:
+                self._logger.debug('Unknown parameter: %r', name)
+                return None
 
         server_max_window_bits = None
         if self._request.has_parameter(self._SERVER_MAX_WINDOW_BITS_PARAM):
@@ -401,8 +388,7 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
         # accept client_max_window_bits from a server or not.
         client_client_max_window_bits = self._request.has_parameter(
             self._CLIENT_MAX_WINDOW_BITS_PARAM)
-        if (self._draft08 and
-            client_client_max_window_bits and
+        if (client_client_max_window_bits and
             self._request.get_parameter_value(
                 self._CLIENT_MAX_WINDOW_BITS_PARAM) is not None):
             self._logger.debug('%s parameter must not have a value in a '
@@ -436,7 +422,7 @@ class PerMessageDeflateExtensionProcessor(ExtensionProcessorInterface):
                 self._SERVER_NO_CONTEXT_TAKEOVER_PARAM, None)
 
         if self._preferred_client_max_window_bits is not None:
-            if self._draft08 and not client_client_max_window_bits:
+            if not client_client_max_window_bits:
                 self._logger.debug('Processor is configured to use %s but '
                                    'the client cannot accept it',
                                    self._CLIENT_MAX_WINDOW_BITS_PARAM)

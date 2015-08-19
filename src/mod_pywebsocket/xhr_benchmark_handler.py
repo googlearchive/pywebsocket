@@ -42,6 +42,7 @@ class XHRBenchmarkHandler(object):
         response_body = '%d' % content_length
         self.wfile.write(
             'HTTP/1.1 200 OK\r\n'
+            'Access-Control-Allow-Origin: *\r\n'
             'Content-Type: text/html\r\n'
             'Content-Length: %d\r\n'
             '\r\n%s' % (len(response_body), response_body))
@@ -83,6 +84,7 @@ class XHRBenchmarkHandler(object):
         # Write a header
         response_header = (
             'HTTP/1.1 200 OK\r\n'
+            'Access-Control-Allow-Origin: *\r\n'
             'Content-Type: application/octet-stream\r\n')
         if enable_cache:
             response_header += 'Cache-Control: private, max-age=10\r\n'

@@ -56,69 +56,34 @@ function getConfig() {
     // minTotal is not yet implemented on XHR benchmark
     multipliers: getIntArrayFromInput('multipliers'),
     verifyData: getBoolFromCheckBox('verifydata'),
-    methodAndCache: getStringFromRadioBox('methodandcache')
+    methodAndCache: getStringFromRadioBox('methodandcache'),
+    addToLog: addToLog,
+    addToSummary: addToSummary,
+    measureValue: measureValue,
+    notifyAbort: notifyAbort
   };
 }
-
-var worker = new Worker('xhr_benchmark.js');
-worker.onmessage = onMessage;
 
 function onSendBenchmark() {
   var config = getConfig();
   config.dataType = getStringFromRadioBox('datatyperadio');
-
-  if (getBoolFromCheckBox('worker')) {
-    worker.postMessage({type: 'sendBenchmark', config: config});
-  } else {
-    config.addToLog = addToLog;
-    config.addToSummary = addToSummary;
-    config.measureValue = measureValue;
-    config.notifyAbort = notifyAbort;
-    sendBenchmark(config);
-  }
+  doAction(config, getBoolFromCheckBox('worker'), 'sendBenchmark');
 }
 
 function onReceiveBenchmark() {
   var config = getConfig();
   config.dataType = getStringFromRadioBox('datatyperadio');
-
-  if (getBoolFromCheckBox('worker')) {
-    worker.postMessage({type: 'receiveBenchmark', config: config});
-  } else {
-    config.addToLog = addToLog;
-    config.addToSummary = addToSummary;
-    config.measureValue = measureValue;
-    config.notifyAbort = notifyAbort;
-    receiveBenchmark(config);
-  }
+  doAction(config, getBoolFromCheckBox('worker'), 'receiveBenchmark');
 }
 
 function onBatchBenchmark() {
   var config = getConfig();
-
-  if (getBoolFromCheckBox('worker')) {
-    worker.postMessage({type: 'batchBenchmark', config: config});
-  } else {
-    config.addToLog = addToLog;
-    config.addToSummary = addToSummary;
-    config.measureValue = measureValue;
-    config.notifyAbort = notifyAbort;
-    batchBenchmark(config);
-  }
+  doAction(config, getBoolFromCheckBox('worker'), 'batchBenchmark');
 }
 
 function onStop() {
   var config = getConfig();
-
-  if (getBoolFromCheckBox('worker')) {
-    worker.postMessage({type: 'stop', config: config});
-  } else {
-    config.addToLog = addToLog;
-    config.addToSummary = addToSummary;
-    config.measureValue = measureValue;
-    config.notifyAbort = notifyAbort;
-    stop(config);
-  }
+  doAction(config, getBoolFromCheckBox('worker'), 'stop');
 }
 
 function init() {
@@ -132,6 +97,8 @@ function init() {
 
   addToLog(window.navigator.userAgent.toLowerCase());
   addToSummary(window.navigator.userAgent.toLowerCase());
+
+  initWorker('XHR', '');
 }
 </script>
 </head>

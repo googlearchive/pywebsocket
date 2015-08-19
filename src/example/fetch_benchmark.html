@@ -1,40 +1,16 @@
 <!--
-Copyright 2013, Google Inc.
-All rights reserved.
+Copyright 2015 Google Inc. All rights reserved.
 
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-    * Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-    * Redistributions in binary form must reproduce the above
-copyright notice, this list of conditions and the following disclaimer
-in the documentation and/or other materials provided with the
-distribution.
-    * Neither the name of Google Inc. nor the names of its
-contributors may be used to endorse or promote products derived from
-this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+Use of this source code is governed by a BSD-style
+license that can be found in the COPYING file or at
+https://developers.google.com/open-source/licenses/bsd
 -->
-
 <html>
 <head>
-<title>WebSocket benchmark</title>
+<title>Fetch API benchmark</title>
 <script src="util_main.js"></script>
 <script src="util.js"></script>
-<script src="benchmark.js"></script>
+<script src="fetch_benchmark.js"></script>
 <script>
 var addressBox = null;
 
@@ -42,7 +18,7 @@ function getConfig() {
   return {
     prefixUrl: addressBox.value,
     printSize: getBoolFromCheckBox('printsize'),
-    numSockets: getIntFromInput('numsockets'),
+    numFetches: getIntFromInput('numFetches'),
     // Initial size of messages.
     numIterations: getIntFromInput('numiterations'),
     numWarmUpIterations: getIntFromInput('numwarmupiterations'),
@@ -51,7 +27,8 @@ function getConfig() {
     stopThreshold: getIntFromInput('stopthreshold'),
     // If the size of each message is small, send/receive multiple messages
     // until the sum of sizes reaches this threshold.
-    minTotal: getIntFromInput('mintotal'),
+    // minTotal: getIntFromInput('mintotal'),
+    // minTotal is not yet implemented on Fetch API benchmark
     multipliers: getIntArrayFromInput('multipliers'),
     verifyData: getBoolFromCheckBox('verifydata'),
     addToLog: addToLog,
@@ -63,11 +40,13 @@ function getConfig() {
 
 function onSendBenchmark() {
   var config = getConfig();
+  config.dataType = getStringFromRadioBox('datatyperadio');
   doAction(config, getBoolFromCheckBox('worker'), 'sendBenchmark');
 }
 
 function onReceiveBenchmark() {
   var config = getConfig();
+  config.dataType = getStringFromRadioBox('datatyperadio');
   doAction(config, getBoolFromCheckBox('worker'), 'receiveBenchmark');
 }
 
@@ -87,26 +66,20 @@ function init() {
 
   summaryBox = document.getElementById('summary');
 
-  var scheme = window.location.protocol == 'https:' ? 'wss://' : 'ws://';
-  var defaultAddress = scheme + window.location.host + '/benchmark_helper';
-
-  addressBox.value = defaultAddress;
+  // Special address of pywebsocket for XHR/Fetch API benchmark.
+  addressBox.value = '/073be001e10950692ccbf3a2ad21c245';
 
   addToLog(window.navigator.userAgent.toLowerCase());
   addToSummary(window.navigator.userAgent.toLowerCase());
 
-  if (!('WebSocket' in window)) {
-    addToLog('WebSocket is not available');
-  }
-
-  initWorker('WebSocket', '');
+  initWorker('fetch', '');
 }
 </script>
 </head>
 <body onload="init()">
 
-<div id="benchmark_div">
-  url <input type="text" id="address" size="40">
+<form id="benchmark_form">
+  url prefix <input type="text" id="address" size="40">
   <input type="button" value="send" onclick="onSendBenchmark()">
   <input type="button" value="receive" onclick="onReceiveBenchmark()">
   <input type="button" value="batch" onclick="onBatchBenchmark()">
@@ -129,8 +102,8 @@ function init() {
 
   <table>
     <tr>
-      <td>Num sockets</td>
-      <td><input type="text" id="numsockets" value="1"></td>
+      <td>Number of fetch() requests</td>
+      <td><input type="text" id="numFetches" value="1"></td>
     </tr>
     <tr>
       <td>Number of iterations</td>
@@ -157,7 +130,24 @@ function init() {
       <td><input type="text" id="multipliers" value="5, 2"></td>
     </tr>
   </table>
-</div>
+
+  Set data type
+  <input type="radio"
+         name="datatyperadio"
+         id="datatyperadiotext"
+         value="text"
+         checked><label for="datatyperadiotext">text</label>
+  <input type="radio"
+         name="datatyperadio"
+         id="datatyperadioblob"
+         value="blob"
+         ><label for="datatyperadioblob">blob</label>
+  <input type="radio"
+         name="datatyperadio"
+         id="datatyperadioarraybuffer"
+         value="arraybuffer"
+         ><label for="datatyperadioarraybuffer">arraybuffer</label>
+</form>
 
 <div id="log_div">
   <textarea
@@ -169,7 +159,7 @@ function init() {
       id="summary" rows="20" style="width: 100%" readonly></textarea>
 </div>
 
-Note: Effect of RTT is not eliminated.
+Note: Effect of RTT and time spent for ArrayBuffer creation in receive benchmarks are not eliminated.
 
 </body>
 </html>

@@ -94,6 +94,26 @@ function calculateAndLogResult(config, size, startTimeInMs, totalSize,
       config.printSize));
 }
 
+function repeatString(str, count) {
+  var data = '';
+  var expChunk = str;
+  var remain = count;
+  while (true) {
+    if (remain % 2) {
+      data += expChunk;
+      remain = (remain - 1) / 2;
+    } else {
+      remain /= 2;
+    }
+
+    if (remain == 0)
+      break;
+
+    expChunk = expChunk + expChunk;
+  }
+  return data;
+}
+
 function fillArrayBuffer(buffer, c) {
   var i;
 
@@ -177,4 +197,125 @@ function cloneConfig(obj) {
     newObj[key] = obj[key];
   }
   return newObj;
+}
+
+var tasks = [];
+
+function runNextTask(config) {
+  var task = tasks.shift();
+  if (task == undefined) {
+    config.addToLog('Finished');
+    cleanup();
+    return;
+  }
+  timerID = setTimeout(task, 0);
+}
+
+function buildLegendString(config) {
+  var legend = ''
+  if (config.printSize)
+    legend = 'Message size in KiB, Time/message in ms, ';
+  legend += 'Speed in kB/s';
+  return legend;
+}
+
+function addTasks(config, stepFunc) {
+  for (var i = 0;
+      i < config.numWarmUpIterations + config.numIterations; ++i) {
+    var multiplierIndex = 0;
+    for (var size = config.startSize;
+         size <= config.stopThreshold;
+         ++multiplierIndex) {
+      var task = stepFunc.bind(
+          null,
+          size,
+          config,
+          i < config.numWarmUpIterations);
+      tasks.push(task);
+      size *= config.multipliers[
+          multiplierIndex % config.multipliers.length];
+    }
+  }
+}
+
+function addResultReportingTask(config, title) {
+  tasks.push(function(){
+      timerID = null;
+      config.addToSummary(title);
+      reportAverageData(config);
+      clearAverageData();
+      runNextTask(config);
+  });
+}
+
+function sendBenchmark(config) {
+  config.addToLog('Send benchmark');
+  config.addToLog(buildLegendString(config));
+
+  tasks = [];
+  clearAverageData();
+  addTasks(config, sendBenchmarkStep);
+  addResultReportingTask(config, 'Send Benchmark ' + getConfigString(config));
+  startBenchmark(config);
+}
+
+function receiveBenchmark(config) {
+  config.addToLog('Receive benchmark');
+  config.addToLog(buildLegendString(config));
+
+  tasks = [];
+  clearAverageData();
+  addTasks(config, receiveBenchmarkStep);
+  addResultReportingTask(config,
+      'Receive Benchmark ' + getConfigString(config));
+  startBenchmark(config);
+}
+
+function stop(config) {
+  clearTimeout(timerID);
+  timerID = null;
+  tasks = [];
+  config.addToLog('Stopped');
+  cleanup();
+}
+
+var worker;
+
+function initWorker(connectionType, origin) {
+  var scriptPath =
+    connectionType === 'WebSocket' ? '/benchmark.js' :
+    connectionType === 'XHR' ? '/xhr_benchmark.js' :
+    '/fetch_benchmark.js'; // connectionType === 'fetch'
+  worker = new Worker(origin + scriptPath);
+}
+
+function doAction(config, isWindowToWorker, action) {
+  if (isWindowToWorker) {
+    worker.onmessage = function(addToLog, addToSummary,
+                                measureValue, notifyAbort, message) {
+      if (message.data.type === 'addToLog')
+        addToLog(message.data.data);
+      else if (message.data.type === 'addToSummary')
+        addToSummary(message.data.data);
+      else if (message.data.type === 'measureValue')
+        measureValue(message.data.data);
+      else if (message.data.type === 'notifyAbort')
+        notifyAbort();
+    }.bind(undefined, config.addToLog, config.addToSummary,
+           config.measureValue, config.notifyAbort);
+    config.addToLog = undefined;
+    config.addToSummary = undefined;
+    config.measureValue = undefined;
+    config.notifyAbort = undefined;
+    worker.postMessage({type: action, config: config});
+  } else {
+    if (action === 'sendBenchmark')
+      sendBenchmark(config);
+    else if (action === 'receiveBenchmark')
+      receiveBenchmark(config);
+    else if (action === 'batchBenchmark')
+      batchBenchmark(config);
+    else if (action === 'stop')
+      stop(config);
+  }
 }

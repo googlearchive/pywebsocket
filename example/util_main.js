@@ -58,3 +58,8 @@ function getIntArrayFromInput(id) {
   var strArray = document.getElementById(id).value.split(',');
   return strArray.map(function(str) { return parseInt(str, 10); });
 }
+
+function getFloatArrayFromInput(id) {
+  var strArray = document.getElementById(id).value.split(',');
+  return strArray.map(parseFloat);
+}

@@ -52,7 +52,7 @@ function getConfig() {
     // If the size of each message is small, send/receive multiple messages
     // until the sum of sizes reaches this threshold.
     minTotal: getIntFromInput('mintotal'),
-    multipliers: getIntArrayFromInput('multipliers'),
+    multipliers: getFloatArrayFromInput('multipliers'),
     verifyData: getBoolFromCheckBox('verifydata'),
     addToLog: addToLog,
     addToSummary: addToSummary,

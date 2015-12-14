@@ -232,8 +232,14 @@ function addTasks(config, stepFunc) {
           config,
           i < config.numWarmUpIterations);
       tasks.push(task);
-      size *= config.multipliers[
-          multiplierIndex % config.multipliers.length];
+      var multiplier = config.multipliers[
+        multiplierIndex % config.multipliers.length];
+      if (multiplier <= 1) {
+        config.addToLog('Invalid multiplier ' + multiplier);
+        config.notifyAbort();
+        throw new Error('Invalid multipler');
+      }
+      size = Math.ceil(size * multiplier);
     }
   }
 }

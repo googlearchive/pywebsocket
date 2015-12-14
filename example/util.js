@@ -236,6 +236,7 @@ function addTasks(config, stepFunc) {
         multiplierIndex % config.multipliers.length];
       if (multiplier <= 1) {
         config.addToLog('Invalid multiplier ' + multiplier);
+        config.notifyAbort();
         throw new Error('Invalid multipler');
       }
       size = Math.ceil(size * multiplier);

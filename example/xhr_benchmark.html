@@ -50,10 +50,6 @@ function getConfig() {
     startSize: getIntFromInput('startsize'),
     // Stops benchmark when the size of message exceeds this threshold.
     stopThreshold: getIntFromInput('stopthreshold'),
-    // If the size of each message is small, send/receive multiple messages
-    // until the sum of sizes reaches this threshold.
-    // minTotal: getIntFromInput('mintotal'),
-    // minTotal is not yet implemented on XHR benchmark
     multipliers: getFloatArrayFromInput('multipliers'),
     verifyData: getBoolFromCheckBox('verifydata'),
     methodAndCache: getStringFromRadioBox('methodandcache'),
@@ -149,10 +145,6 @@ function init() {
     <tr>
       <td>Stop threshold</td>
       <td><input type="text" id="stopthreshold" value="102400000"></td>
-    </tr>
-    <tr>
-      <td>Minimum total</td>
-      <td><input type="text" id="mintotal" value="102400000"></td>
     </tr>
     <tr>
       <td>Multipliers</td>
